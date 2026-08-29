@@ -1040,6 +1040,10 @@
   color: #0b2b1e;
 }
 
+.leafly-mobile-drawer-profile-link {
+  gap: 8px;
+}
+
 
 /* =========================================================
    TABLET

@@ -1,0 +1,77 @@
+﻿.leafly-user-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.leafly-user-avatar.has-border {
+  border: 1.5px solid #c9a24b;
+  box-shadow: 0 0 8px rgba(201, 162, 75, 0.25);
+}
+
+.leafly-user-avatar-sm {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.leafly-user-avatar-md {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.leafly-user-avatar-lg {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.leafly-user-avatar-xl {
+  width: 140px;
+  height: 140px;
+  min-width: 140px;
+  min-height: 140px;
+}
+
+.leafly-user-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.leafly-user-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #183324 0%, #2d5a45 100%);
+  color: #f7f3ec;
+  border-radius: 50%;
+}
+
+.leafly-user-avatar-icon {
+  width: 65%;
+  height: 65%;
+  stroke: currentColor;
+}
+
+.leafly-user-avatar-initials {
+  font-family: var(--font-heading, "Playfair Display", serif);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-size: 2.2rem;
+  color: #f7f3ec;
+  user-select: none;
+}

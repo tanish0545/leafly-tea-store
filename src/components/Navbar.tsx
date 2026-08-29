@@ -4,6 +4,7 @@ import logo from "../assets/leafly-logo.webp";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useAuth } from "../context/AuthContext";
+import UserAvatar from "./UserAvatar";
 import SearchModal from "./SearchModal";
 import "./Navbar.css";
 
@@ -22,7 +23,7 @@ export default function Navbar() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   const {
     cartCount,
@@ -295,31 +296,40 @@ export default function Navbar() {
 
 
         {/* PROFILE */}
-
         <Link
           to={isAuthenticated ? "/profile" : "/login"}
           aria-label={isAuthenticated ? "Account Profile" : "Sign In"}
-          className="leafly-icon-button"
+          className="leafly-icon-button leafly-nav-profile-btn"
           onClick={closeMenu}
         >
-          <svg
-            width="21"
-            height="21"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle
-              cx="12"
-              cy="8"
-              r="3.5"
+          {isAuthenticated && user?.photoURL ? (
+            <UserAvatar
+              photoURL={user.photoURL}
+              name={user.displayName || user.name}
+              email={user.email}
+              size={28}
+              showBorder={true}
             />
+          ) : (
+            <svg
+              width="21"
+              height="21"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle
+                cx="12"
+                cy="8"
+                r="3.5"
+              />
 
-            <path d="M5 20c.8-3.5 3.2-5.5 7-5.5s6.2 2 7 5.5" />
-          </svg>
+              <path d="M5 20c.8-3.5 3.2-5.5 7-5.5s6.2 2 7 5.5" />
+            </svg>
+          )}
         </Link>
 
       </div>
@@ -412,19 +422,29 @@ export default function Navbar() {
           className="leafly-mobile-profile"
           onClick={closeMenu}
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="8" r="3.5" />
-            <path d="M5 20c.8-3.5 3.2-5.5 7-5.5s6.2 2 7 5.5" />
-          </svg>
+          {isAuthenticated && user?.photoURL ? (
+            <UserAvatar
+              photoURL={user.photoURL}
+              name={user.displayName || user.name}
+              email={user.email}
+              size={26}
+              showBorder={true}
+            />
+          ) : (
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="8" r="3.5" />
+              <path d="M5 20c.8-3.5 3.2-5.5 7-5.5s6.2 2 7 5.5" />
+            </svg>
+          )}
         </Link>
       </div>
 
@@ -547,8 +567,18 @@ export default function Navbar() {
           <Link
             to={isAuthenticated ? "/profile" : "/login"}
             onClick={closeMenu}
+            className="leafly-mobile-drawer-profile-link"
           >
-            {isAuthenticated ? "Profile" : "Sign In"}
+            {isAuthenticated && user?.photoURL && (
+              <UserAvatar
+                photoURL={user.photoURL}
+                name={user.displayName || user.name}
+                email={user.email}
+                size={22}
+                showBorder={true}
+              />
+            )}
+            <span>{isAuthenticated ? (user?.displayName || "Profile") : "Sign In"}</span>
           </Link>
 
         </div>

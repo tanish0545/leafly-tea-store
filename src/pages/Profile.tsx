@@ -305,8 +305,14 @@ export default function Profile() {
     return (raw.slice(0, 2) || "LU").toUpperCase();
   }, [details.fullName, user?.displayName, user?.name, user?.email]);
 
-  const isGoogleUser = user?.authProvider === "Google" || Boolean(user?.photoURL && user?.photoURL.includes("googleusercontent"));
-  const googlePhoto = isGoogleUser && user?.photoURL ? user.photoURL : null;
+  const userPhoto = user?.photoURL || user?.profileImageUrl || user?.profileImage || null;
+  const [prevUserPhoto, setPrevUserPhoto] = useState(userPhoto);
+  const [avatarError, setAvatarError] = useState(false);
+
+  if (prevUserPhoto !== userPhoto) {
+    setPrevUserPhoto(userPhoto);
+    setAvatarError(false);
+  }
 
   const handleSidebarClick = (item: SidebarItem) => {
     setSelectedSidebar(item.id);
@@ -530,8 +536,14 @@ export default function Profile() {
           <header className="profile-hero">
             <div className="profile-avatar-wrap">
               <div className="profile-avatar" aria-label="Profile avatar">
-                {googlePhoto ? (
-                  <img src={googlePhoto} alt={activeUserName} className="profile-avatar-custom-img" />
+                {userPhoto && !avatarError ? (
+                  <img
+                    src={userPhoto}
+                    alt={activeUserName}
+                    className="profile-avatar-custom-img"
+                    referrerPolicy="no-referrer"
+                    onError={() => setAvatarError(true)}
+                  />
                 ) : (
                   <div className="profile-avatar-initials" aria-label={`Avatar initials: ${userInitials}`}>
                     <span>{userInitials}</span>

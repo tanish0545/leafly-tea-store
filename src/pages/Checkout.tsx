@@ -10,8 +10,6 @@ import {
 import DeliveryAnimation from "../components/DeliveryAnimation";
 import CouponRewardAnimation from "../components/CouponRewardAnimation";
 import PhoneInput from "../components/PhoneInput";
-import UPIPaymentSelector, { type UPIAppId } from "../components/UPIPaymentSelector";
-import UPITestModeModal from "../components/UPITestModeModal";
 import { calculateDiscount, type AppliedCoupon } from "../utils/coupon";
 import { useCoupons } from "../context/CouponContext";
 import { useAuth, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
@@ -124,11 +122,7 @@ export default function Checkout() {
   }, [isFirstOrder, appliedCoupon]);
 
   const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express">("standard");
-  const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "cod">("upi");
-  const [selectedUpiApp, setSelectedUpiApp] = useState<UPIAppId>("google_pay");
-  const [upiVpa, setUpiVpa] = useState("");
-  const [showUpiTestModal, setShowUpiTestModal] = useState(false);
-  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "cod">("cod");
   const [saveAddress, setSaveAddress] = useState(true);
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
 
@@ -540,31 +534,6 @@ export default function Checkout() {
     }, 450);
   };
 
-  const handleUpiTestSuccess = async (paymentId: string) => {
-    setShowUpiTestModal(false);
-    setIsBursting(true);
-    setIsProcessing(true);
-    const orderId = pendingOrderId || generateOrderId();
-    await finishOrder(
-      orderId,
-      total,
-      subtotal,
-      discountAmount,
-      deliveryFee,
-      paymentId
-    );
-  };
-
-  const handleUpiTestCancel = () => {
-    setShowUpiTestModal(false);
-    setIsProcessing(false);
-    setIsBursting(false);
-    setErrors((prev) => ({
-      ...prev,
-      submit: "UPI payment cancelled. You can retry anytime.",
-    }));
-  };
-
   const handlePlaceOrder = async () => {
     if (isProcessing) {
       return;
@@ -612,109 +581,15 @@ export default function Checkout() {
       );
     };
 
-    // 1. Dedicated UPI Payment Flow
-    if (paymentMethod === "upi") {
-      if (selectedUpiApp === "custom_vpa" && !upiVpa.trim()) {
-        setErrors((prev) => ({
-          ...prev,
-          upi: "Please enter a valid UPI ID (e.g. yourname@upi)",
-        }));
-        return;
-      }
-
-      setPendingOrderId(orderId);
-      setShowUpiTestModal(true);
-      return;
-    }
-
-    // 2. Card / NetBanking Payment Flow
-    if (paymentMethod === "card") {
-      setIsBursting(true);
-      setIsProcessing(true);
-
-      const razorpayKey =
-        import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_YourTestKeyHere";
-
-      if (
-        typeof window !== "undefined" &&
-        (window as unknown as { Razorpay: unknown }).Razorpay
-      ) {
-        const options = {
-          key: razorpayKey,
-          amount: Math.round(total * 100),
-          currency: "INR",
-          name: "Leafly Tea Store",
-          description: `Ceremonial Order ${orderId}`,
-          image: "/leafly-logo.webp",
-          handler: function (response: {
-            razorpay_payment_id: string;
-            razorpay_order_id?: string;
-            razorpay_signature?: string;
-          }) {
-            finalizeOrder(response?.razorpay_payment_id);
-          },
-          prefill: {
-            name: shippingAddress.fullName,
-            email: email || currentUser?.email || "",
-            contact: phone,
-            method: "card",
-          },
-          method: {
-            card: true,
-            netbanking: true,
-            upi: false,
-            wallet: false,
-            emi: false,
-          },
-          notes: {
-            address: shippingAddress.addressLine1,
-            orderId: orderId,
-          },
-          theme: {
-            color: "#0b2b1e",
-          },
-          modal: {
-            ondismiss: function () {
-              setIsProcessing(false);
-              setIsBursting(false);
-              setErrors((prev) => ({
-                ...prev,
-                submit: "Payment cancelled. You can retry anytime.",
-              }));
-            },
-          },
-        };
-        const RazorpayClass = (
-          window as unknown as {
-            Razorpay: new (opts: unknown) => {
-              open: () => void;
-              on: (
-                event: string,
-                cb: (res: { error: { description: string } }) => void
-              ) => void;
-            };
-          }
-        ).Razorpay;
-        const rzp = new RazorpayClass(options);
-        rzp.on("payment.failed", function (response) {
-          console.error("Razorpay payment failed:", response.error);
-          setIsProcessing(false);
-          setIsBursting(false);
-          setErrors((prev) => ({
-            ...prev,
-            submit: `Payment failed: ${response.error?.description || "Transaction declined."}`,
-          }));
-        });
-        rzp.open();
-      } else {
-        await finalizeOrder();
-      }
-    } else {
-      // 3. Pay on Delivery (COD) Flow
-      setIsBursting(true);
-      setIsProcessing(true);
-      await finalizeOrder();
-    }
+    // Pay on Delivery (Cash / UPI) active flow
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.payment;
+      return next;
+    });
+    setIsBursting(true);
+    setIsProcessing(true);
+    await finalizeOrder();
   };
 
   if (items.length === 0 && deliveryPhase === "idle" && !isProcessing) {
@@ -968,27 +843,27 @@ export default function Checkout() {
             </div>
 
             <div className="checkout-option-list">
-              <label className="checkout-option">
+              <label className={`checkout-option ${deliveryMethod === "standard" ? "selected" : ""}`}>
                 <input
                   type="radio"
                   name="deliveryMethod"
                   checked={deliveryMethod === "standard"}
                   onChange={() => setDeliveryMethod("standard")}
                 />
-                <span>
+                <span className="checkout-delivery-option-row">
                   <strong>STANDARD DELIVERY</strong>
                   <small>Free</small>
                 </span>
               </label>
 
-              <label className="checkout-option">
+              <label className={`checkout-option ${deliveryMethod === "express" ? "selected" : ""}`}>
                 <input
                   type="radio"
                   name="deliveryMethod"
                   checked={deliveryMethod === "express"}
                   onChange={() => setDeliveryMethod("express")}
                 />
-                <span>
+                <span className="checkout-delivery-option-row">
                   <strong>EXPRESS DELIVERY</strong>
                   <small>₹99</small>
                 </span>
@@ -1002,100 +877,80 @@ export default function Checkout() {
             </div>
 
             <div className="checkout-option-list payment-options" role="radiogroup" aria-label="Payment Method Selection">
-              <label className={`checkout-option ${paymentMethod === "upi" ? "selected" : ""}`}>
+              {/* 1. UPI Option - Disabled & Coming Soon */}
+              <div className="checkout-option disabled" aria-disabled="true" title="UPI payments are coming soon.">
                 <input
                   type="radio"
                   name="paymentMethod"
                   value="upi"
-                  checked={paymentMethod === "upi"}
-                  onChange={() => {
-                    setPaymentMethod("upi");
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.upi;
-                      return next;
-                    });
-                  }}
-                  aria-label="UPI - Pay using UPI apps like Google Pay, PhonePe, Paytm, BHIM, etc."
+                  checked={false}
+                  disabled
+                  tabIndex={-1}
+                  aria-hidden="true"
                 />
-                <span className="checkout-option-content">
-                  <strong className="checkout-option-title">UPI</strong>
-                  <small className="checkout-option-desc">Pay using UPI apps like Google Pay, PhonePe, Paytm, BHIM, etc.</small>
-                </span>
-              </label>
+                <div className="checkout-option-content">
+                  <div className="checkout-option-header-row">
+                    <strong className="checkout-option-title">UPI</strong>
+                    <span className="payment-coming-soon-badge">COMING SOON</span>
+                  </div>
+                  <p className="checkout-option-desc">
+                    Pay using UPI apps like Google Pay, PhonePe, Paytm, BHIM, etc.
+                  </p>
+                </div>
+              </div>
 
-              {paymentMethod === "upi" && (
-                <UPIPaymentSelector
-                  totalAmount={total}
-                  selectedApp={selectedUpiApp}
-                  onSelectApp={(appId) => {
-                    setSelectedUpiApp(appId);
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.upi;
-                      return next;
-                    });
-                  }}
-                  vpaInput={upiVpa}
-                  onVpaChange={(vpa) => {
-                    setUpiVpa(vpa);
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.upi;
-                      return next;
-                    });
-                  }}
-                  error={errors.upi}
-                />
-              )}
-
-              <label className={`checkout-option ${paymentMethod === "card" ? "selected" : ""}`}>
+              {/* 2. Card / Netbanking Option - Disabled & Coming Soon */}
+              <div className="checkout-option disabled" aria-disabled="true" title="Card and Netbanking payments are coming soon.">
                 <input
                   type="radio"
                   name="paymentMethod"
                   value="card"
-                  checked={paymentMethod === "card"}
-                  onChange={() => setPaymentMethod("card")}
-                  aria-label="Debit card, credit card, or net banking - Pay securely using your card or net banking"
+                  checked={false}
+                  disabled
+                  tabIndex={-1}
+                  aria-hidden="true"
                 />
-                <span className="checkout-option-content">
-                  <strong className="checkout-option-title">DEBIT CARD / CREDIT CARD / NETBANKING</strong>
-                  <small className="checkout-option-desc">Pay securely using your card or net banking</small>
-                </span>
-              </label>
-
-              {paymentMethod === "card" && (
-                <div className="checkout-card-payment-info" role="region" aria-label="Card Payment Information">
-                  <div className="checkout-card-badges">
-                    <span className="checkout-card-badge">VISA</span>
-                    <span className="checkout-card-badge">MasterCard</span>
-                    <span className="checkout-card-badge">RuPay</span>
-                    <span className="checkout-card-badge">NetBanking</span>
+                <div className="checkout-option-content">
+                  <div className="checkout-option-header-row">
+                    <strong className="checkout-option-title">DEBIT CARD / CREDIT CARD / NETBANKING</strong>
+                    <span className="payment-coming-soon-badge">COMING SOON</span>
                   </div>
-                  <p className="checkout-card-note">
-                    🔒 Secured by 256-bit bank-grade encryption. You will be redirected to the secure bank gateway upon clicking Place Order.
+                  <p className="checkout-option-desc">
+                    Pay securely using your card or net banking
                   </p>
                 </div>
-              )}
+              </div>
 
+              {/* 3. Pay on Delivery (Cash / UPI) - Active & Selectable */}
               <label className={`checkout-option ${paymentMethod === "cod" ? "selected" : ""}`}>
                 <input
                   type="radio"
                   name="paymentMethod"
                   value="cod"
                   checked={paymentMethod === "cod"}
-                  onChange={() => setPaymentMethod("cod")}
-                  aria-label="Pay on Delivery - Pay when your order is delivered"
+                  onChange={() => {
+                    setPaymentMethod("cod");
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.payment;
+                      return next;
+                    });
+                  }}
+                  aria-label="Pay on Delivery (Cash / UPI) - Pay when your order is delivered. Cash or UPI accepted at delivery."
                 />
-                <span className="checkout-option-content">
-                  <strong className="checkout-option-title">PAY ON DELIVERY</strong>
-                  <small className="checkout-option-desc">Pay when your order is delivered</small>
-                </span>
+                <div className="checkout-option-content">
+                  <div className="checkout-option-header-row">
+                    <strong className="checkout-option-title">PAY ON DELIVERY (Cash / UPI)</strong>
+                  </div>
+                  <p className="checkout-option-desc">
+                    Pay when your order is delivered. Cash or UPI accepted at delivery.
+                  </p>
+                </div>
               </label>
 
               {paymentMethod === "cod" && (
                 <div className="checkout-cod-message">
-                  💵 Please keep exact cash or UPI QR payment ready at the time of delivery.
+                  💵 <strong>Cash or UPI accepted at delivery:</strong> When your order arrives, you can pay the delivery partner via Cash or by scanning the UPI QR code on delivery.
                 </div>
               )}
             </div>
@@ -1249,17 +1104,6 @@ export default function Checkout() {
           </div>
         </aside>
       </div>
-
-      {showUpiTestModal && (
-        <UPITestModeModal
-          orderId={pendingOrderId || "ORD-TEST"}
-          amount={total}
-          selectedApp={selectedUpiApp}
-          vpa={selectedUpiApp === "custom_vpa" ? upiVpa : undefined}
-          onSuccess={handleUpiTestSuccess}
-          onCancel={handleUpiTestCancel}
-        />
-      )}
 
       <Footer />
     </main>

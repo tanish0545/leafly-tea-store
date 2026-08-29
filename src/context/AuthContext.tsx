@@ -116,6 +116,14 @@ function mapFirebaseUserToAuthUser(
     fbUser.phoneNumber ||
     null;
 
+  const resolvedPhotoURL =
+    (rawDoc?.photoURL as string) ||
+    (rawDoc?.profileImageUrl as string) ||
+    (rawDoc?.profileImage as string) ||
+    fbUser.photoURL ||
+    fbUser.providerData?.find((p) => p.photoURL)?.photoURL ||
+    null;
+
   return {
     uid: fbUser.uid,
     email: fbUser.email,
@@ -129,9 +137,9 @@ function mapFirebaseUserToAuthUser(
     dateOfBirth: (rawDoc?.dateOfBirth as string) || (rawDoc?.dob as string) || null,
     gender: (rawDoc?.gender as string) || null,
     preferences: (rawDoc?.preferences as AuthUser["preferences"]) || null,
-    photoURL: (rawDoc?.photoURL as string) || fbUser.photoURL || null,
-    profileImage: (rawDoc?.profileImage as string) || fbUser.photoURL || null,
-    profileImageUrl: (rawDoc?.profileImageUrl as string) || fbUser.photoURL || null,
+    photoURL: resolvedPhotoURL,
+    profileImage: resolvedPhotoURL,
+    profileImageUrl: resolvedPhotoURL,
     authProvider: (rawDoc?.authProvider as string) || (fbUser.providerData[0]?.providerId === "google.com" ? "Google" : "Email/Password"),
     status: (rawDoc?.status as string) || "Active",
     isAdmin: isUserAdmin,
@@ -156,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName,
             fullName: displayName,
             name: displayName,
-            photoURL: currentFbUser.photoURL || null,
+            photoURL: currentFbUser.photoURL || currentFbUser.providerData?.find((p) => p.photoURL)?.photoURL || null,
             authProvider: "Google",
             status: "Active",
             updatedAt: new Date().toISOString(),
@@ -187,6 +195,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           (docSnap) => {
             if (docSnap.exists()) {
               const firestoreData = docSnap.data();
+              const activePhoto = currentFbUser.photoURL || currentFbUser.providerData?.find((p) => p.photoURL)?.photoURL;
+              if (activePhoto && !firestoreData.photoURL) {
+                setDoc(doc(db, "users", currentFbUser.uid), { photoURL: activePhoto }, { merge: true }).catch(() => {});
+              }
               setUser(mapFirebaseUserToAuthUser(currentFbUser, firestoreData));
             } else {
               // Create initial profile record only if not present
@@ -197,7 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 displayName: currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer",
                 fullName: currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer",
                 name: currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer",
-                photoURL: currentFbUser.photoURL || null,
+                photoURL: currentFbUser.photoURL || currentFbUser.providerData?.find((p) => p.photoURL)?.photoURL || null,
                 authProvider: providerId,
                 status: "Active",
                 createdAt: currentFbUser.metadata?.creationTime ? new Date(currentFbUser.metadata.creationTime).toISOString() : new Date().toISOString(),
