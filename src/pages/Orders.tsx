@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useOrderContext, type Order } from "../context/OrderContext";
-import { useCoupons } from "../context/CouponContext";
 import { useAuth } from "../context/AuthContext";
 import Footer from "../components/Footer";
 import "./Orders.css";
@@ -63,7 +62,6 @@ export default function Orders() {
   const navigate = useNavigate();
   const { loading: authLoading, isAuthenticated } = useAuth();
   const { orders, cancelOrder } = useOrderContext();
-  const { restoreCoupon } = useCoupons();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -90,16 +88,13 @@ export default function Orders() {
     }
 
     const confirmCancel = window.confirm(
-      `Are you sure you want to cancel Order #${order.id}? Any applied coupon will be restored to your account.`
+      `Are you sure you want to cancel Order #${order.id}?`
     );
     if (!confirmCancel) return;
 
     try {
       setCancellingOrderId(order.id);
       await cancelOrder(order.id, order.couponCode);
-      if (order.couponCode) {
-        await restoreCoupon(order.couponCode);
-      }
       setCancelFeedback(`Order #${order.id} has been cancelled successfully.`);
       setTimeout(() => setCancelFeedback(null), 5000);
     } catch (err: unknown) {

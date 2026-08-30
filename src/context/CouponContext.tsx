@@ -18,7 +18,6 @@ type CouponContextType = {
   coupons: UserCoupon[];
   isFirstOrder: boolean;
   addCoupon: (coupon: Omit<UserCoupon, "id" | "earnedAt">) => Promise<void>;
-  grantPostOrderReward: () => Promise<string | null>;
   markCouponUsed: (code: string) => Promise<void>;
   restoreCoupon: (code: string) => Promise<void>;
   validateUserCoupon: (code: string, subtotal: number) => CouponValidationResult;
@@ -102,10 +101,6 @@ export function CouponProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(`${COUPON_STORAGE_PREFIX}${currentUser.uid}`, JSON.stringify(next));
       return next;
     });
-  };
-
-  const grantPostOrderReward = async (): Promise<string | null> => {
-    return "HARVEST15";
   };
 
   const markCouponUsed = async (code: string) => {
@@ -210,7 +205,6 @@ export function CouponProvider({ children }: { children: ReactNode }) {
         coupons,
         isFirstOrder,
         addCoupon,
-        grantPostOrderReward,
         markCouponUsed,
         restoreCoupon,
         validateUserCoupon,

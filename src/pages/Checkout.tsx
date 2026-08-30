@@ -8,12 +8,9 @@ import {
   type ShippingAddress,
 } from "../context/OrderContext";
 import DeliveryAnimation from "../components/DeliveryAnimation";
-import CouponRewardAnimation from "../components/CouponRewardAnimation";
 import PhoneInput from "../components/PhoneInput";
-import { calculateDiscount, type AppliedCoupon } from "../utils/coupon";
-import { useCoupons } from "../context/CouponContext";
 import { useAuth, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
-import { validatePhoneNumber, isFirstOrderCouponCode } from "../lib/validation";
+import { validatePhoneNumber } from "../lib/validation";
 import { COUNTRIES_LIST, INDIAN_STATES_AND_CITIES } from "../data/indianLocations";
 import { auth, db } from "../lib/firebase";
 import { doc, setDoc, updateDoc, increment } from "firebase/firestore";
@@ -92,7 +89,6 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { items, subtotal, clearCart } = useCart();
   const { addOrder } = useOrderContext();
-  const { grantPostOrderReward, markCouponUsed, validateUserCoupon, isFirstOrder } = useCoupons();
   const { currentUser, loading: authLoading, isAuthenticated } = useAuth();
 
   useEffect(() => {
@@ -103,23 +99,6 @@ export default function Checkout() {
 
   const [email, setEmail] = useState(() => currentUser?.email || "");
   const [phone, setPhone] = useState(() => currentUser?.phone || currentUser?.phoneNumber || "");
-  const [couponInput, setCouponInput] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
-  const [couponFeedback, setCouponFeedback] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
-
-  // Auto-discard first-order coupon if the customer is no longer first-order eligible
-  useEffect(() => {
-    if (!isFirstOrder && appliedCoupon && isFirstOrderCouponCode(appliedCoupon.code)) {
-      setAppliedCoupon(null);
-      setCouponFeedback({
-        type: "error",
-        message: "This coupon is only valid on your first order.",
-      });
-    }
-  }, [isFirstOrder, appliedCoupon]);
 
   const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express">("standard");
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "cod">("cod");
@@ -130,8 +109,7 @@ export default function Checkout() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBursting, setIsBursting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [deliveryPhase, setDeliveryPhase] = useState<"idle" | "delivery" | "coupon">("idle");
-  const [rewardCouponCode, setRewardCouponCode] = useState<string>("HARVEST15");
+  const [deliveryPhase, setDeliveryPhase] = useState<"idle" | "delivery">("idle");
 
   const [shippingAddress, setShippingAddress] = useState<AddressForm>(() => {
     if (currentUser?.uid) {
@@ -191,8 +169,6 @@ export default function Checkout() {
       setPhone("");
       setDeliveryInstructions("");
       setShippingAddress({ ...defaultAddress });
-      setAppliedCoupon(null);
-      setCouponFeedback(null);
     }
   }, [currentUser?.uid, currentUser?.email, currentUser?.displayName, currentUser?.name, currentUser?.phone, currentUser?.phoneNumber]);
 
@@ -270,58 +246,10 @@ export default function Checkout() {
     return deliveryMethod === "express" ? 150 : 0;
   }, [deliveryMethod, items.length]);
 
-  const discountAmount = useMemo(() => {
-    if (!appliedCoupon) return 0;
-    return calculateDiscount(
-      subtotal,
-      appliedCoupon.discountType,
-      appliedCoupon.discountValue,
-      appliedCoupon.minOrderValue
-    );
-  }, [appliedCoupon, subtotal]);
-
   const total = useMemo(
-    () => Math.max(0, subtotal - discountAmount + deliveryFee),
-    [deliveryFee, discountAmount, subtotal]
+    () => Math.max(0, subtotal + deliveryFee),
+    [deliveryFee, subtotal]
   );
-
-  const handleApplyCoupon = (event?: React.FormEvent) => {
-    if (event) event.preventDefault();
-
-    const result = validateUserCoupon(couponInput, subtotal);
-
-    if (result.isValid) {
-      const discount = calculateDiscount(
-        subtotal,
-        result.discountType,
-        result.discountValue,
-        result.minOrderValue
-      );
-      setAppliedCoupon({
-        code: result.code,
-        discountType: result.discountType,
-        discountValue: result.discountValue,
-        discountAmount: discount,
-        minOrderValue: result.minOrderValue,
-      });
-      setCouponFeedback({
-        type: "success",
-        message: result.message,
-      });
-      setCouponInput("");
-    } else {
-      setCouponFeedback({
-        type: "error",
-        message: result.message,
-      });
-    }
-  };
-
-  const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponFeedback(null);
-    setCouponInput("");
-  };
 
   const updateAddressField = (field: keyof AddressForm, value: string) => {
     setShippingAddress((current) => ({
@@ -402,7 +330,6 @@ export default function Checkout() {
     orderId: string,
     orderTotal: number,
     orderSubtotal: number,
-    orderDiscount: number,
     orderDeliveryFee: number,
     razorpayPaymentId?: string
   ) => {
@@ -445,8 +372,7 @@ export default function Checkout() {
         category: item.product.category,
       })),
       subtotal: orderSubtotal,
-      discount: orderDiscount,
-      couponCode: appliedCoupon?.code,
+      discount: 0,
       deliveryFee: orderDeliveryFee,
       total: orderTotal,
       deliveryMethod:
@@ -515,16 +441,6 @@ export default function Checkout() {
 
     addOrder(order);
 
-    if (appliedCoupon?.code) {
-      markCouponUsed(appliedCoupon.code);
-    }
-    
-    // Grant post-order eligible coupon reward
-    const grantedCode = await grantPostOrderReward();
-    if (grantedCode) {
-      setRewardCouponCode(grantedCode);
-    }
-
     // Transition smoothly to delivery animation and clear purchased items from cart
     setTimeout(() => {
       clearCart();
@@ -545,19 +461,6 @@ export default function Checkout() {
       return;
     }
 
-    if (appliedCoupon && isFirstOrderCouponCode(appliedCoupon.code) && !isFirstOrder) {
-      setAppliedCoupon(null);
-      setCouponFeedback({
-        type: "error",
-        message: "This coupon is only valid on your first order.",
-      });
-      setErrors((prev) => ({
-        ...prev,
-        submit: "The applied coupon is only valid on your first order. Please remove it to continue.",
-      }));
-      return;
-    }
-
     const isValid = validateCheckout();
 
     if (!isValid) {
@@ -575,7 +478,6 @@ export default function Checkout() {
         orderId,
         total,
         subtotal,
-        discountAmount,
         deliveryFee,
         razorpayPaymentId
       );
@@ -607,21 +509,10 @@ export default function Checkout() {
     );
   }
 
-  // Sequential phase rendering: Delivery Boy -> Coupon Reward -> Order Success
+  // Delivery animation -> Order Success
   if (deliveryPhase === "delivery") {
     return (
       <DeliveryAnimation
-        onComplete={() => {
-          setDeliveryPhase("coupon");
-        }}
-      />
-    );
-  }
-
-  if (deliveryPhase === "coupon") {
-    return (
-      <CouponRewardAnimation
-        couponCode={rewardCouponCode}
         onComplete={() => {
           navigate("/order-success");
         }}
@@ -984,61 +875,6 @@ export default function Checkout() {
             ))}
           </div>
 
-          {/* COUPON SECTION */}
-          <div className="checkout-coupon-section">
-            <label htmlFor="checkout-coupon-input" className="checkout-coupon-title">
-              COUPON CODE
-            </label>
-
-            {appliedCoupon ? (
-              <div className="checkout-coupon-applied">
-                <div className="checkout-coupon-tag">
-                  <span className="checkout-coupon-code">{appliedCoupon.code}</span>
-                  <span className="checkout-coupon-badge">
-                    {appliedCoupon.discountType === "fixed"
-                      ? `-₹${appliedCoupon.discountValue} OFF`
-                      : `-${appliedCoupon.discountValue}% OFF`}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="checkout-coupon-remove"
-                  onClick={handleRemoveCoupon}
-                  aria-label="Remove applied coupon"
-                >
-                  REMOVE
-                </button>
-              </div>
-            ) : (
-              <form className="checkout-coupon-form" onSubmit={handleApplyCoupon}>
-                <input
-                  id="checkout-coupon-input"
-                  type="text"
-                  placeholder="Enter Coupon Code"
-                  value={couponInput}
-                  onChange={(event) => {
-                    setCouponInput(event.target.value);
-                    if (couponFeedback) setCouponFeedback(null);
-                  }}
-                  aria-label="Coupon code"
-                />
-                <button
-                  type="button"
-                  className="checkout-coupon-apply-btn"
-                  onClick={() => handleApplyCoupon()}
-                >
-                  APPLY
-                </button>
-              </form>
-            )}
-
-            {couponFeedback && (
-              <p className={`checkout-coupon-message ${couponFeedback.type}`} role="status">
-                {couponFeedback.message}
-              </p>
-            )}
-          </div>
-
           <div className="checkout-total-box">
             <div>
               <span>Subtotal</span>
@@ -1048,18 +884,6 @@ export default function Checkout() {
               <span>Delivery</span>
               <strong>{deliveryFee === 0 ? "Free" : currencyFormatter.format(deliveryFee)}</strong>
             </div>
-            {discountAmount > 0 && (
-              <div className="checkout-discount-row">
-                <span>
-                  Discount ({appliedCoupon?.code} ·{" "}
-                  {appliedCoupon?.discountType === "fixed"
-                    ? `₹${appliedCoupon?.discountValue} OFF`
-                    : `${appliedCoupon?.discountValue}%`}
-                  )
-                </span>
-                <strong className="checkout-discount-value">-{currencyFormatter.format(discountAmount)}</strong>
-              </div>
-            )}
             <div className="checkout-total-final">
               <span>TOTAL</span>
               <strong>{currencyFormatter.format(total)}</strong>
