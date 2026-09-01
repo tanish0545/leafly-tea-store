@@ -3,15 +3,17 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { type Product, type ProductVariantKey, getProductSlug } from "../data/products";
-import { teawareProducts } from "../data/teaware";
+import { useTeaware } from "../context/TeawareContext";
 import { useProducts } from "../context/ProductContext";
 import Footer from "../components/Footer";
+import { Helmet } from "react-helmet-async";
 import "./ProductDetail.css";
 
 export default function ProductDetail() {
   const { slug, id } = useParams<{ slug?: string; id?: string }>();
   const navigate = useNavigate();
   const { products } = useProducts();
+  const { teaware } = useTeaware();
 
   const { addToCart } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
@@ -23,7 +25,7 @@ export default function ProductDetail() {
 
   const identifier = (slug || id || "").toLowerCase().trim();
 
-  const teawareItem = teawareProducts.find(
+  const teawareItem = teaware.find(
     (t) => getProductSlug(t) === identifier || String(t.id) === identifier
   );
 
@@ -149,6 +151,10 @@ export default function ProductDetail() {
 
   return (
     <main className="product-detail-page">
+      <Helmet>
+        <title>{product.name} | Leafly Premium Tea</title>
+        <meta name="description" content={product.description || `Buy ${product.name}, a premium ${product.category} tea from ${product.origin}.`} />
+      </Helmet>
       {/* HEADER / BREADCRUMB */}
 
       <div className="pdp-header">

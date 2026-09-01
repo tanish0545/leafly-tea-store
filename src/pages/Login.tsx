@@ -1,7 +1,7 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import logo from "../assets/leafly-logo.webp";
-import teapotImg from "../assets/glass-infuser-teapot.webp";
+import teaPlantationImg from "../assets/tea-plantation-hero.jpg";
 import Footer from "../components/Footer";
 import { useAuth, formatAuthError, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
 import "./Login.css";
@@ -188,38 +188,37 @@ export default function Login() {
               LEFT COLUMN: HERO BRANDING & EDITORIAL COPY
               ===================================================== */}
           <section className="leafly-auth-hero-col">
-            <div className="leafly-auth-brand-badge">
-              <Link to="/" className="leafly-auth-brand-logo-link" aria-label="Return to Leafly Home">
-                <img src={logo} alt="Leafly" className="leafly-auth-hero-logo" />
-              </Link>
-              <div className="leafly-auth-brand-kicker">
-                <span className="leafly-auth-kicker-dot">✦</span>
-                <span>PREMIUM TEA · SACRED HARVESTS</span>
-              </div>
+            <div className="leafly-auth-hero-bg-wrap" aria-hidden="true">
+              <img
+                src={teaPlantationImg}
+                alt="Leafly Single-Estate Tea Plantation"
+                className="leafly-auth-hero-bg-img"
+                loading="eager"
+              />
+              <div className="leafly-auth-hero-overlay" />
             </div>
 
-            <h1 className="leafly-auth-hero-heading">
-              Pure whole leaves.
-              <br />
-              <span>Crafted for you.</span>
-            </h1>
-
-            <p className="leafly-auth-hero-desc">
-              Experience single-origin harvests from India&apos;s most celebrated high-elevation estates.
-              Pure, whole-leaf craftsmanship created for mindful daily rituals.
-            </p>
-
-            <div className="leafly-auth-teapot-showcase">
-              <div className="leafly-auth-teapot-halo" />
-              <img
-                src={teapotImg}
-                alt="Leafly Artisan Glass Teapot"
-                className="leafly-auth-teapot-img"
-              />
-              <div className="leafly-auth-teapot-caption">
-                <strong>100% Single-Estate Harvests</strong>
-                <span>Darjeeling · Assam · Nilgiri · Kangra</span>
+            <div className="leafly-auth-hero-content">
+              <div className="leafly-auth-brand-badge">
+                <Link to="/" className="leafly-auth-brand-logo-link" aria-label="Return to Leafly Home">
+                  <img src={logo} alt="Leafly" className="leafly-auth-hero-logo" />
+                </Link>
+                <div className="leafly-auth-brand-kicker">
+                  <span className="leafly-auth-kicker-dot">✦</span>
+                  <span>PREMIUM TEA · SACRED HARVESTS</span>
+                </div>
               </div>
+
+              <h1 className="leafly-auth-hero-heading">
+                Pure whole leaves.
+                <br />
+                <span>Crafted for you.</span>
+              </h1>
+
+              <p className="leafly-auth-hero-desc">
+                Experience single-origin harvests from India&apos;s most celebrated high-elevation estates.
+                Pure, whole-leaf craftsmanship created for mindful daily rituals.
+              </p>
             </div>
           </section>
 

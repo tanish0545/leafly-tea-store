@@ -1,53 +1,15 @@
 import { useState } from "react";
 import Footer from "../components/Footer";
 import { useCart } from "../context/CartContext";
-import image2 from "../assets/image2.webp";
-import image3 from "../assets/image3.webp";
-import image5 from "../assets/image5.webp";
 import PhoneInput from "../components/PhoneInput";
+import { Helmet } from "react-helmet-async";
 import "./GiftingPage.css";
 
-type GiftHamper = {
-  id: number;
-  name: string;
-  subtitle: string;
-  price: number;
-  image: string;
-  includes: string[];
-  badge?: string;
-};
-
-const giftHampers: GiftHamper[] = [
-  {
-    id: 101,
-    name: "The Royal Flush Heritage Box",
-    subtitle: "Darjeeling First Flush, Nilgiri White Needle & Brass Infuser",
-    price: 2499,
-    image: image3,
-    includes: ["1x Darjeeling First Flush (50g)", "1x Nilgiri White Needle (50g)", "Handmade Brass Scoop", "Artisan Keepsake Box"],
-    badge: "MOST POPULAR",
-  },
-  {
-    id: 102,
-    name: "The Morning Tranquility Ensemble",
-    subtitle: "Assam Orthodox Golden Tips, Pure Honey & Ceramic Cup",
-    price: 1899,
-    image: image2,
-    includes: ["1x Assam Orthodox Reserve (100g)", "Wild Forest Blossom Honey (150g)", "Hand-thrown Terracotta Tumbler", "Tasting Journal Booklet"],
-    badge: "BEST FOR MORNINGS",
-  },
-  {
-    id: 103,
-    name: "The Grand Estate Connoisseur Hamper",
-    subtitle: "Complete 4-Region Flight with Handcrafted Teaware",
-    price: 3899,
-    image: image5,
-    includes: ["4x Single-Estate Harvests (50g each)", "Double-Walled Glass Steeper", "Pure Sandalwood Scented Coaster", "Personalized Wax-Sealed Gift Card"],
-    badge: "LUXURY EDITION",
-  },
-];
+import { useGifting } from "../context/GiftingContext";
+import type { GiftHamper } from "../data/gifting";
 
 export default function GiftingPage() {
+  const { hampers } = useGifting();
   const { addToCart } = useCart();
   const [addedHamperId, setAddedHamperId] = useState<number | null>(null);
   const [enquirySent, setEnquirySent] = useState(false);
@@ -111,6 +73,10 @@ export default function GiftingPage() {
 
   return (
     <div className="leafly-app gifting-page-container">
+      <Helmet>
+        <title>Bespoke Corporate Tea Gifting | Leafly</title>
+        <meta name="description" content="Discover our handcrafted collection of single-origin Indian tea hampers, artisan teaware, and customizable botanical packaging for corporate and bespoke gifting." />
+      </Helmet>
 
       <main className="gifting-main">
         <section className="gifting-hero-section">
@@ -146,7 +112,7 @@ export default function GiftingPage() {
           </div>
 
           <div className="gifting-hampers-grid">
-            {giftHampers.map((hamper) => (
+            {hampers.map((hamper) => (
               <article key={hamper.id} className="gifting-hamper-card">
                 <div className="gifting-hamper-image-wrap">
                   <img src={hamper.image} alt={hamper.name} loading="lazy" />

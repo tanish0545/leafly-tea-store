@@ -1,10 +1,23 @@
+/* =========================================================
+   SCREEN 2: ORDER PLACED SUCCESSFULLY (FINAL ORDER SUCCESS)
+   Theme: Ivory / Cream Base · Warm Gold Gradient & Glow
+   Typography: Leafly Dark Green (#0b2b1e) · Warm Gold Accents (#b98428 / #c9a24b)
+   ========================================================= */
+
 .order-success-page {
+  position: relative;
   width: 100%;
   min-height: 100vh;
-  padding: 92px 0 60px;
-  background: #f7f3ec;
+  padding: 100px 0 60px;
+  background-color: #f7f3ec;
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(201, 162, 75, 0.14) 0%, transparent 65%),
+    radial-gradient(circle at 85% 85%, rgba(201, 162, 75, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 15% 90%, rgba(11, 43, 30, 0.04) 0%, transparent 50%),
+    linear-gradient(180deg, #faf7f0 0%, #f7f3ec 100%);
   color: #0b2b1e;
-  font-family: Inter, Arial, sans-serif;
+  font-family: var(--font-body, Inter, Arial, sans-serif);
+  overflow-x: hidden;
 }
 
 .order-success-page *,
@@ -13,14 +26,30 @@
   box-sizing: border-box;
 }
 
+.order-success-ambient-glow {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(750px, 90vw);
+  height: 350px;
+  background: radial-gradient(ellipse at center, rgba(201, 162, 75, 0.12) 0%, transparent 70%);
+  filter: blur(40px);
+  pointer-events: none;
+}
+
 .order-success-card {
+  position: relative;
+  z-index: 2;
   width: min(880px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 40px 36px 38px;
+  padding: 42px 38px 40px;
   background: #ffffff;
   border: 1px solid rgba(11, 43, 30, 0.09);
-  border-radius: 20px;
-  box-shadow: 0 16px 45px rgba(11, 43, 30, 0.06);
+  border-radius: 22px;
+  box-shadow: 
+    0 20px 50px rgba(11, 43, 30, 0.06),
+    0 0 35px rgba(201, 162, 75, 0.05);
 }
 
 .order-success-header-wrap {
@@ -32,8 +61,8 @@
 }
 
 .order-success-badge {
-  width: 56px;
-  height: 56px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
   background: linear-gradient(135deg, #134e38, #0b2b1e);
   color: #d8b15d;
@@ -43,7 +72,7 @@
   align-items: center;
   justify-content: center;
   margin-bottom: 16px;
-  box-shadow: 0 8px 24px rgba(11, 43, 30, 0.2), inset 0 0 0 1px rgba(201, 162, 75, 0.4);
+  box-shadow: 0 8px 24px rgba(11, 43, 30, 0.18), inset 0 0 0 1px rgba(201, 162, 75, 0.4);
 }
 
 .order-success-eyebrow {
@@ -52,15 +81,16 @@
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 2.8px;
+  text-transform: uppercase;
 }
 
 .order-success-card h1 {
   margin: 0;
   color: #0b2b1e;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(30px, 4.5vw, 52px);
+  font-family: var(--font-display, Georgia, "Times New Roman", serif);
+  font-size: clamp(30px, 4.5vw, 50px);
   font-weight: 400;
-  line-height: 1.05;
+  line-height: 1.08;
   letter-spacing: -1.2px;
 }
 
@@ -83,7 +113,7 @@
   padding: 16px 18px;
   border: 1px solid rgba(11, 43, 30, 0.08);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.28);
+  background: #faf7f0;
 }
 
 .order-success-block span {
@@ -119,6 +149,7 @@
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 1.8px;
+  text-transform: uppercase;
 }
 
 .order-success-details ul {
@@ -143,41 +174,60 @@
 
 .order-success-primary,
 .order-success-secondary {
-  min-height: 46px;
-  padding: 0 20px;
-  border-radius: 7px;
-  font-size: 11px;
+  min-height: 48px;
+  padding: 0 24px;
+  border-radius: 10px;
+  font-size: 11.5px;
   font-weight: 800;
-  letter-spacing: 1.5px;
+  letter-spacing: 1.6px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 200ms ease;
+  outline: none;
 }
 
 .order-success-primary {
   border: none;
   background: #0b2b1e;
   color: #f7f3ec;
+  box-shadow: 0 4px 14px rgba(11, 43, 30, 0.15);
+}
+
+.order-success-primary:hover {
+  background: #164632;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(11, 43, 30, 0.25);
 }
 
 .order-success-secondary {
-  border: 1px solid rgba(11, 43, 30, 0.12);
+  border: 1px solid rgba(11, 43, 30, 0.16);
   background: transparent;
   color: #0b2b1e;
 }
 
+.order-success-secondary:hover {
+  background: rgba(11, 43, 30, 0.05);
+  border-color: rgba(11, 43, 30, 0.3);
+  transform: translateY(-1px);
+}
+
 .order-success-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
 }
 
 @media (max-width: 650px) {
   .order-success-page {
-    padding-top: 80px;
+    padding-top: 85px;
   }
 
   .order-success-card {
-    padding: 22px 18px 20px;
-    border-radius: 14px;
+    padding: 24px 18px 22px;
+    border-radius: 16px;
   }
 
   .order-success-grid,
@@ -187,6 +237,7 @@
 
   .order-success-actions {
     flex-direction: column;
+    width: 100%;
   }
 
   .order-success-primary,
@@ -196,7 +247,7 @@
 }
 
 /* =========================================================
-   RATE YOUR EXPERIENCE MODAL
+   RATE YOUR EXPERIENCE MODAL (LIGHT THEME)
    ========================================================= */
 
 .order-rating-overlay {
@@ -278,7 +329,7 @@
 
 .order-rating-modal h3 {
   margin: 0 0 8px;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-display, Georgia, "Times New Roman", serif);
   font-size: 24px;
   font-weight: 400;
   color: #0b2b1e;
@@ -402,7 +453,7 @@
 
 .order-rating-success h3 {
   margin: 0 0 6px;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-display, Georgia, "Times New Roman", serif);
   font-size: 22px;
   color: #0b2b1e;
 }

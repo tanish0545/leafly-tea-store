@@ -371,7 +371,18 @@ export default function Profile() {
     const cleanPhone = details.phone ? details.phone.trim() : "";
     let normalizedPhone: string | null = null;
     if (cleanPhone) {
-      const phoneRes = validatePhoneNumber(cleanPhone, cleanPhone.startsWith("+1") ? "US" : cleanPhone.startsWith("+44") ? "GB" : "India");
+      let countryToPass = "India";
+      if (cleanPhone.startsWith("+")) {
+        const spaceIdx = cleanPhone.indexOf(" ");
+        if (spaceIdx > 0) {
+          countryToPass = cleanPhone.substring(0, spaceIdx);
+        } else {
+          // Fallback if no space
+          countryToPass = cleanPhone.substring(0, 3); 
+        }
+      }
+      
+      const phoneRes = validatePhoneNumber(cleanPhone, countryToPass);
       if (!phoneRes.isValid) {
         setDetailsError(phoneRes.error || "Please enter a valid mobile number.");
         return;

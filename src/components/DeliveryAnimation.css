@@ -1,18 +1,28 @@
 /* =========================================================
-   LEAFLY — PREMIUM DELIVERY ANIMATION (DELIVERY BOY)
-   Performance-optimized: GPU transforms & opacities only
+   LEAFLY — SCREEN 1: DISPATCHING / ORDER PROCESSING ANIMATION
+   Theme: Deep Forest Green · Subtle Warm Gold Gradient & Glow
+   Character: Clearly Visible Medium/Large Centerpiece · 60fps GPU Flow
    ========================================================= */
 
 .leafly-delivery-stage {
   position: fixed;
   inset: 0;
   z-index: 9999;
+  width: 100vw;
+  height: 100vh;
+  max-width: 100%;
+  max-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0b2b1e;
+  background-color: #061d14;
+  background-image: 
+    radial-gradient(circle at 50% 25%, rgba(201, 162, 75, 0.16) 0%, transparent 60%),
+    radial-gradient(circle at 82% 70%, rgba(11, 43, 30, 0.75) 0%, transparent 55%),
+    radial-gradient(circle at 18% 80%, rgba(201, 162, 75, 0.1) 0%, transparent 50%),
+    linear-gradient(180deg, #04140e 0%, #061d14 45%, #03120c 100%);
   overflow: hidden;
-  animation: leafly-stage-fade-in 0.4s ease forwards;
+  animation: leafly-stage-fade-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes leafly-stage-fade-in {
@@ -24,47 +34,84 @@
   }
 }
 
+/* =========================================================
+   1. AMBIENT BACKGROUND GLOWS & VIGNETTE (NO PHOTO / NO TEAPOT)
+   ========================================================= */
+
+.leafly-delivery-ambient-wrap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.leafly-delivery-ambient-glow-center {
+  position: absolute;
+  top: 35%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(850px, 95vw);
+  height: min(600px, 80vh);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(201, 162, 75, 0.18) 0%, rgba(11, 43, 30, 0.25) 45%, transparent 70%);
+  filter: blur(55px);
+}
+
+.leafly-delivery-ambient-glow-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  height: 380px;
+  background: radial-gradient(ellipse at bottom center, rgba(16, 68, 48, 0.6) 0%, transparent 70%);
+  filter: blur(45px);
+}
+
+.leafly-delivery-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 50%,
+    transparent 45%,
+    rgba(3, 15, 10, 0.6) 80%,
+    rgba(2, 10, 7, 0.88) 100%
+  );
+}
+
+/* =========================================================
+   2. MAIN SCENE LAYOUT
+   ========================================================= */
+
 .leafly-delivery-scene {
   position: relative;
+  z-index: 5;
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
-  padding: clamp(24px, 4vh, 48px) 20px clamp(20px, 3vh, 40px);
+  padding: clamp(28px, 5vh, 56px) 24px clamp(20px, 3.5vh, 44px);
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 30%, rgba(201, 162, 75, 0.15) 0%, transparent 65%),
-    linear-gradient(180deg, #0b2b1e 0%, #061d14 100%);
-}
-
-.leafly-delivery-glow {
-  position: absolute;
-  width: min(600px, 90vw);
-  height: min(600px, 90vw);
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(201, 162, 75, 0.12) 0%, transparent 70%);
-  top: 25%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  filter: blur(40px);
 }
 
 /* =========================================================
-   ZONE 1: TOP SUCCESS HUD (ISOLATED IN TOP AREA)
+   3. TOP HUD / STATUS TYPOGRAPHY
    ========================================================= */
 
 .leafly-delivery-hud-zone {
   position: relative;
   z-index: 10;
   width: 100%;
-  max-width: 720px;
+  max-width: 820px;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding-top: clamp(12px, 2vh, 32px);
+  padding-top: clamp(8px, 2vh, 24px);
   min-height: 140px;
 }
 
@@ -80,89 +127,106 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .leafly-delivery-text-block.fade-in {
-  animation: leafly-text-fade 0.5s ease forwards;
+  animation: leafly-text-fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .leafly-delivery-text-block.pop-in {
-  animation: leafly-text-pop 0.55s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  animation: leafly-text-pop-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
-@keyframes leafly-text-fade {
+@keyframes leafly-text-fade-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translate3d(0, 14px, 0);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
-@keyframes leafly-text-pop {
+@keyframes leafly-text-pop-in {
   from {
     opacity: 0;
-    transform: scale(0.92) translateY(12px);
+    transform: scale(0.92) translate3d(0, 14px, 0);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: scale(1) translate3d(0, 0, 0);
   }
+}
+
+.leafly-delivery-eyebrow-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.leafly-eyebrow-leaf {
+  color: #dfbc6d;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.leafly-delivery-eyebrow {
+  margin: 0;
+  color: #dfbc6d;
+  font-family: var(--font-body, Inter, Arial, sans-serif);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 3.5px;
+  text-transform: uppercase;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+
+.leafly-delivery-heading {
+  margin: 2px 0 0;
+  color: #f7f3ec;
+  font-family: var(--font-display, Georgia, "Times New Roman", serif);
+  font-size: clamp(28px, 4.2vw, 50px);
+  font-weight: 400;
+  letter-spacing: -0.8px;
+  line-height: 1.15;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.85);
+}
+
+.leafly-delivery-subtext {
+  color: rgba(247, 243, 236, 0.85);
+  font-family: var(--font-body, Inter, Arial, sans-serif);
+  font-size: clamp(13px, 1.8vw, 15px);
+  letter-spacing: 0.6px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.75);
 }
 
 .leafly-success-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: #c9a24b;
-  color: #0b2b1e;
-  font-size: 22px;
-  font-weight: 800;
-  margin-bottom: 2px;
-  box-shadow: 0 0 25px rgba(201, 162, 75, 0.5);
-}
-
-.leafly-delivery-eyebrow {
-  margin: 0;
-  color: #c9a24b;
-  font-family: Inter, Arial, sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-}
-
-.leafly-delivery-heading {
-  margin: 4px 0 2px;
-  color: #f7f3ec;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(26px, 3.8vw, 46px);
-  font-weight: 400;
-  letter-spacing: -1.2px;
-  line-height: 1.1;
-}
-
-.leafly-delivery-subtext {
-  color: rgba(247, 243, 236, 0.72);
-  font-family: Inter, Arial, sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #f1d27c 0%, #c9a24b 60%, #9a7322 100%);
+  color: #061d14;
+  font-size: 24px;
+  font-weight: 900;
+  margin-bottom: 6px;
+  box-shadow: 0 0 35px rgba(201, 162, 75, 0.6), 0 4px 14px rgba(0, 0, 0, 0.5);
 }
 
 /* =========================================================
-   ZONE 2: BOTTOM DELIVERY BOY TRACK (ISOLATED IN BOTTOM AREA)
+   4. BOTTOM DELIVERY TRACK & MEDIUM/LARGE CHARACTER
+   GPU-Accelerated 60fps keyframe journey
    ========================================================= */
 
 .leafly-delivery-track-zone {
   position: relative;
+  z-index: 10;
   width: 100%;
-  height: clamp(200px, 36vh, 310px);
+  height: clamp(270px, 42vh, 390px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -172,155 +236,256 @@
 
 .leafly-delivery-ground {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 4%;
+  right: 4%;
   bottom: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(201, 162, 75, 0.4) 50%, transparent 100%);
-  box-shadow: 0 0 15px rgba(201, 162, 75, 0.3);
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(201, 162, 75, 0.3) 20%,
+    rgba(201, 162, 75, 0.85) 50%,
+    rgba(201, 162, 75, 0.3) 80%,
+    transparent 100%
+  );
+  box-shadow: 0 0 24px rgba(201, 162, 75, 0.5);
+  pointer-events: none;
 }
 
-.leafly-courier-wrapper {
+.leafly-delivery-courier-stream {
   position: absolute;
   bottom: 0;
+  left: 50%;
+  width: 1px;
+  height: 1px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   pointer-events: none;
+}
+
+/* Smooth GPU Glide Movement across screen */
+.leafly-courier-glide {
+  position: absolute;
+  bottom: 0;
   will-change: transform, opacity;
-  transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
+  animation: leafly-courier-journey 3.8s cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
-/* Step positions */
-.leafly-courier-wrapper.entering {
-  transform: translate3d(-45vw, 0, 0);
-  opacity: 0;
-  animation: leafly-enter-flight 1s cubic-bezier(0.25, 1, 0.5, 1) forwards;
-}
-
-.leafly-courier-wrapper.arriving {
-  transform: translate3d(5vw, 0, 0);
-  opacity: 1;
-}
-
-.leafly-courier-wrapper.confirmed {
-  transform: translate3d(0, 0, 0);
-  opacity: 1;
-}
-
-.leafly-courier-wrapper.exiting {
-  transform: translate3d(50vw, 0, 0);
-  opacity: 0;
-  transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease;
-}
-
-@keyframes leafly-enter-flight {
+@keyframes leafly-courier-journey {
   0% {
-    transform: translate3d(-50vw, 0, 0);
+    transform: translate3d(-45vw, 0, 0) scale(0.96);
     opacity: 0;
   }
-  30% {
+  14% {
+    transform: translate3d(-18vw, 0, 0) scale(1);
     opacity: 1;
   }
-  100% {
-    transform: translate3d(-10vw, 0, 0);
+  48% {
+    transform: translate3d(0, 0, 0) scale(1.02);
     opacity: 1;
+  }
+  64% {
+    transform: translate3d(4vw, -4px, 0) scale(1.03);
+    opacity: 1;
+  }
+  82% {
+    transform: translate3d(18vw, 0, 0) scale(1);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate3d(45vw, 0, 0) scale(0.96);
+    opacity: 0;
   }
 }
 
-.leafly-courier-figure {
+/* Lively organic walking stride bob */
+.leafly-courier-bob {
   position: relative;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  animation: leafly-courier-alive 2.2s ease-in-out infinite alternate;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  will-change: transform;
+  animation: leafly-courier-stride 0.9s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
 }
 
-@keyframes leafly-courier-alive {
+@keyframes leafly-courier-stride {
   0% {
-    transform: translate3d(0, 0, 0) rotate(-0.5deg);
+    transform: translate3d(0, 0, 0) rotate(-0.6deg);
   }
   50% {
-    transform: translate3d(0, -8px, 0) rotate(1deg);
+    transform: translate3d(0, -10px, 0) rotate(0.8deg);
   }
   100% {
-    transform: translate3d(0, -2px, 0) rotate(-0.5deg);
+    transform: translate3d(0, -3px, 0) rotate(-0.4deg);
   }
 }
 
+/* Courier Character Image sizing (MEDIUM/LARGE CENTERPIECE):
+   Desktop: 270–360px tall
+   Tablet: 210–270px tall
+   Mobile: 160–210px tall */
 .leafly-courier-img {
-  width: min(38vw, 260px);
-  min-width: 160px;
-  max-width: 260px;
-  height: auto;
+  height: clamp(270px, 36vh, 360px);
+  width: auto;
+  max-width: none;
   display: block;
-  filter: drop-shadow(0 15px 30px rgba(0, 0, 0, 0.5));
+  object-fit: contain;
+  filter: drop-shadow(0 20px 35px rgba(0, 0, 0, 0.75));
 }
 
+/* Floating tea parcel golden aura */
 .leafly-courier-package-glow {
   position: absolute;
-  width: 80px;
-  height: 80px;
-  background: radial-gradient(circle, rgba(201, 162, 75, 0.4) 0%, transparent 70%);
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(circle, rgba(201, 162, 75, 0.5) 0%, transparent 70%);
   border-radius: 50%;
-  bottom: 20px;
-  right: 20px;
+  bottom: 25%;
+  right: 15%;
   pointer-events: none;
-  animation: leafly-package-pulse 1.8s ease-in-out infinite alternate;
+  animation: leafly-package-pulse 1.6s ease-in-out infinite alternate;
 }
 
 @keyframes leafly-package-pulse {
   0% {
     transform: scale(0.85);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0.9;
+  }
+}
+
+/* Contact shadow on ground */
+.leafly-courier-shadow {
+  position: absolute;
+  bottom: -4px;
+  width: 150px;
+  height: 16px;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.65) 0%, transparent 75%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: leafly-shadow-stride 0.9s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+}
+
+@keyframes leafly-shadow-stride {
+  0% {
+    transform: scaleX(1);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scaleX(0.8);
     opacity: 0.4;
   }
   100% {
-    transform: scale(1.15);
-    opacity: 0.85;
+    transform: scaleX(0.95);
+    opacity: 0.6;
   }
 }
 
 /* =========================================================
-   RESPONSIVE BREAKPOINTS
+   5. RESPONSIVE BREAKPOINTS: TABLET & MOBILE
    ========================================================= */
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
+  .leafly-delivery-scene {
+    padding: 32px 20px 24px;
+  }
+
+  .leafly-courier-img {
+    height: clamp(210px, 28vh, 270px);
+  }
+
+  .leafly-delivery-track-zone {
+    height: clamp(220px, 32vh, 290px);
+  }
+}
+
+@media (max-width: 600px) {
   .leafly-delivery-scene {
     padding: 24px 16px 20px;
   }
 
   .leafly-delivery-hud-zone {
     min-height: 120px;
-    padding-top: 8px;
+    padding-top: 4px;
   }
 
-  .leafly-delivery-track-zone {
-    height: clamp(170px, 32vh, 230px);
+  .leafly-delivery-heading {
+    font-size: clamp(24px, 6.5vw, 32px);
+  }
+
+  .leafly-delivery-subtext {
+    font-size: 13px;
   }
 
   .leafly-courier-img {
-    width: min(55vw, 210px);
-    min-width: 150px;
-    max-width: 210px;
+    height: clamp(160px, 23vh, 210px);
+  }
+
+  .leafly-delivery-track-zone {
+    height: clamp(170px, 25vh, 230px);
+  }
+
+  .leafly-courier-package-glow {
+    width: 75px;
+    height: 75px;
+  }
+
+  .leafly-courier-shadow {
+    width: 105px;
+    height: 12px;
+  }
+
+  @keyframes leafly-courier-journey {
+    0% {
+      transform: translate3d(-52vw, 0, 0) scale(0.94);
+      opacity: 0;
+    }
+    14% {
+      transform: translate3d(-24vw, 0, 0) scale(1);
+      opacity: 1;
+    }
+    48% {
+      transform: translate3d(0, 0, 0) scale(1.02);
+      opacity: 1;
+    }
+    64% {
+      transform: translate3d(3vw, -3px, 0) scale(1.03);
+      opacity: 1;
+    }
+    82% {
+      transform: translate3d(24vw, 0, 0) scale(1);
+      opacity: 0.95;
+    }
+    100% {
+      transform: translate3d(52vw, 0, 0) scale(0.94);
+      opacity: 0;
+    }
   }
 }
 
 /* =========================================================
-   ACCESSIBILITY: PREFERS-REDUCED-MOTION
+   6. ACCESSIBILITY: PREFERS-REDUCED-MOTION
    ========================================================= */
 
 @media (prefers-reduced-motion: reduce) {
   .leafly-delivery-stage,
-  .leafly-courier-wrapper,
-  .leafly-courier-figure,
+  .leafly-courier-glide,
+  .leafly-courier-bob,
   .leafly-courier-package-glow,
+  .leafly-courier-shadow,
   .leafly-delivery-text-block {
     animation: none !important;
     transition: none !important;
   }
 
-  .leafly-courier-wrapper {
+  .leafly-courier-glide {
     transform: translate3d(0, 0, 0) !important;
     opacity: 1 !important;
   }
 }
+

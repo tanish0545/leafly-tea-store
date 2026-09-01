@@ -11,16 +11,90 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 0,
 });
 
-function formatOrderDate(dateString: string): string {
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+function parseOrderDate(createdAt: unknown): Date | null {
+  if (!createdAt) return null;
+
+  if (createdAt instanceof Date) {
+    return isNaN(createdAt.getTime()) ? null : createdAt;
+  }
+
+  if (
+    typeof createdAt === "object" &&
+    createdAt !== null &&
+    "toDate" in createdAt &&
+    typeof (createdAt as { toDate: () => unknown }).toDate === "function"
+  ) {
+    try {
+      const d = (createdAt as { toDate: () => Date }).toDate();
+      if (d instanceof Date && !isNaN(d.getTime())) return d;
+    } catch {
+      // Fallback
+    }
+  }
+
+  if (
+    typeof createdAt === "object" &&
+    createdAt !== null &&
+    ("seconds" in createdAt || "_seconds" in createdAt)
+  ) {
+    const secs = Number(
+      (createdAt as { seconds?: number; _seconds?: number }).seconds ??
+      (createdAt as { _seconds?: number })._seconds
+    );
+    if (!isNaN(secs) && secs > 0) {
+      const d = new Date(secs * 1000);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  if (typeof createdAt === "number") {
+    const ts = createdAt < 100000000000 ? createdAt * 1000 : createdAt;
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  if (typeof createdAt === "string") {
+    const trimmed = createdAt.trim();
+    if (!trimmed) return null;
+
+    if (/^\d+$/.test(trimmed)) {
+      const num = parseInt(trimmed, 10);
+      const ts = num < 100000000000 ? num * 1000 : num;
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  return null;
+}
+
+function formatOrderDate(dateInput: unknown): string {
   try {
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return "Recently";
-    return d.toLocaleDateString("en-IN", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
+    const d = parseOrderDate(dateInput);
+    if (!d) return "Date unavailable";
+
+    const day = d.getDate().toString().padStart(2, "0");
+    const month = MONTH_NAMES[d.getMonth()];
+    const year = d.getFullYear();
+
+    let hours = d.getHours();
+    const minutes = d.getMinutes().toString().padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const formattedHours = hours.toString().padStart(2, "0");
+
+    return `${day} ${month} ${year}, ${formattedHours}:${minutes} ${ampm}`;
   } catch {
-    return "Recently";
+    return "Date unavailable";
   }
 }
 
@@ -51,7 +125,8 @@ function getOrderCancellationState(order: Order): {
     currentStatus.includes("cancel") ||
     currentStatus.includes("deliv");
 
-  const createdTime = new Date(order.createdAt).getTime();
+  const parsedDate = parseOrderDate(order.createdAt);
+  const createdTime = parsedDate ? parsedDate.getTime() : NaN;
   const diff = Date.now() - createdTime;
   const isWithin2Hours = !isNaN(createdTime) && diff <= TWO_HOURS_MS;
 
@@ -73,9 +148,11 @@ export default function Orders() {
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [cancelFeedback, setCancelFeedback] = useState<string | null>(null);
 
-  const sortedOrders = [...orders].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const sortedOrders = [...orders].sort((a, b) => {
+    const timeA = parseOrderDate(a.createdAt)?.getTime() || 0;
+    const timeB = parseOrderDate(b.createdAt)?.getTime() || 0;
+    return timeB - timeA;
+  });
 
 
   const handleCancel = async (order: Order) => {
@@ -277,19 +354,9 @@ export default function Orders() {
                         {cancellingOrderId === order.id ? "Cancelling..." : "✖ Cancel Order"}
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        disabled={true}
-                        className="orders-action-btn orders-cancel-btn orders-cancel-btn-disabled"
-                        title="Your tea is being packed now, so you can no longer cancel this order. The cancellation window was 2 hours."
-                        onClick={() =>
-                          alert(
-                            "Your tea is being packed now, so you can no longer cancel this order. The cancellation window was 2 hours."
-                          )
-                        }
-                      >
-                        ✖ Cancel Window Expired
-                      </button>
+                      <span className="orders-action-btn orders-cancel-btn-disabled" style={{ border: "none", background: "none", color: "rgba(11, 43, 30, 0.5)", cursor: "default" }}>
+                        Cancellation window expired
+                      </span>
                     )
                   )}
                 </div>

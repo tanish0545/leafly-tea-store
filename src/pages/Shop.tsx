@@ -14,6 +14,7 @@ import {
 } from "../data/products";
 import { useProducts } from "../context/ProductContext";
 import Footer from "../components/Footer";
+import { Helmet } from "react-helmet-async";
 
 import "./Shop.css";
 const categories = [
@@ -260,6 +261,10 @@ export default function Shop() {
 
   return (
     <main className="leafly-shop-page">
+      <Helmet>
+        <title>Shop Premium Tea Collections | Leafly</title>
+        <meta name="description" content="Browse our complete collection of premium teas, including Green, White, Black, and Oolong. Filter by origin, price, and caffeine level." />
+      </Helmet>
 
       {/* =====================================================
           HERO

@@ -37,6 +37,7 @@ export default function OrderSuccess() {
   if (!order) {
     return (
       <main className="order-success-page order-success-empty">
+        <div className="order-success-ambient-glow" aria-hidden="true" />
         <div className="order-success-card">
           <p className="order-success-eyebrow">ORDER STATUS</p>
           <h1>ORDER CONFIRMED</h1>
@@ -52,6 +53,7 @@ export default function OrderSuccess() {
 
   return (
     <main className="order-success-page">
+      <div className="order-success-ambient-glow" aria-hidden="true" />
       <div className="order-success-card">
         <div className="order-success-header-wrap">
           <div className="order-success-badge" aria-hidden="true">✓</div>
@@ -63,7 +65,7 @@ export default function OrderSuccess() {
         <div className="order-success-grid">
           <div className="order-success-block">
             <span>Order ID</span>
-            <strong style={{ color: "#c9a24b" }}>{order.id}</strong>
+            <strong style={{ color: "#b98428" }}>{order.id}</strong>
           </div>
           <div className="order-success-block">
             <span>Order Status</span>
