@@ -18,7 +18,7 @@ export type ProductVariant = {
 };
 
 export type Product = {
-  id: number;
+  id: number | string;
   name: string;
   slug?: string;
   category: TeaCategory;
@@ -45,7 +45,14 @@ export type Product = {
   description?: string;
 };
 
-export function getProductSlug(product: { id?: number; name: string; slug?: string }): string {
+export function isProductInStock(product?: Product | null): boolean {
+  if (!product) return false;
+  if (product.inStock === false) return false;
+  if (typeof product.stock === "number" && product.stock <= 0) return false;
+  return true;
+}
+
+export function getProductSlug(product: { id?: number | string; name: string; slug?: string }): string {
   if (product.slug) return product.slug;
   return product.name
     .toLowerCase()

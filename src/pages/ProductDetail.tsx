@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
-import { type Product, type ProductVariantKey, getProductSlug } from "../data/products";
+import { type Product, type ProductVariantKey, getProductSlug, isProductInStock } from "../data/products";
 import { useTeaware } from "../context/TeawareContext";
 import { useProducts } from "../context/ProductContext";
 import Footer from "../components/Footer";
@@ -56,6 +56,8 @@ export default function ProductDetail() {
           rating: teawareItem.rating,
           reviewCount: teawareItem.reviewCount,
           description: teawareItem.description,
+          stock: 10,
+          inStock: true,
         }
       : undefined);
 
@@ -85,6 +87,8 @@ export default function ProductDetail() {
 
   /* --- variant pricing & details ---------------------------- */
 
+  const inStock = isProductInStock(product);
+
   const currentVariantData = product.variants
     ? product.variants[selectedVariant]
     : {
@@ -106,7 +110,7 @@ export default function ProductDetail() {
   const wishlisted = isInWishlist(product.id);
 
   const handleAddToCart = () => {
-    if (addingToCart) return;
+    if (addingToCart || !inStock) return;
     setAddingToCart(true);
 
     addToCart(
@@ -123,6 +127,7 @@ export default function ProductDetail() {
   };
 
   const handleBuyNow = () => {
+    if (!inStock) return;
     addToCart(
       product,
       quantity,
@@ -192,11 +197,17 @@ export default function ProductDetail() {
             fetchPriority="high"
             decoding="async"
           />
-          <span
-            className={`pdp-badge ${isTeaware ? "coming-soon" : product.badge.toLowerCase()}`}
-          >
-            {isTeaware ? "Coming Soon" : product.badge}
-          </span>
+          {!inStock ? (
+            <span className="pdp-badge out-of-stock" style={{ background: "#c53030", color: "#ffffff" }}>
+              Out of Stock
+            </span>
+          ) : (
+            <span
+              className={`pdp-badge ${isTeaware ? "coming-soon" : product.badge ? product.badge.toLowerCase() : ""}`}
+            >
+              {isTeaware ? "Coming Soon" : product.badge}
+            </span>
+          )}
         </div>
 
         {/* PRODUCT INFO */}
@@ -235,10 +246,17 @@ export default function ProductDetail() {
                 : `A carefully selected ${product.category.toLowerCase()} tea from ${product.origin}, chosen for character, freshness and a memorable tea-drinking ritual.`)}
           </p>
 
-          <div className="pdp-stock-status">
-            <span className="pdp-stock-dot">●</span>
-            <span>In Stock · Handcrafted & Freshly Packed</span>
-          </div>
+          {inStock ? (
+            <div className="pdp-stock-status">
+              <span className="pdp-stock-dot">●</span>
+              <span>In Stock · Handcrafted & Freshly Packed</span>
+            </div>
+          ) : (
+            <div className="pdp-stock-status out" style={{ color: "#c53030" }}>
+              <span className="pdp-stock-dot" style={{ color: "#e53e3e" }}>●</span>
+              <span>Currently Out of Stock · Fresh Harvest Arriving Soon</span>
+            </div>
+          )}
 
           <div className="pdp-divider" aria-hidden="true">
             <span />
@@ -344,7 +362,7 @@ export default function ProductDetail() {
                   type="button"
                   className="pdp-qty-btn"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  disabled={quantity <= 1}
+                  disabled={quantity <= 1 || !inStock}
                   aria-label="Decrease quantity"
                 >
                   −
@@ -354,7 +372,7 @@ export default function ProductDetail() {
                   type="button"
                   className="pdp-qty-btn"
                   onClick={() => setQuantity((q) => Math.min(10, q + 1))}
-                  disabled={quantity >= 10}
+                  disabled={quantity >= 10 || !inStock}
                   aria-label="Increase quantity"
                 >
                   +
@@ -374,16 +392,20 @@ export default function ProductDetail() {
               <>
                 <button
                   type="button"
-                  className={`pdp-cart-button ${addedToCart ? "added" : ""}`}
-                  disabled={addingToCart}
+                  className={`pdp-cart-button ${addedToCart ? "added" : ""} ${!inStock ? "disabled out-of-stock" : ""}`}
+                  disabled={addingToCart || !inStock}
                   onClick={handleAddToCart}
                   aria-label={
-                    addedToCart
+                    !inStock
+                      ? `${product.name} is out of stock`
+                      : addedToCart
                       ? "Added to cart"
                       : `Add ${quantity} of ${product.name} (${selectedVariant}) to cart`
                   }
                 >
-                  {addingToCart ? (
+                  {!inStock ? (
+                    "OUT OF STOCK"
+                  ) : addingToCart ? (
                     <>
                       <span className="pdp-cart-spinner" aria-hidden="true" />
                       ADDING...
@@ -397,11 +419,12 @@ export default function ProductDetail() {
 
                 <button
                   type="button"
-                  className="pdp-buy-now-button"
+                  className={`pdp-buy-now-button ${!inStock ? "disabled" : ""}`}
+                  disabled={!inStock}
                   onClick={handleBuyNow}
-                  aria-label={`Buy ${product.name} now`}
+                  aria-label={!inStock ? `${product.name} is currently out of stock` : `Buy ${product.name} now`}
                 >
-                  BUY NOW ❧
+                  {!inStock ? "UNAVAILABLE" : "BUY NOW ❧"}
                 </button>
               </>
             )}

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
-import { getProductSlug } from "../data/products";
+import { useProducts } from "../context/ProductContext";
+import { getProductSlug, isProductInStock, type Product } from "../data/products";
 import Footer from "../components/Footer";
 import "./TeaCollections.css";
 
@@ -63,46 +64,16 @@ const collections: TeaCollection[] = [
   },
 ];
 
-const featuredProducts = [
-  {
-    id: 1,
-    name: "Himalayan Green Tea",
-    category: "Green",
-    origin: "Darjeeling",
-    weight: "50g",
-    price: 699,
-    image: "/leafly-green-tea.webp",
-  },
-  {
-    id: 2,
-    name: "Silver Tips White Tea",
-    category: "White",
-    origin: "Darjeeling",
-    weight: "40g",
-    price: 899,
-    image: "/leafly-white-tea.webp",
-  },
-  {
-    id: 3,
-    name: "Darjeeling First Flush",
-    category: "Black",
-    origin: "Darjeeling",
-    weight: "50g",
-    price: 749,
-    image: "/leafly-black-tea.webp",
-  },
-];
-
 export default function TeaCollections() {
   const navigate = useNavigate();
-
+  const { products } = useProducts();
   const { addToCart } = useCart();
 
   const [activeCollection, setActiveCollection] =
     useState("green");
 
   const [addedId, setAddedId] =
-    useState<number | null>(null);
+    useState<number | string | null>(null);
 
   const [selectedRitual, setSelectedRitual] =
     useState<"bright" | "slow" | "deep">("bright");
@@ -120,23 +91,17 @@ export default function TeaCollections() {
   };
 
   const handleAddToCart = (
-    product: (typeof featuredProducts)[number]
+    product: Product
   ) => {
-    const collection = collections.find(
-      (c) => c.name.includes(product.category)
+    if (!isProductInStock(product)) return;
+
+    addToCart(
+      product,
+      1,
+      "100g",
+      product.price,
+      product.oldPrice
     );
-    
-    addToCart({
-      id: product.id,
-      name: product.name,
-      category: product.category,
-      origin: product.origin,
-      weight: product.weight,
-      price: product.price,
-      image: product.image,
-      caffeine: collection?.caffeine ?? "Medium",
-      badge: product.category,
-    });
 
     setAddedId(product.id);
 
@@ -523,11 +488,10 @@ export default function TeaCollections() {
 
         <div className="collections-product-grid">
 
-          {featuredProducts.map(
+          {products.slice(0, 3).map(
             (product) => {
-
-              const isAdded =
-                addedId === product.id;
+              const isAdded = addedId === product.id;
+              const inStock = isProductInStock(product);
 
               return (
                 <article
@@ -548,7 +512,7 @@ export default function TeaCollections() {
                     />
 
                     <span>
-                      {product.category}
+                      {!inStock ? "OUT OF STOCK" : product.category}
                     </span>
 
                   </div>
@@ -580,17 +544,22 @@ export default function TeaCollections() {
                       <button
                         type="button"
                         className={
-                          isAdded
+                          !inStock
+                            ? "collection-add-button disabled"
+                            : isAdded
                             ? "collection-add-button added"
                             : "collection-add-button"
                         }
+                        disabled={!inStock}
                         onClick={() =>
                           handleAddToCart(
                             product
                           )
                         }
                       >
-                        {isAdded
+                        {!inStock
+                          ? "OUT OF STOCK"
+                          : isAdded
                           ? "ADDED ✓"
                           : "ADD TO CART"}
                       </button>

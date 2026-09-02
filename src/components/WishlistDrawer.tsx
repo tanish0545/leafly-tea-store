@@ -12,8 +12,8 @@ export default function WishlistDrawer() {
 
   const navigate = useNavigate();
 
-  const [addingId, setAddingId] = useState<number | null>(null);
-  const [addedId, setAddedId] = useState<number | null>(null);
+  const [addingId, setAddingId] = useState<number | string | null>(null);
+  const [addedId, setAddedId] = useState<number | string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   useEffect(() => {
@@ -46,9 +46,9 @@ export default function WishlistDrawer() {
     };
   }, [isWishlistOpen, closeWishlist]);
 
-  const handleAddToCart = (id: number) => {
+  const handleAddToCart = (id: number | string) => {
     const wishlistItem = items.find(
-      (item) => item.product.id === id
+      (item) => String(item.product.id) === String(id)
     );
 
     if (!wishlistItem || addingId !== null) {

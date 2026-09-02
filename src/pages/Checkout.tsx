@@ -15,7 +15,7 @@ import { useAuth, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/Au
 import { validatePhoneNumber, isFirstOrderCouponCode } from "../lib/validation";
 import { COUNTRIES_LIST, INDIAN_STATES_AND_CITIES } from "../data/indianLocations";
 import { auth, db } from "../lib/firebase";
-import { doc, setDoc, updateDoc, increment } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, increment } from "firebase/firestore";
 import { NotificationService } from "../lib/notifications";
 import Footer from "../components/Footer";
 import "./Checkout.css";
@@ -502,9 +502,20 @@ export default function Checkout() {
       for (const item of order.items) {
         if (item.productId) {
           try {
-            await updateDoc(doc(db, "products", String(item.productId)), {
-              stock: increment(-item.quantity),
-            });
+            const pRef = doc(db, "products", String(item.productId));
+            const pSnap = await getDoc(pRef);
+            if (pSnap.exists()) {
+              const currentStock = typeof pSnap.data().stock === "number" ? pSnap.data().stock : 10;
+              const newStock = Math.max(0, currentStock - item.quantity);
+              await updateDoc(pRef, {
+                stock: newStock,
+                inStock: newStock > 0,
+              });
+            } else {
+              await updateDoc(pRef, {
+                stock: increment(-item.quantity),
+              });
+            }
           } catch (stockError) {
             console.error(`Failed to update stock for product ${item.productId}:`, stockError);
           }
@@ -585,6 +596,38 @@ export default function Checkout() {
       return;
     }
 
+    // Live inventory verification before placing order
+    setIsProcessing(true);
+    let outOfStockItemName = "";
+
+    for (const item of items) {
+      if (item.product?.id) {
+        try {
+          const snap = await getDoc(doc(db, "products", String(item.product.id)));
+          if (snap.exists()) {
+            const data = snap.data();
+            const currentStock = typeof data.stock === "number" ? data.stock : 10;
+            const inStock = data.inStock !== false && currentStock > 0;
+            if (!inStock || currentStock < item.quantity) {
+              outOfStockItemName = item.product.name || "item";
+              break;
+            }
+          }
+        } catch (err) {
+          console.warn("Could not verify stock live:", err);
+        }
+      }
+    }
+
+    if (outOfStockItemName) {
+      setIsProcessing(false);
+      setErrors((prev) => ({
+        ...prev,
+        submit: "Some items in your cart are currently out of stock. Please review your cart before continuing.",
+      }));
+      return;
+    }
+
     const orderId = generateOrderId();
 
     const finalizeOrder = async (razorpayPaymentId?: string) => {
@@ -605,7 +648,6 @@ export default function Checkout() {
       return next;
     });
     setIsBursting(true);
-    setIsProcessing(true);
     await finalizeOrder();
   };
 

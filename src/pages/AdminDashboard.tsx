@@ -29,7 +29,7 @@ export type AccountUser = {
 type TabType = "dashboard" | "products" | "teaware" | "hampers" | "orders" | "accounts" | "coupons";
 
 export default function AdminDashboard() {
-  const { products, updateProduct, addProduct, loading: productsLoading } = useProducts();
+  const { products, updateProduct, addProduct, deleteProduct, loading: productsLoading } = useProducts();
   const { teaware, updateTeaware, addTeaware, deleteTeaware, loading: teawareLoading } = useTeaware();
   const { hampers, updateHamper, addHamper, deleteHamper, loading: hampersLoading } = useGifting();
   const { signOut, user } = useAuth();
@@ -39,6 +39,16 @@ export default function AdminDashboard() {
   // Navigation & UI States
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Toast notification state
+  const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
+
+  const showToast = (type: "success" | "error" | "info", message: string) => {
+    setToast({ type, message });
+    setTimeout(() => {
+      setToast((prev) => (prev?.message === message ? null : prev));
+    }, 4500);
+  };
 
   // Editing States
   const [isEditing, setIsEditing] = useState(false);
@@ -168,7 +178,38 @@ export default function AdminDashboard() {
 
   // Product Actions
   const handleEditClick = (product: Product) => {
-    setCurrentProduct(product);
+    const rawPrice = Number(product.price) || 0;
+    const rawOldPrice = product.oldPrice ? Number(product.oldPrice) : undefined;
+    const stock = typeof product.stock === "number" ? product.stock : 10;
+    const inStock = product.inStock !== false && stock > 0;
+
+    const variants: Record<string, { weight: string; price: number; oldPrice?: number }> = {};
+    if (product.variants && typeof product.variants === "object" && !Array.isArray(product.variants)) {
+      for (const [vKey, vData] of Object.entries(product.variants)) {
+        if (vData && typeof vData === "object" && "price" in vData) {
+          variants[vKey] = {
+            weight: vData.weight || vKey,
+            price: Number(vData.price) || rawPrice,
+            oldPrice: vData.oldPrice ? Number(vData.oldPrice) : undefined,
+          };
+        }
+      }
+    }
+    if (!variants["100g"]) {
+      variants["100g"] = { weight: "100g", price: rawPrice, oldPrice: rawOldPrice };
+    }
+    if (!variants["250g"]) {
+      variants["250g"] = { weight: "250g", price: Math.round(rawPrice * 2.2), oldPrice: rawOldPrice ? Math.round(rawOldPrice * 2.2) : undefined };
+    }
+
+    setCurrentProduct({
+      ...product,
+      price: rawPrice,
+      oldPrice: rawOldPrice,
+      stock,
+      inStock,
+      variants: variants as unknown as Product["variants"],
+    });
     setIsEditing(true);
   };
 
@@ -183,6 +224,7 @@ export default function AdminDashboard() {
       badge: "Popular",
       image: "/leafly-green-tea.webp",
       stock: 10,
+      inStock: true,
       customTag: { text: "", color: "#38a169" },
       variants: {
         "100g": { weight: "100g", price: 0 },
@@ -195,38 +237,102 @@ export default function AdminDashboard() {
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Clean up undefined values for Firestore
-    const cleanProduct = { ...currentProduct } as Product;
-    if (cleanProduct.oldPrice === undefined) cleanProduct.oldPrice = null as unknown as number;
-    if (cleanProduct.badge === undefined) cleanProduct.badge = null as unknown as "Popular";
+    const basePrice = Number(currentProduct.price) || 0;
+    const baseOldPrice = currentProduct.oldPrice ? Number(currentProduct.oldPrice) : undefined;
+    const stock = typeof currentProduct.stock === "number" ? currentProduct.stock : 10;
+    const inStock = currentProduct.inStock !== false && stock > 0;
 
-    // Preserve manually entered variants
+    // Clean up values for Firestore
+    const cleanProduct: Product = {
+      ...currentProduct,
+      name: currentProduct.name?.trim() || "Untitled Tea",
+      category: currentProduct.category || "Green",
+      origin: currentProduct.origin?.trim() || "Darjeeling",
+      caffeine: currentProduct.caffeine || "Medium",
+      weight: currentProduct.weight || "100g",
+      price: basePrice,
+      oldPrice: baseOldPrice,
+      image: currentProduct.image?.trim() || "/leafly-green-tea.webp",
+      stock,
+      inStock,
+      badge: currentProduct.badge || "",
+      rating: currentProduct.rating ?? 4.9,
+      reviewCount: currentProduct.reviewCount ?? 120,
+    } as Product;
+
+    // Preserve and synchronize variants
     const newVariants: Record<string, { weight: string; price: number; oldPrice?: number }> = {};
-    if (cleanProduct.variants) {
-      for (const [vKey, vData] of Object.entries(cleanProduct.variants)) {
-        if (vData) {
+    if (currentProduct.variants && typeof currentProduct.variants === "object") {
+      for (const [vKey, vData] of Object.entries(currentProduct.variants)) {
+        if (vData && typeof vData === "object" && "price" in vData) {
+          const vPrice = vKey === "100g" ? basePrice : Number(vData.price) || (vKey === "250g" ? Math.round(basePrice * 2.2) : basePrice);
+          const vOldPrice = vKey === "100g" ? baseOldPrice : (vData.oldPrice ? Number(vData.oldPrice) : undefined);
           newVariants[vKey] = {
-            weight: vData.weight,
-            price: vData.price,
-            oldPrice: vData.oldPrice || undefined
+            weight: vData.weight || vKey,
+            price: vPrice,
+            oldPrice: vOldPrice,
           };
         }
       }
     }
-    // Ensure at least 100g is selected if none
-    if (Object.keys(newVariants).length === 0) {
-      newVariants["100g"] = { weight: "100g", price: cleanProduct.price, oldPrice: cleanProduct.oldPrice || undefined };
+    // Ensure 100g is synchronized
+    newVariants["100g"] = {
+      weight: "100g",
+      price: basePrice,
+      oldPrice: baseOldPrice,
+    };
+    if (!newVariants["250g"]) {
+      newVariants["250g"] = {
+        weight: "250g",
+        price: Math.round(basePrice * 2.2),
+        oldPrice: baseOldPrice ? Math.round(baseOldPrice * 2.2) : undefined,
+      };
     }
 
+    cleanProduct.variants = newVariants as unknown as Product["variants"];
+
+    let res: { success: boolean; error?: string };
     if (currentProduct.id) {
-      const updated = { ...cleanProduct, variants: newVariants as Product["variants"] };
-      await updateProduct(updated);
+      res = await updateProduct(cleanProduct);
     } else {
-      const newProduct = { ...cleanProduct, variants: newVariants as Product["variants"] };
-      newProduct.id = Date.now();
-      await addProduct(newProduct);
+      cleanProduct.id = Date.now();
+      res = await addProduct(cleanProduct);
     }
-    setIsEditing(false);
+
+    if (res.success) {
+      showToast("success", `Tea "${cleanProduct.name}" saved to database successfully!`);
+      setIsEditing(false);
+    } else {
+      showToast("error", `Failed to save tea: ${res.error || "Database update failed"}`);
+    }
+  };
+
+  const handleToggleProductStock = async (product: Product) => {
+    const isCurrentlyIn = product.inStock !== false && (typeof product.stock !== "number" || product.stock > 0);
+    const newInStock = !isCurrentlyIn;
+    const newStock = newInStock ? (product.stock && product.stock > 0 ? product.stock : 10) : 0;
+    const updated: Product = {
+      ...product,
+      stock: newStock,
+      inStock: newInStock,
+    };
+    const res = await updateProduct(updated);
+    if (res.success) {
+      showToast("success", `${product.name} is now marked as ${newInStock ? "In Stock (10 units)" : "Out of Stock"}.`);
+    } else {
+      showToast("error", `Failed to update stock: ${res.error || "Database error"}`);
+    }
+  };
+
+  const handleDeleteProduct = async (id: number | string) => {
+    if (window.confirm("Are you sure you want to delete this tea from the catalog? This action cannot be undone.")) {
+      const res = await deleteProduct(id);
+      if (res.success) {
+        showToast("success", "Tea removed from catalog successfully.");
+      } else {
+        showToast("error", `Failed to delete tea: ${res.error || "Database error"}`);
+      }
+    }
   };
 
   // Teaware Actions
@@ -258,18 +364,28 @@ export default function AdminDashboard() {
     if (cleanItem.oldPrice === undefined) cleanItem.oldPrice = null as unknown as number;
     if (cleanItem.capacity === undefined) cleanItem.capacity = "";
 
-    if (currentTeaware.id) {
-      await updateTeaware(cleanItem);
-    } else {
-      cleanItem.id = Date.now();
-      await addTeaware(cleanItem);
+    try {
+      if (currentTeaware.id) {
+        await updateTeaware(cleanItem);
+      } else {
+        cleanItem.id = Date.now();
+        await addTeaware(cleanItem);
+      }
+      showToast("success", `Teaware "${cleanItem.name}" saved successfully.`);
+      setIsEditingTeaware(false);
+    } catch {
+      showToast("error", "Failed to save teaware item.");
     }
-    setIsEditingTeaware(false);
   };
 
   const handleDeleteTeaware = async (id: number | string) => {
     if (window.confirm("Are you sure you want to delete this teaware item?")) {
-      await deleteTeaware(id);
+      try {
+        await deleteTeaware(id);
+        showToast("success", "Teaware item removed successfully.");
+      } catch {
+        showToast("error", "Failed to delete teaware item.");
+      }
     }
   };
 
@@ -296,18 +412,28 @@ export default function AdminDashboard() {
     const cleanHamper = { ...currentHamper } as GiftHamper;
     if (cleanHamper.badge === undefined) cleanHamper.badge = "";
 
-    if (currentHamper.id) {
-      await updateHamper(cleanHamper);
-    } else {
-      cleanHamper.id = Date.now();
-      await addHamper(cleanHamper);
+    try {
+      if (currentHamper.id) {
+        await updateHamper(cleanHamper);
+      } else {
+        cleanHamper.id = Date.now();
+        await addHamper(cleanHamper);
+      }
+      showToast("success", `Hamper "${cleanHamper.name}" saved successfully.`);
+      setIsEditingHamper(false);
+    } catch {
+      showToast("error", "Failed to save hamper.");
     }
-    setIsEditingHamper(false);
   };
 
   const handleDeleteHamper = async (id: number | string) => {
     if (window.confirm("Are you sure you want to delete this hamper?")) {
-      await deleteHamper(id);
+      try {
+        await deleteHamper(id);
+        showToast("success", "Hamper removed successfully.");
+      } catch {
+        showToast("error", "Failed to delete hamper.");
+      }
     }
   };
 
@@ -317,12 +443,16 @@ export default function AdminDashboard() {
       await updateDoc(doc(db, "orders", orderId), {
         status: newStatus,
         orderStatus: newStatus,
+        updatedAt: new Date().toISOString(),
       });
       if (selectedOrder && selectedOrder.id === orderId) {
-        setSelectedOrder((prev) => prev ? { ...prev, status: newStatus, orderStatus: newStatus as OrderStatus } : null);
+        setSelectedOrder((prev) => prev ? { ...prev, status: newStatus as OrderStatus, orderStatus: newStatus as OrderStatus } : null);
       }
+      showToast("success", `Order #${orderId} status updated to ${newStatus}.`);
     } catch (error) {
       console.error("Error updating order status:", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      showToast("error", `Failed to update order status: ${msg}`);
     }
   };
 
@@ -333,8 +463,10 @@ export default function AdminDashboard() {
         if (selectedOrder?.id === orderId) {
           setSelectedOrder(null);
         }
+        showToast("success", `Order #${orderId} deleted successfully.`);
       } catch (error) {
         console.error("Error deleting order:", error);
+        showToast("error", "Failed to delete order from database.");
       }
     }
   };
@@ -560,6 +692,15 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-layout">
+      {/* FLOATING TOAST NOTIFICATION */}
+      {toast && (
+        <div className={`admin-toast-banner ${toast.type}`} role="alert">
+          <span className="toast-icon">{toast.type === "success" ? "✓" : toast.type === "error" ? "⚠" : "ℹ"}</span>
+          <span className="toast-message">{toast.message}</span>
+          <button type="button" className="toast-close" onClick={() => setToast(null)} aria-label="Dismiss notification">✕</button>
+        </div>
+      )}
+
       {/* MOBILE DRAWER OVERLAY */}
       {isMobileMenuOpen && (
         <div
@@ -1072,6 +1213,7 @@ export default function AdminDashboard() {
                           <th>Order ID</th>
                           <th>Placed At</th>
                           <th>Customer Details</th>
+                          <th>Items Purchased</th>
                           <th>Amount</th>
                           <th>Payment</th>
                           <th>Order Status</th>
@@ -1083,6 +1225,7 @@ export default function AdminDashboard() {
                           const isCOD = order.paymentMethod === "Pay on Delivery" || order.paymentMethod === "Cash on Delivery";
                           const status = order.orderStatus || order.status || "Processing";
                           const statusLower = status.toLowerCase();
+                          const orderItems = order.items || [];
                           return (
                             <tr key={order.id}>
                               <td>
@@ -1094,9 +1237,25 @@ export default function AdminDashboard() {
                               </td>
                               <td>
                                 <strong className="cell-main-text">{order.shippingAddress?.fullName || order.customerName || "Patron"}</strong>
+                                <span className="cell-subtext">{order.customerEmail || "No Email"}</span>
                                 <span className="cell-subtext">
                                   {order.shippingAddress?.city ? `${order.shippingAddress.city}, ${order.shippingAddress.state}` : "Direct Order"}
                                 </span>
+                              </td>
+                              <td>
+                                <div className="admin-order-items-preview">
+                                  <span className="items-count-badge">{orderItems.length} item{orderItems.length !== 1 ? "s" : ""}</span>
+                                  <div className="items-mini-list">
+                                    {orderItems.slice(0, 2).map((item, idx) => (
+                                      <span key={idx} className="item-mini-tag">
+                                        {item.quantity}x {item.name} {item.variant ? `(${item.variant})` : ""}
+                                      </span>
+                                    ))}
+                                    {orderItems.length > 2 && (
+                                      <span className="item-mini-more">+{orderItems.length - 2} more</span>
+                                    )}
+                                  </div>
+                                </div>
                               </td>
                               <td>
                                 <strong className="gold-text large">₹{order.total?.toLocaleString() || 0}</strong>
@@ -1150,6 +1309,7 @@ export default function AdminDashboard() {
                       const isCOD = order.paymentMethod === "Pay on Delivery" || order.paymentMethod === "Cash on Delivery";
                       const status = order.orderStatus || order.status || "Processing";
                       const statusLower = status.toLowerCase();
+                      const orderItems = order.items || [];
                       return (
                         <div className="admin-mobile-card" key={order.id}>
                           <div className="mobile-card-header">
@@ -1167,9 +1327,25 @@ export default function AdminDashboard() {
                               <span>Customer:</span>
                               <strong>{order.shippingAddress?.fullName || order.customerName || "Patron"}</strong>
                             </div>
+                            {order.customerEmail && (
+                              <div className="mobile-card-info-row">
+                                <span>Email:</span>
+                                <span className="cell-subtext">{order.customerEmail}</span>
+                              </div>
+                            )}
                             <div className="mobile-card-info-row">
                               <span>Destination:</span>
-                              <span>{order.shippingAddress?.city ? `${order.shippingAddress.city}, ${order.shippingAddress.state}` : "Direct"}</span>
+                              <span>{order.shippingAddress?.city ? `${order.shippingAddress.city}, ${order.shippingAddress.state}` : "Direct Order"}</span>
+                            </div>
+                            <div className="mobile-card-items-block">
+                              <span className="block-label">Items ({orderItems.length}):</span>
+                              <div className="mobile-items-tags">
+                                {orderItems.map((item, idx) => (
+                                  <span key={idx} className="item-mini-tag">
+                                    {item.quantity}x {item.name} {item.variant ? `(${item.variant})` : ""}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                             <div className="mobile-card-info-row">
                               <span>Total Amount:</span>
@@ -1196,7 +1372,7 @@ export default function AdminDashboard() {
                               className="admin-btn-primary flex-1"
                               onClick={() => setSelectedOrder(order)}
                             >
-                              View Details
+                              View Dossier
                             </button>
                             <button
                               type="button"
@@ -1222,7 +1398,7 @@ export default function AdminDashboard() {
             <div className="admin-section-view">
               <div className="admin-section-header">
                 <div>
-                  <h2 className="section-title">Tea Catalog</h2>
+                  <h2 className="section-title">Tea Catalog & Inventory</h2>
                   <p className="section-subtitle">Manage single-estate harvest teas, variant pricing, inventory stock & custom badges</p>
                 </div>
                 <button
@@ -1284,14 +1460,15 @@ export default function AdminDashboard() {
                           <th>Category</th>
                           <th>Price</th>
                           <th>Stock Level</th>
+                          <th>Quick Toggle</th>
                           <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredProducts.map((product) => {
-                          const stock = product.stock ?? 10;
-                          const isLowStock = stock <= 3;
-                          const isOutOfStock = stock <= 0;
+                          const stock = typeof product.stock === "number" ? product.stock : 10;
+                          const isIn = product.inStock !== false && stock > 0;
+                          const isLowStock = isIn && stock <= 3;
                           return (
                             <tr key={product.id}>
                               <td style={{ width: "70px" }}>
@@ -1321,18 +1498,38 @@ export default function AdminDashboard() {
                                 ) : null}
                               </td>
                               <td>
-                                <span className={`stock-pill ${isOutOfStock ? "out" : isLowStock ? "low" : "in"}`}>
-                                  {isOutOfStock ? "Out of Stock" : `Stock: ${stock}`}
+                                <span className={`stock-pill ${!isIn ? "out" : isLowStock ? "low" : "in"}`}>
+                                  {!isIn ? "Out of Stock" : `Stock: ${stock}`}
                                 </span>
                               </td>
                               <td>
                                 <button
                                   type="button"
-                                  className="admin-btn-action"
-                                  onClick={() => handleEditClick(product)}
+                                  className={`admin-btn-stock-toggle ${isIn ? "in" : "out"}`}
+                                  onClick={() => handleToggleProductStock(product)}
+                                  title={isIn ? "Click to set Out of Stock" : "Click to Restock"}
                                 >
-                                  Edit
+                                  {isIn ? "Set Out of Stock" : "Restock (+10)"}
                                 </button>
+                              </td>
+                              <td>
+                                <div className="table-actions-group">
+                                  <button
+                                    type="button"
+                                    className="admin-btn-action"
+                                    onClick={() => handleEditClick(product)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-btn-danger"
+                                    onClick={() => handleDeleteProduct(product.id)}
+                                    title="Delete Tea"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1344,9 +1541,9 @@ export default function AdminDashboard() {
                   {/* Mobile Grid Cards View */}
                   <div className="admin-mobile-catalog-grid mobile-only">
                     {filteredProducts.map((product) => {
-                      const stock = product.stock ?? 10;
-                      const isLowStock = stock <= 3;
-                      const isOutOfStock = stock <= 0;
+                      const stock = typeof product.stock === "number" ? product.stock : 10;
+                      const isIn = product.inStock !== false && stock > 0;
+                      const isLowStock = isIn && stock <= 3;
                       return (
                         <div className="admin-catalog-card" key={product.id}>
                           <div className="catalog-card-media">
@@ -1358,18 +1555,36 @@ export default function AdminDashboard() {
                             <span className="cell-subtext">{product.origin}</span>
                             <div className="catalog-card-meta">
                               <span className="gold-text large">₹{product.price.toLocaleString()}</span>
-                              <span className={`stock-pill ${isOutOfStock ? "out" : isLowStock ? "low" : "in"}`}>
-                                {isOutOfStock ? "Out" : `${stock} left`}
+                              <span className={`stock-pill ${!isIn ? "out" : isLowStock ? "low" : "in"}`}>
+                                {!isIn ? "Out of Stock" : `${stock} left`}
                               </span>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            className="admin-btn-primary full-width"
-                            onClick={() => handleEditClick(product)}
-                          >
-                            Edit Tea
-                          </button>
+                          <div className="catalog-card-actions-row">
+                            <button
+                              type="button"
+                              className={`admin-btn-stock-toggle ${isIn ? "in" : "out"}`}
+                              onClick={() => handleToggleProductStock(product)}
+                            >
+                              {isIn ? "Mark Out of Stock" : "Restock (+10)"}
+                            </button>
+                            <div className="catalog-btn-split">
+                              <button
+                                type="button"
+                                className="admin-btn-primary flex-1"
+                                onClick={() => handleEditClick(product)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="admin-btn-danger"
+                                onClick={() => handleDeleteProduct(product.id)}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -1385,7 +1600,7 @@ export default function AdminDashboard() {
               <div className="admin-section-header">
                 <div>
                   <h2 className="section-title">{currentProduct.id ? "Edit Tea Formulation" : "Add New Tea"}</h2>
-                  <p className="section-subtitle">Configure pricing, estates, caffeine notes, and harvest packaging weights</p>
+                  <p className="section-subtitle">Configure pricing, estates, caffeine notes, inventory stock and harvest packaging weights</p>
                 </div>
                 <button
                   type="button"
@@ -1437,12 +1652,26 @@ export default function AdminDashboard() {
 
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label>Base Price (₹) *</label>
+                    <label>Base Price (₹) * (100g Standard)</label>
                     <input
                       type="number"
                       required
+                      min="0"
                       value={currentProduct.price || ""}
-                      onChange={e => setCurrentProduct({ ...currentProduct, price: Number(e.target.value) })}
+                      onChange={e => {
+                        const val = Number(e.target.value);
+                        const updatedVars = { ...(currentProduct.variants || {}) };
+                        if (updatedVars["100g"]) {
+                          updatedVars["100g"] = { ...updatedVars["100g"], price: val };
+                        } else {
+                          updatedVars["100g"] = { weight: "100g", price: val };
+                        }
+                        setCurrentProduct({
+                          ...currentProduct,
+                          price: val,
+                          variants: updatedVars as unknown as Product["variants"],
+                        });
+                      }}
                     />
                   </div>
 
@@ -1450,8 +1679,20 @@ export default function AdminDashboard() {
                     <label>Old Price (₹) - For Discounts</label>
                     <input
                       type="number"
+                      min="0"
                       value={currentProduct.oldPrice || ""}
-                      onChange={e => setCurrentProduct({ ...currentProduct, oldPrice: Number(e.target.value) || undefined })}
+                      onChange={e => {
+                        const val = Number(e.target.value) || undefined;
+                        const updatedVars = { ...(currentProduct.variants || {}) };
+                        if (updatedVars["100g"]) {
+                          updatedVars["100g"] = { ...updatedVars["100g"], oldPrice: val };
+                        }
+                        setCurrentProduct({
+                          ...currentProduct,
+                          oldPrice: val,
+                          variants: updatedVars as unknown as Product["variants"],
+                        });
+                      }}
                       placeholder="Leave empty if regular price"
                     />
                   </div>
@@ -1484,15 +1725,40 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="form-group">
-                    <label>Stock Inventory *</label>
+                    <label>Stock Units *</label>
                     <input
                       type="number"
                       required
                       min="0"
                       value={currentProduct.stock ?? 10}
-                      onChange={e => setCurrentProduct({ ...currentProduct, stock: parseInt(e.target.value, 10) || 0 })}
+                      onChange={e => {
+                        const val = parseInt(e.target.value, 10) || 0;
+                        setCurrentProduct({
+                          ...currentProduct,
+                          stock: val,
+                          inStock: val > 0,
+                        });
+                      }}
                     />
                   </div>
+                </div>
+
+                <div className="form-group checkbox-group" style={{ margin: "1rem 0" }}>
+                  <label className="variant-check-label" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={currentProduct.inStock !== false && (typeof currentProduct.stock !== "number" || currentProduct.stock > 0)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setCurrentProduct({
+                          ...currentProduct,
+                          inStock: checked,
+                          stock: checked ? (currentProduct.stock && currentProduct.stock > 0 ? currentProduct.stock : 10) : 0,
+                        });
+                      }}
+                    />
+                    <span><strong>Active in Store (In Stock)</strong> — Check to make this tea purchasable in Shop</span>
+                  </label>
                 </div>
 
                 <div className="form-group">
@@ -1522,7 +1788,10 @@ export default function AdminDashboard() {
                   <div className="variants-container">
                     {(["100g", "250g", "500g", "1kg"] as const).map(vKey => {
                       const isSelected = !!currentProduct.variants?.[vKey];
-                      const variantData = currentProduct.variants?.[vKey] || { weight: vKey, price: 0 };
+                      const variantData = currentProduct.variants?.[vKey] || {
+                        weight: vKey,
+                        price: vKey === "100g" ? (currentProduct.price || 0) : Math.round((currentProduct.price || 0) * (vKey === "250g" ? 2.2 : vKey === "500g" ? 4 : 7.5)),
+                      };
                       return (
                         <div key={vKey} className={`variant-box ${isSelected ? "selected" : ""}`}>
                           <label className="variant-check-label">
@@ -1532,7 +1801,12 @@ export default function AdminDashboard() {
                               onChange={(e) => {
                                 const newVars = { ...currentProduct.variants };
                                 if (e.target.checked) {
-                                  newVars[vKey] = { weight: vKey, price: currentProduct.price || 0, oldPrice: currentProduct.oldPrice || undefined };
+                                  const vPrice = vKey === "100g" ? (currentProduct.price || 0) : Math.round((currentProduct.price || 0) * (vKey === "250g" ? 2.2 : vKey === "500g" ? 4 : 7.5));
+                                  newVars[vKey] = {
+                                    weight: vKey,
+                                    price: vPrice,
+                                    oldPrice: currentProduct.oldPrice ? Math.round(currentProduct.oldPrice * (vKey === "250g" ? 2.2 : 1)) : undefined
+                                  };
                                 } else {
                                   delete newVars[vKey];
                                 }
@@ -1551,8 +1825,13 @@ export default function AdminDashboard() {
                                   value={variantData.price}
                                   onChange={(e) => {
                                     const newVars = { ...currentProduct.variants };
-                                    newVars[vKey] = { ...variantData, price: Number(e.target.value) };
-                                    setCurrentProduct({ ...currentProduct, variants: newVars as unknown as Product["variants"] });
+                                    const val = Number(e.target.value);
+                                    newVars[vKey] = { ...variantData, price: val };
+                                    const updatedProduct = { ...currentProduct, variants: newVars as unknown as Product["variants"] };
+                                    if (vKey === "100g") {
+                                      updatedProduct.price = val;
+                                    }
+                                    setCurrentProduct(updatedProduct);
                                   }}
                                   required
                                 />
@@ -1568,7 +1847,11 @@ export default function AdminDashboard() {
                                     const val = Number(e.target.value);
                                     newVars[vKey] = { ...variantData, oldPrice: val || undefined };
                                     if (!val) delete newVars[vKey].oldPrice;
-                                    setCurrentProduct({ ...currentProduct, variants: newVars as unknown as Product["variants"] });
+                                    const updatedProduct = { ...currentProduct, variants: newVars as unknown as Product["variants"] };
+                                    if (vKey === "100g") {
+                                      updatedProduct.oldPrice = val || undefined;
+                                    }
+                                    setCurrentProduct(updatedProduct);
                                   }}
                                 />
                               </div>

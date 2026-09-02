@@ -10,7 +10,7 @@ import {
 import type { ProductVariantKey } from "../data/products";
 
 export type CartProduct = {
-  id: number;
+  id: number | string;
   name: string;
   category: string;
   origin: string;
@@ -18,8 +18,10 @@ export type CartProduct = {
   weight: string;
   price: number;
   oldPrice?: number;
-  badge: string;
+  badge?: string;
   image: string;
+  stock?: number;
+  inStock?: boolean;
 };
 
 export type CartItem = {
@@ -139,6 +141,10 @@ export function CartProvider({
     customPrice?: number,
     customOldPrice?: number
   ) => {
+    if (product && (product.inStock === false || (typeof product.stock === "number" && product.stock <= 0))) {
+      return;
+    }
+
     const itemPrice = typeof customPrice === "number" ? customPrice : product.price;
     const itemOldPrice = customOldPrice ?? product.oldPrice;
     const cartItemId = `${product.id}-${variant}`;

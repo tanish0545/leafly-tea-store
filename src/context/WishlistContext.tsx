@@ -17,12 +17,12 @@ type WishlistContextType = {
   items: WishlistItem[];
   wishlistCount: number;
   isWishlistOpen: boolean;
-  wishlistIds: number[];
+  wishlistIds: (number | string)[];
 
   addToWishlist: (product: CartProduct) => void;
-  removeFromWishlist: (id: number) => void;
+  removeFromWishlist: (id: number | string) => void;
   clearWishlist: () => void;
-  isInWishlist: (id: number) => boolean;
+  isInWishlist: (id: number | string) => boolean;
 
   openWishlist: () => void;
   closeWishlist: () => void;
@@ -80,7 +80,7 @@ export function WishlistProvider({
       const exists =
         current.find(
           (item) =>
-            item.product.id === product.id
+            String(item.product.id) === String(product.id)
         );
 
       if (exists) {
@@ -96,11 +96,11 @@ export function WishlistProvider({
     });
   };
 
-  const removeFromWishlist = (id: number) => {
+  const removeFromWishlist = (id: number | string) => {
     setItems((current) =>
       current.filter(
         (item) =>
-          item.product.id !== id
+          String(item.product.id) !== String(id)
       )
     );
   };
@@ -109,10 +109,10 @@ export function WishlistProvider({
     setItems([]);
   };
 
-  const isInWishlist = (id: number) => {
+  const isInWishlist = (id: number | string) => {
     return items.some(
       (item) =>
-        item.product.id === id
+        String(item.product.id) === String(id)
     );
   };
 

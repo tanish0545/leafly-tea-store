@@ -76,7 +76,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
   if (!isOpen) return null;
 
-  const handleSelectProduct = (product: { id: number; name: string }) => {
+  const handleSelectProduct = (product: { id: number | string; name: string }) => {
     handleClose();
     navigate(`/shop/${getProductSlug(product)}`);
   };

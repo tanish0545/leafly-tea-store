@@ -11,6 +11,7 @@ import {
   type Product,
   type ProductVariantKey,
   getProductSlug,
+  isProductInStock,
 } from "../data/products";
 import { useProducts } from "../context/ProductContext";
 import Footer from "../components/Footer";
@@ -59,13 +60,13 @@ export default function Shop() {
     useState("Featured Collection");
 
   const [addingId, setAddingId] =
-    useState<number | null>(null);
+    useState<number | string | null>(null);
 
   const [addedId, setAddedId] =
-    useState<number | null>(null);
+    useState<number | string | null>(null);
 
   const [cardVariants, setCardVariants] =
-    useState<Record<number, ProductVariantKey>>({});
+    useState<Record<string | number, ProductVariantKey>>({});
 
   const [selectedProduct, setSelectedProduct] =
     useState<Product | null>(null);
@@ -191,9 +192,9 @@ export default function Shop() {
   /*
    * WISHLIST
    */
-  const toggleWishlist = (id: number) => {
+  const toggleWishlist = (id: number | string) => {
     const product = products.find(
-      (item) => item.id === id
+      (item) => String(item.id) === String(id)
     );
 
     if (!product) {
@@ -210,26 +211,26 @@ export default function Shop() {
   /*
    * CART
    */
-  const addToCart = (id: number) => {
+  const addToCart = (id: number | string) => {
     const product = products.find(
-      (item) => item.id === id
+      (item) => String(item.id) === String(id)
     );
 
-    if (!product || addingId !== null) {
+    if (!product || addingId !== null || !isProductInStock(product)) {
       return;
     }
 
-    const currentVariant = cardVariants[id] ?? "100g";
+    const currentVariant = cardVariants[product.id] ?? "100g";
     const variantData = product.variants ? product.variants[currentVariant] : null;
     const finalPrice = variantData ? variantData.price : (currentVariant === "250g" ? Math.round(product.price * 2.2) : product.price);
     const finalOldPrice = variantData?.oldPrice ?? (currentVariant === "250g" && product.oldPrice ? Math.round(product.oldPrice * 2.2) : product.oldPrice);
 
-    setAddingId(id);
+    setAddingId(product.id);
 
     // Immediately add to cart and trigger centralized AddedToRitual animation
     addProductToCart(product, 1, currentVariant, finalPrice, finalOldPrice);
     setAddingId(null);
-    setAddedId(id);
+    setAddedId(product.id);
 
     window.setTimeout(() => {
       setAddedId(null);
@@ -502,10 +503,11 @@ export default function Shop() {
             const isWishlisted = isInWishlist(product.id);
             const isAdding = addingId === product.id;
             const isAdded = addedId === product.id;
+            const inStock = isProductInStock(product);
 
             return (
               <article
-                className="shop-product-card"
+                className={`shop-product-card ${!inStock ? "is-out-of-stock" : ""}`}
                 key={product.id}
               >
 
@@ -524,11 +526,20 @@ export default function Shop() {
                     {...(index < 2 ? { fetchPriority: "high" as const } : {})}
                   />
 
-                  <span
-                    className={`product-badge ${product.badge.toLowerCase()}`}
-                  >
-                    {product.badge}
-                  </span>
+                  {!inStock ? (
+                    <span
+                      className="product-badge out-of-stock"
+                      style={{ background: "#c53030", color: "#ffffff" }}
+                    >
+                      OUT OF STOCK
+                    </span>
+                  ) : product.badge ? (
+                    <span
+                      className={`product-badge ${product.badge.toLowerCase()}`}
+                    >
+                      {product.badge}
+                    </span>
+                  ) : null}
 
                   <button
                     type="button"
@@ -582,7 +593,7 @@ export default function Shop() {
                         className={`card-variant-btn ${(cardVariants[product.id] ?? "100g") === "100g" ? "active" : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setCardVariants((prev) => ({ ...prev, [product.id]: "100g" }));
+                          setCardVariants((prev) => ({ ...prev, [product.id]: "100g" as ProductVariantKey }));
                         }}
                       >
                         100g
@@ -592,7 +603,7 @@ export default function Shop() {
                         className={`card-variant-btn ${cardVariants[product.id] === "250g" ? "active" : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setCardVariants((prev) => ({ ...prev, [product.id]: "250g" }));
+                          setCardVariants((prev) => ({ ...prev, [product.id]: "250g" as ProductVariantKey }));
                         }}
                       >
                         250g
@@ -662,6 +673,20 @@ export default function Shop() {
                       </button>
 
                       {(() => {
+                        if (!inStock) {
+                          return (
+                            <button
+                              type="button"
+                              className="add-cart-button disabled out-of-stock"
+                              disabled
+                              style={{ background: "#e2e8f0", color: "#718096", cursor: "not-allowed", border: "none" }}
+                              aria-disabled="true"
+                            >
+                              OUT OF STOCK
+                            </button>
+                          );
+                        }
+
                         const currentVariant = cardVariants[product.id] ?? "100g";
                         const cartItem = items.find(
                           (item) =>
