@@ -1,11 +1,54 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type ViteDevServer, type Connect } from 'vite'
+import type { ServerResponse } from 'http'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+
+function apiDevMiddleware() {
+  return {
+    name: 'api-dev-middleware',
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use(async (req: Connect.IncomingMessage, res: ServerResponse, next: Connect.NextFunction) => {
+        if (!req.url?.startsWith('/api/')) {
+          return next();
+        }
+
+        const urlPath = req.url.split('?')[0];
+        try {
+          if (urlPath === '/api/newsletter') {
+            const mod = await server.ssrLoadModule('./api/newsletter.ts');
+            return await mod.default(req, res);
+          }
+          if (urlPath === '/api/gifting') {
+            const mod = await server.ssrLoadModule('./api/gifting.ts');
+            return await mod.default(req, res);
+          }
+          if (urlPath === '/api/contact') {
+            const mod = await server.ssrLoadModule('./api/contact.ts');
+            return await mod.default(req, res);
+          }
+          if (urlPath === '/api/order-notification') {
+            const mod = await server.ssrLoadModule('./api/order-notification.ts');
+            return await mod.default(req, res);
+          }
+        } catch (err) {
+          console.error(`[API Dev Middleware Error on ${urlPath}]:`, err);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: String(err) }));
+          return;
+        }
+
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    apiDevMiddleware(),
     {
       name: 'generate-version-json',
       apply: 'build',

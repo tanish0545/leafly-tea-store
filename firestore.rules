@@ -74,5 +74,40 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    // 5. Teaware & Hampers collections:
+    match /teaware/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /hampers/{hamperId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 6. Newsletter Subscribers:
+    match /subscribers/{subscriberId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // 7. Gifting Requests:
+    match /gifting_requests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // 8. Contact Inquiries:
+    match /contact_messages/{messageId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // 9. Firebase Trigger Email extension queue:
+    match /mail/{mailId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
   }
 }

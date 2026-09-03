@@ -38,6 +38,7 @@ const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Login = lazy(() => import("./pages/Login"));
 const Signup = lazy(() => import("./pages/Signup"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Shop = lazy(() => import("./pages/Shop"));
 const Teaware = lazy(() => import("./pages/Teaware"));
 const ShippingPolicy = lazy(() => import("./pages/ShippingPolicy"));
@@ -98,6 +99,7 @@ function App() {
                           <Route path="/profile" element={<Profile />} />
                           <Route path="/login" element={<Login />} />
                           <Route path="/signup" element={<Signup />} />
+                          <Route path="/reset-password" element={<ResetPassword />} />
                           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                           <Route path="/privacy" element={<PrivacyPolicy />} />
                           <Route path="/terms-and-conditions" element={<TermsAndConditions />} />

@@ -356,7 +356,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isValidGmailAddress(cleanEmail)) {
       throw new Error(GMAIL_ERROR_MESSAGE);
     }
-    await sendPasswordResetEmail(auth, cleanEmail);
+    try {
+      const actionCodeSettings = {
+        url: `${window.location.origin}/reset-password`,
+        handleCodeInApp: true,
+      };
+      await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
+    } catch (actionCodeErr) {
+      console.warn("ActionCodeSettings notice, using default action settings:", actionCodeErr);
+      await sendPasswordResetEmail(auth, cleanEmail);
+    }
   };
 
   const updateUserProfile = async (updates: Partial<AuthUser> & Record<string, unknown>) => {

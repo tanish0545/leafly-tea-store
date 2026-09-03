@@ -3,6 +3,7 @@ import Footer from "../components/Footer";
 import { useCart } from "../context/CartContext";
 import PhoneInput from "../components/PhoneInput";
 import { Helmet } from "react-helmet-async";
+import { ApiService } from "../lib/apiClient";
 import "./GiftingPage.css";
 
 import { useGifting } from "../context/GiftingContext";
@@ -13,6 +14,8 @@ export default function GiftingPage() {
   const { addToCart } = useCart();
   const [addedHamperId, setAddedHamperId] = useState<number | null>(null);
   const [enquirySent, setEnquirySent] = useState(false);
+  const [referenceId, setReferenceId] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -40,32 +43,41 @@ export default function GiftingPage() {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+
+    const cleanName = formData.name.trim();
+    const cleanEmail = formData.email.trim().toLowerCase();
+
+    if (!cleanName) {
+      setFormError("Please enter your name.");
+      return;
+    }
+
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setFormError("Please enter a valid email address.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const endpoint = import.meta.env.VITE_FORMSPREE_ENDPOINT || "https://formspree.io/f/leaflydatabase@gmail.com";
-      await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
-          quantity: formData.quantity,
-          message: formData.message,
-          recipient: "leaflydatabase@gmail.com",
-          formSource: "Leafly Corporate & Bespoke Gifting Page",
-          timestamp: new Date().toISOString(),
-        }),
+      const res = await ApiService.submitGiftingInquiry({
+        name: cleanName,
+        email: cleanEmail,
+        phone: formData.phone,
+        quantity: formData.quantity,
+        message: formData.message,
       });
-      setEnquirySent(true);
-      setFormData({ name: "", email: "", phone: "", quantity: "25-50", message: "" });
-    } catch (err) {
+
+      if (res.success) {
+        setReferenceId(res.referenceId || null);
+        setEnquirySent(true);
+        setFormData({ name: "", email: "", phone: "", quantity: "25-50", message: "" });
+      } else {
+        setFormError(res.error || "We couldn't submit your inquiry right now. Please try again.");
+      }
+    } catch (err: unknown) {
       console.error("Error submitting gifting inquiry:", err);
-      setEnquirySent(true);
-      setFormData({ name: "", email: "", phone: "", quantity: "25-50", message: "" });
+      setFormError("We couldn't send your inquiry right now. Please check your connection and try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -197,10 +209,20 @@ export default function GiftingPage() {
               {enquirySent ? (
                 <div className="gifting-form-success">
                   <h4>Thank you! 🌿</h4>
-                  <p>Your gifting inquiry has been received. Our concierge will email you the custom lookbook shortly.</p>
+                  <p>Your gifting inquiry has been received. A confirmation email has been dispatched to your inbox.</p>
+                  {referenceId && (
+                    <p style={{ marginTop: "8px", fontSize: "14px", color: "#c9a24b", fontWeight: 600 }}>
+                      Reference ID: #{referenceId}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <form onSubmit={handleFormSubmit} className="gifting-form">
+                  {formError && (
+                    <div style={{ padding: "10px", background: "#fee2e2", color: "#991b1b", borderRadius: "4px", fontSize: "13px", marginBottom: "12px" }}>
+                      {formError}
+                    </div>
+                  )}
                   <label className="gifting-field">
                     <span>Full Name *</span>
                     <input

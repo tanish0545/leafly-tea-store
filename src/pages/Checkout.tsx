@@ -2,7 +2,6 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../context/CartContext";
-import { useCoupons } from "../context/CouponContext";
 import {
   useOrderContext,
   type Order,
@@ -10,9 +9,8 @@ import {
 } from "../context/OrderContext";
 import DeliveryAnimation from "../components/DeliveryAnimation";
 import PhoneInput from "../components/PhoneInput";
-import { calculateDiscount, type AppliedCoupon } from "../utils/coupon";
-import { useAuth, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
-import { validatePhoneNumber, isFirstOrderCouponCode } from "../lib/validation";
+import { useAuth } from "../context/AuthContext";
+import { validatePhoneNumber, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../lib/validation";
 import { COUNTRIES_LIST, INDIAN_STATES_AND_CITIES } from "../data/indianLocations";
 import { auth, db } from "../lib/firebase";
 import { doc, getDoc, setDoc, updateDoc, increment } from "firebase/firestore";
@@ -93,7 +91,6 @@ export default function Checkout() {
   const { items, subtotal, clearCart } = useCart();
   const { addOrder } = useOrderContext();
   const { currentUser, loading: authLoading, isAuthenticated } = useAuth();
-  const { validateUserCoupon, markCouponUsed, isFirstOrder } = useCoupons();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -108,14 +105,6 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "cod">("cod");
   const [saveAddress, setSaveAddress] = useState(true);
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
-
-  // Coupon state
-  const [couponInput, setCouponInput] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
-  const [couponFeedback, setCouponFeedback] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
 
   // Order submission feedback state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -147,16 +136,6 @@ export default function Checkout() {
   });
 
   const prevUidRef = useRef<string | undefined>(currentUser?.uid);
-
-  useEffect(() => {
-    if (!isFirstOrder && appliedCoupon && isFirstOrderCouponCode(appliedCoupon.code)) {
-      setAppliedCoupon(null);
-      setCouponFeedback({
-        type: "error",
-        message: "This coupon is only valid on your first order.",
-      });
-    }
-  }, [isFirstOrder, appliedCoupon]);
 
   // Synchronize with authenticated profile when logged in, or clear when logging out
   useEffect(() => {
@@ -191,9 +170,6 @@ export default function Checkout() {
       setPhone("");
       setDeliveryInstructions("");
       setShippingAddress({ ...defaultAddress });
-      setAppliedCoupon(null);
-      setCouponFeedback(null);
-      setCouponInput("");
     }
   }, [currentUser?.uid, currentUser?.email, currentUser?.displayName, currentUser?.name, currentUser?.phone, currentUser?.phoneNumber]);
 
@@ -271,58 +247,10 @@ export default function Checkout() {
     return deliveryMethod === "express" ? 99 : 0;
   }, [deliveryMethod, items.length]);
 
-  const discountAmount = useMemo(() => {
-    if (!appliedCoupon) return 0;
-    return calculateDiscount(
-      subtotal,
-      appliedCoupon.discountType,
-      appliedCoupon.discountValue,
-      appliedCoupon.minOrderValue
-    );
-  }, [appliedCoupon, subtotal]);
-
   const total = useMemo(
-    () => Math.max(0, subtotal - discountAmount + deliveryFee),
-    [deliveryFee, discountAmount, subtotal]
+    () => Math.max(0, subtotal + deliveryFee),
+    [deliveryFee, subtotal]
   );
-
-  const handleApplyCoupon = (event?: React.FormEvent | React.MouseEvent) => {
-    if (event) event.preventDefault();
-
-    const result = validateUserCoupon(couponInput, subtotal);
-
-    if (result.isValid) {
-      const discount = calculateDiscount(
-        subtotal,
-        result.discountType,
-        result.discountValue,
-        result.minOrderValue
-      );
-      setAppliedCoupon({
-        code: result.code,
-        discountType: result.discountType,
-        discountValue: result.discountValue,
-        discountAmount: discount,
-        minOrderValue: result.minOrderValue,
-      });
-      setCouponFeedback({
-        type: "success",
-        message: result.message,
-      });
-      setCouponInput("");
-    } else {
-      setCouponFeedback({
-        type: "error",
-        message: result.message,
-      });
-    }
-  };
-
-  const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponFeedback(null);
-    setCouponInput("");
-  };
 
   const updateAddressField = (field: keyof AddressForm, value: string) => {
     setShippingAddress((current) => ({
@@ -403,7 +331,6 @@ export default function Checkout() {
     orderId: string,
     orderTotal: number,
     orderSubtotal: number,
-    orderDiscount: number,
     orderDeliveryFee: number,
     razorpayPaymentId?: string
   ) => {
@@ -446,8 +373,8 @@ export default function Checkout() {
         category: item.product.category,
       })),
       subtotal: orderSubtotal,
-      discount: orderDiscount,
-      couponCode: appliedCoupon?.code,
+      discount: 0,
+      couponCode: undefined,
       deliveryFee: orderDeliveryFee,
       total: orderTotal,
       deliveryMethod:
@@ -525,11 +452,6 @@ export default function Checkout() {
       // Add to context (which handles saving to Firestore)
       await addOrder(order);
 
-      // Mark coupon as used if applied
-      if (appliedCoupon?.code) {
-        await markCouponUsed(appliedCoupon.code);
-      }
-
       // Clear the local cart
       clearCart();
 
@@ -570,19 +492,6 @@ export default function Checkout() {
     if (items.length === 0) {
       setErrors({ cart: "Your cart is empty. Add a tea to continue." });
       navigate("/shop");
-      return;
-    }
-
-    if (appliedCoupon && isFirstOrderCouponCode(appliedCoupon.code) && !isFirstOrder) {
-      setAppliedCoupon(null);
-      setCouponFeedback({
-        type: "error",
-        message: "This coupon is only valid on your first order.",
-      });
-      setErrors((prev) => ({
-        ...prev,
-        submit: "The applied coupon is only valid on your first order. Please remove it to continue.",
-      }));
       return;
     }
 
@@ -635,7 +544,6 @@ export default function Checkout() {
         orderId,
         total,
         subtotal,
-        discountAmount,
         deliveryFee,
         razorpayPaymentId
       );
@@ -1033,48 +941,10 @@ export default function Checkout() {
           </div>
 
           <div className="checkout-total-box">
-            <div className="checkout-coupon-section" style={{ paddingBottom: "1.5rem", marginBottom: "1.5rem", borderBottom: "1px dashed rgba(11,43,30,0.2)" }}>
-              <div className="checkout-coupon-input-wrap" style={{ display: "flex", gap: "8px" }}>
-                <input
-                  type="text"
-                  placeholder="Gift card or discount code"
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value)}
-                  disabled={Boolean(appliedCoupon)}
-                  style={{ flex: 1, padding: "0.5rem", border: "1px solid #ccc", borderRadius: "4px" }}
-                />
-                <button
-                  type="button"
-                  onClick={handleApplyCoupon}
-                  disabled={Boolean(appliedCoupon) || !couponInput.trim()}
-                  style={{ padding: "0.5rem 1rem", background: "var(--leafly-forest)", color: "#fff", border: "none", borderRadius: "4px", cursor: Boolean(appliedCoupon) || !couponInput.trim() ? "not-allowed" : "pointer", opacity: Boolean(appliedCoupon) || !couponInput.trim() ? 0.5 : 1 }}
-                >
-                  Apply
-                </button>
-              </div>
-              {appliedCoupon && (
-                <div className="checkout-coupon-applied" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f0ede6", padding: "0.5rem", borderRadius: "4px", marginTop: "8px" }}>
-                  <span style={{ fontWeight: 600, color: "var(--leafly-forest)" }}>🏷️ {appliedCoupon.code}</span>
-                  <button type="button" onClick={handleRemoveCoupon} style={{ background: "none", border: "none", fontSize: "1.2rem", cursor: "pointer", color: "#e53e3e" }}>×</button>
-                </div>
-              )}
-              {couponFeedback && (
-                <small className={`checkout-coupon-message ${couponFeedback.type}`} style={{ display: "block", marginTop: "8px", color: couponFeedback.type === "error" ? "#e53e3e" : "#38a169" }}>
-                  {couponFeedback.message}
-                </small>
-              )}
-            </div>
-
             <div>
               <span>Subtotal</span>
               <strong>{currencyFormatter.format(subtotal)}</strong>
             </div>
-            {appliedCoupon && (
-              <div style={{ color: "#38a169" }}>
-                <span>Discount ({appliedCoupon.code})</span>
-                <strong>-{currencyFormatter.format(appliedCoupon.discountAmount)}</strong>
-              </div>
-            )}
             <div>
               <span>Delivery</span>
               <strong>{deliveryFee === 0 ? "Free" : currencyFormatter.format(deliveryFee)}</strong>

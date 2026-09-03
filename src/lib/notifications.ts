@@ -1,5 +1,7 @@
 import { collection, addDoc } from "firebase/firestore";
 import { db } from "./firebase";
+import { ApiService } from "./apiClient";
+import { getOrderConfirmationCustomerEmail } from "./emailTemplates";
 
 type OrderDetails = {
   id: string;
@@ -11,30 +13,32 @@ type OrderDetails = {
 
 export const NotificationService = {
   /**
-   * Sends an order confirmation email via Firebase 'Trigger Email' extension (e.g. using SendGrid).
+   * Sends order confirmation email via backend serverless API and queues to Firestore 'mail' collection
    */
   async sendOrderConfirmationEmail(order: OrderDetails) {
-    if (!order.email) return;
-    
+    // 1. Dispatch via Serverless API
     try {
-      await addDoc(collection(db, "mail"), {
-        to: order.email,
-        message: {
-          subject: `Thank you for your Leafly order #${order.id}`,
-          html: `
-            <div style="font-family: sans-serif; color: #333;">
-              <h2>Thank you for your order, ${order.customerName}!</h2>
-              <p>We've received your order <strong>#${order.id}</strong> and it is now being processed.</p>
-              <p><strong>Total:</strong> ₹${order.total}</p>
-              <br/>
-              <p>Best regards,<br/>The Leafly Team</p>
-            </div>
-          `,
-        }
-      });
-      console.log(`[EMAIL] Added order confirmation email for ${order.email} to Firestore 'mail' collection.`);
-    } catch (error) {
-      console.error("Error queueing email in Firestore:", error);
+      await ApiService.notifyOrderPlaced(order);
+    } catch (err) {
+      console.warn("[NotificationService] Serverless notification notice:", err);
+    }
+
+    // 2. Queue into Firestore 'mail' collection for Firebase Trigger Email extension
+    if (order.email) {
+      try {
+        const { subject, html } = getOrderConfirmationCustomerEmail(order);
+        await addDoc(collection(db, "mail"), {
+          to: order.email,
+          message: {
+            subject,
+            html,
+          },
+          createdAt: new Date().toISOString(),
+        });
+        console.info(`[NotificationService] Added order confirmation email for ${order.email} to Firestore 'mail'.`);
+      } catch (error) {
+        console.warn("[NotificationService] Firestore mail queue notice:", error);
+      }
     }
   },
 
@@ -43,6 +47,6 @@ export const NotificationService = {
    */
   async sendOrderConfirmationSMS(order: OrderDetails) {
     if (!order.phone) return;
-    console.log(`[SMS] Skipped sending SMS to ${order.phone} as per configuration.`);
+    console.info(`[SMS] Skipped sending SMS to ${order.phone} as per configuration.`);
   }
 };

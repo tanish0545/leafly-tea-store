@@ -22,14 +22,9 @@ export default function Login() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Forgot Password Multi-Step Modal State
+  // Forgot Password Modal State
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotStep, setForgotStep] = useState<"email" | "verify">("email");
   const [forgotEmail, setForgotEmail] = useState("");
-  const [resetCode, setResetCode] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [showNewPassword, setShowNewPassword] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotMessage, setForgotMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -63,19 +58,11 @@ export default function Login() {
     }
 
     setIsLoading(true);
-
     try {
       await login(cleanEmail, password);
-      setSuccessMessage("Welcome back to Leafly!");
-      const from = (location.state as { from?: { pathname?: string } })?.from?.pathname;
-      setTimeout(() => {
-        if (cleanEmail.toLowerCase() === "leaflydatabase@gmail.com") {
-          navigate("/admin", { replace: true });
-        } else {
-          navigate(from || "/profile", { replace: true });
-        }
-      }, 350);
-    } catch (err) {
+      // Wait for auth observer
+    } catch (err: unknown) {
+      console.error("Login authentication error:", err);
       setErrorMessage(formatAuthError(err));
     } finally {
       setIsLoading(false);
@@ -90,26 +77,22 @@ export default function Login() {
 
     try {
       await loginWithGoogle();
-      setSuccessMessage("Google authentication successful. Welcome!");
-      setTimeout(() => {
-        const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || "/profile";
-        navigate(from, { replace: true });
-      }, 400);
-    } catch (err) {
+    } catch (err: unknown) {
+      console.error("Google login error:", err);
       setErrorMessage(formatAuthError(err));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Forgot Password Step 1: Request Verification / Reset Link
+  // Forgot Password: Send official Firebase reset email
   const handleSendResetCode = async (e: FormEvent) => {
     e.preventDefault();
     setForgotMessage(null);
 
     const cleanForgot = forgotEmail.trim();
     if (!cleanForgot) {
-      setForgotMessage({ type: "error", text: "Please provide your registered email address." });
+      setForgotMessage({ type: "error", text: "Please enter your registered Gmail address." });
       return;
     }
 
@@ -123,7 +106,7 @@ export default function Login() {
       await sendPasswordReset(cleanForgot);
       setForgotMessage({
         type: "success",
-        text: "A password reset link has been dispatched to your email. Please check your inbox and spam folder.",
+        text: "Check your email: If an account exists for this email address, we've sent you a secure password reset link.",
       });
     } catch (err: unknown) {
       setForgotMessage({
@@ -133,47 +116,6 @@ export default function Login() {
     } finally {
       setForgotLoading(false);
     }
-  };
-
-  // Forgot Password Step 2: Verify Code and Set New Password
-  const handleVerifyCodeAndResetPassword = async (e: FormEvent) => {
-    e.preventDefault();
-    setForgotMessage(null);
-
-    const cleanCode = resetCode.trim();
-    if (!cleanCode || cleanCode.length < 6) {
-      setForgotMessage({ type: "error", text: "Please enter the 6-digit verification code sent to your email." });
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setForgotMessage({ type: "error", text: "New password must be at least 6 characters long." });
-      return;
-    }
-
-    if (newPassword !== confirmNewPassword) {
-      setForgotMessage({ type: "error", text: "Passwords do not match. Please retype carefully." });
-      return;
-    }
-
-    setForgotLoading(true);
-    setTimeout(() => {
-      setForgotMessage({
-        type: "success",
-        text: "Your password has been reset successfully. Please log in.",
-      });
-      setEmail(forgotEmail.trim());
-      setPassword("");
-      setForgotLoading(false);
-      setTimeout(() => {
-        setShowForgotModal(false);
-        setForgotStep("email");
-        setResetCode("");
-        setNewPassword("");
-        setConfirmNewPassword("");
-        setForgotMessage(null);
-      }, 1500);
-    }, 600);
   };
 
   return (
@@ -302,10 +244,6 @@ export default function Login() {
                       className="leafly-auth-forgot-link"
                       onClick={() => {
                         setForgotEmail(email);
-                        setForgotStep("email");
-                        setResetCode("");
-                        setNewPassword("");
-                        setConfirmNewPassword("");
                         setForgotMessage(null);
                         setShowForgotModal(true);
                       }}
@@ -395,12 +333,15 @@ export default function Login() {
             <div className="leafly-auth-modal-header">
               <div>
                 <span className="leafly-auth-modal-kicker">PASSWORD RECOVERY</span>
-                <h3>{forgotStep === "email" ? "Reset Your Password" : "Enter Verification Code"}</h3>
+                <h3>Reset Your Password</h3>
               </div>
               <button
                 type="button"
                 className="leafly-auth-modal-close"
-                onClick={() => setShowForgotModal(false)}
+                onClick={() => {
+                  setShowForgotModal(false);
+                  setForgotMessage(null);
+                }}
                 aria-label="Close modal"
               >
                 ✕
@@ -408,9 +349,7 @@ export default function Login() {
             </div>
 
             <p className="leafly-auth-modal-desc">
-              {forgotStep === "email"
-                ? "Enter your registered email address and we will dispatch a secure 6-digit one-time code."
-                : `Enter the 6-digit verification code sent to ${forgotEmail} and choose your new password.`}
+              Enter your registered Gmail address. We will send you a secure link to reset your password.
             </p>
 
             {forgotMessage && (
@@ -425,127 +364,46 @@ export default function Login() {
               </div>
             )}
 
-            {forgotStep === "email" ? (
-              <form onSubmit={handleSendResetCode}>
-                <div className="leafly-auth-field">
-                  <label htmlFor="forgot-email">Email Address</label>
-                  <div className="leafly-auth-input-wrapper">
-                    <input
-                      id="forgot-email"
-                      type="email"
-                      value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
-                      placeholder="name@gmail.com"
-                      required
-                      disabled={forgotLoading}
-                    />
-                  </div>
-                </div>
-
-                <div className="leafly-auth-modal-actions">
-                  <button
-                    type="button"
-                    className="leafly-auth-modal-cancel"
-                    onClick={() => setShowForgotModal(false)}
+            <form onSubmit={handleSendResetCode}>
+              <div className="leafly-auth-field">
+                <label htmlFor="forgot-email">Gmail Address</label>
+                <div className="leafly-auth-input-wrapper">
+                  <input
+                    id="forgot-email"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(e) => {
+                      setForgotEmail(e.target.value);
+                      if (forgotMessage) setForgotMessage(null);
+                    }}
+                    placeholder="name@gmail.com"
+                    required
                     disabled={forgotLoading}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="leafly-auth-submit-btn"
-                    disabled={forgotLoading}
-                  >
-                    {forgotLoading ? "DISPATCHING..." : "SEND VERIFICATION CODE"}
-                  </button>
+                  />
                 </div>
-              </form>
-            ) : (
-              <form onSubmit={handleVerifyCodeAndResetPassword}>
-                <div className="leafly-auth-field">
-                  <label htmlFor="reset-code">6-Digit Verification Code</label>
-                  <div className="leafly-auth-input-wrapper">
-                    <input
-                      id="reset-code"
-                      type="text"
-                      maxLength={6}
-                      value={resetCode}
-                      onChange={(e) => setResetCode(e.target.value.replace(/[^0-9]/g, ""))}
-                      placeholder="123456"
-                      style={{ letterSpacing: "4px", textAlign: "center", fontWeight: 700 }}
-                      required
-                      disabled={forgotLoading}
-                    />
-                  </div>
-                </div>
+              </div>
 
-                <div className="leafly-auth-field">
-                  <label htmlFor="new-password">New Password</label>
-                  <div className="leafly-auth-input-wrapper">
-                    <input
-                      id="new-password"
-                      type={showNewPassword ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="At least 6 characters"
-                      required
-                      disabled={forgotLoading}
-                    />
-                    <button
-                      type="button"
-                      className="leafly-auth-eye-btn"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      aria-label={showNewPassword ? "Hide password" : "Show password"}
-                    >
-                      {showNewPassword ? (
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
-                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                          <line x1="1" y1="1" x2="23" y2="23" />
-                        </svg>
-                      ) : (
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="leafly-auth-field">
-                  <label htmlFor="confirm-new-password">Confirm New Password</label>
-                  <div className="leafly-auth-input-wrapper">
-                    <input
-                      id="confirm-new-password"
-                      type={showNewPassword ? "text" : "password"}
-                      value={confirmNewPassword}
-                      onChange={(e) => setConfirmNewPassword(e.target.value)}
-                      placeholder="Repeat your new password"
-                      required
-                      disabled={forgotLoading}
-                    />
-                  </div>
-                </div>
-
-                <div className="leafly-auth-modal-actions">
-                  <button
-                    type="button"
-                    className="leafly-auth-modal-cancel"
-                    onClick={() => setForgotStep("email")}
-                    disabled={forgotLoading}
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    className="leafly-auth-submit-btn"
-                    disabled={forgotLoading || resetCode.length < 6 || newPassword.length < 6}
-                  >
-                    {forgotLoading ? "UPDATING..." : "UPDATE PASSWORD"}
-                  </button>
-                </div>
-              </form>
-            )}
+              <div className="leafly-auth-modal-actions">
+                <button
+                  type="button"
+                  className="leafly-auth-modal-cancel"
+                  onClick={() => {
+                    setShowForgotModal(false);
+                    setForgotMessage(null);
+                  }}
+                  disabled={forgotLoading}
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  className="leafly-auth-submit-btn"
+                  disabled={forgotLoading || !forgotEmail.trim()}
+                >
+                  {forgotLoading ? "DISPATCHING..." : "SEND RESET LINK"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

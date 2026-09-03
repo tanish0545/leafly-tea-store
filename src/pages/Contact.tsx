@@ -71,12 +71,16 @@ const initialForm: ContactForm = {
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+import { ApiService } from "../lib/apiClient";
+
 export default function Contact() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState<ContactForm>(initialForm);
   const [errors, setErrors] = useState<ContactErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [referenceId, setReferenceId] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   const handleChange = (
@@ -125,6 +129,7 @@ export default function Contact() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setSubmitError(null);
 
     const nextErrors = validateForm();
 
@@ -138,30 +143,17 @@ export default function Contact() {
     setErrors({});
 
     try {
-      const endpoint = import.meta.env.VITE_FORMSPREE_ENDPOINT || "https://formspree.io/f/leaflydatabase@gmail.com";
-      await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          subject: formData.subject,
-          message: formData.message,
-          recipient: "leaflydatabase@gmail.com",
-          formSource: "Leafly Contact Us Page",
-          timestamp: new Date().toISOString(),
-        }),
-      });
-
-      setIsSubmitted(true);
-      setFormData(initialForm);
-    } catch (err) {
+      const res = await ApiService.submitContactInquiry(formData);
+      if (res.success) {
+        setIsSubmitted(true);
+        setReferenceId(res.referenceId || null);
+        setFormData(initialForm);
+      } else {
+        setSubmitError(res.error || "We couldn't send your message right now. Please try again.");
+      }
+    } catch (err: unknown) {
       console.error("Error submitting contact form:", err);
-      setIsSubmitted(true);
-      setFormData(initialForm);
+      setSubmitError("We couldn't send your message right now. Please check your connection and try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -262,6 +254,12 @@ export default function Contact() {
               {errors.message && <small>{errors.message}</small>}
             </label>
 
+            {submitError && (
+              <p className="contact-field-error" style={{ color: "#e53e3e", fontSize: "14px", marginTop: "10px" }}>
+                {submitError}
+              </p>
+            )}
+
             <div className="form-actions">
               <button type="submit" className="contact-submit" disabled={isSubmitting}>
                 {isSubmitting ? "SENDING..." : "SEND MESSAGE"}
@@ -269,7 +267,17 @@ export default function Contact() {
             </div>
 
             {isSubmitted && (
-              <p className="form-success">Thank you for reaching out to Leafly. We&apos;ve received your message and will get back to you soon.</p>
+              <div className="form-success" style={{ marginTop: "16px", padding: "14px", background: "rgba(11, 43, 30, 0.06)", borderLeft: "3px solid #c9a24b", borderRadius: "4px" }}>
+                <strong style={{ display: "block", color: "#0b2b1e", marginBottom: "4px" }}>Message Received 🍃</strong>
+                <p style={{ margin: "0 0 6px", fontSize: "14px" }}>
+                  Thank you for reaching out to Leafly. A confirmation has been sent to your email.
+                </p>
+                {referenceId && (
+                  <span style={{ fontSize: "13px", color: "#c9a24b", fontWeight: 600 }}>
+                    Reference ID: #{referenceId}
+                  </span>
+                )}
+              </div>
             )}
           </form>
         </div>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import logo from "../assets/leafly-logo.webp";
+import { ApiService } from "../lib/apiClient";
 import "./Footer.css";
 
 const shopLinks = [
@@ -53,11 +54,20 @@ export default function Footer() {
     setIsSubmitting(true);
     setError(null);
 
-    setTimeout(() => {
+    try {
+      const res = await ApiService.subscribeNewsletter(cleanEmail, "Website Footer");
+      if (res.success) {
+        setIsSubmitted(true);
+        setEmail("");
+      } else {
+        setError(res.error || "We couldn't process your subscription right now. Please try again.");
+      }
+    } catch (err: unknown) {
+      console.error("Subscription error:", err);
+      setError("We couldn't process your subscription right now. Please try again in a moment.");
+    } finally {
       setIsSubmitting(false);
-      setIsSubmitted(true);
-      setEmail("");
-    }, 400);
+    }
   };
 
   return (
