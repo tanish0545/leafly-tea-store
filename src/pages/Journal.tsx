@@ -1,6 +1,9 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateArticleSchema, generateBreadcrumbSchema } from "../lib/seoData";
 import "./Journal.css";
 
 import teaTastingImage from "../assets/tea-tasting-journal.webp";
@@ -12,7 +15,7 @@ import assamImage from "../assets/Inside-assam.webp";
 import fiveSmallImage from "../assets/Five-small.webp";
 import caseImage from "../assets/The-case.webp";
 
-type Story = {
+export type Story = {
   id: number;
   category: string;
   title: string;
@@ -21,6 +24,14 @@ type Story = {
   image: string;
   content: string[];
 };
+
+function getStorySlug(story: { id: number; title: string }): string {
+  return story.title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
 
 const stories: Story[] = [
   {
@@ -126,11 +137,45 @@ const stories: Story[] = [
 ];
 
 export default function Journal() {
-  const [loading, setLoading] = useState(true);
-  const [selectedStory, setSelectedStory] = useState<Story | null>(null);
+  const { slug } = useParams<{ slug?: string }>();
+  const navigate = useNavigate();
+
+  const storyFromSlug = slug
+    ? stories.find((s) => getStorySlug(s) === slug || String(s.id) === slug) || null
+    : null;
+
+  const [loading, setLoading] = useState(() => !storyFromSlug);
+  const [selectedStory, setSelectedStory] = useState<Story | null>(storyFromSlug);
 
   useEffect(() => {
-    // Respect prefers-reduced-motion
+    if (slug) {
+      const match = stories.find((s) => getStorySlug(s) === slug || String(s.id) === slug);
+      if (match) {
+        setSelectedStory(match);
+        setLoading(false);
+      }
+    }
+  }, [slug]);
+
+  const handleCloseStory = useCallback(() => {
+    setSelectedStory(null);
+    if (slug) {
+      navigate("/journal");
+    }
+  }, [slug, navigate]);
+
+  const handleOpenStory = (story: Story) => {
+    setSelectedStory(story);
+    navigate(`/journal/${getStorySlug(story)}`);
+  };
+
+  useEffect(() => {
+    // Respect prefers-reduced-motion or if already navigated directly to a story
+    if (storyFromSlug) {
+      setLoading(false);
+      return;
+    }
+
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReducedMotion) {
       setLoading(false);
@@ -142,14 +187,14 @@ export default function Journal() {
     }, 3600);
 
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [storyFromSlug]);
 
   useEffect(() => {
     if (!selectedStory) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setSelectedStory(null);
+        handleCloseStory();
       }
     };
 
@@ -160,10 +205,59 @@ export default function Journal() {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [selectedStory]);
+  }, [selectedStory, handleCloseStory]);
+
+  const pageTitle = selectedStory
+    ? `${selectedStory.title} | Leafly Journal`
+    : "The Leafly Journal — Tea Stories, Origins & Brewing Guides | Leafly";
+
+  const pageDescription = selectedStory
+    ? selectedStory.description
+    : "Read thoughtful guides to loose leaf tea brewing, mountain terroirs of Darjeeling and Assam, whole leaf craft, and mindful daily tea rituals.";
+
+  const canonicalPath = selectedStory
+    ? `/journal/${getStorySlug(selectedStory)}`
+    : "/journal";
+
+  const breadcrumbs = selectedStory
+    ? [
+        { name: "Home", url: "/" },
+        { name: "Journal", url: "/journal" },
+        { name: selectedStory.title, url: canonicalPath },
+      ]
+    : [
+        { name: "Home", url: "/" },
+        { name: "Journal", url: "/journal" },
+      ];
+
+  const schemas: Record<string, unknown>[] = [
+    generateBreadcrumbSchema(breadcrumbs),
+  ];
+
+  if (selectedStory) {
+    schemas.push(
+      generateArticleSchema(
+        {
+          title: selectedStory.title,
+          description: selectedStory.description,
+          image: selectedStory.image,
+          category: selectedStory.category,
+        },
+        canonicalPath
+      )
+    );
+  }
 
   return (
     <main className={`journal-page ${loading ? "journal-loading" : "journal-ready"}`}>
+      <SEO
+        title={pageTitle}
+        description={pageDescription}
+        canonicalPath={canonicalPath}
+        image={selectedStory?.image}
+        type={selectedStory ? "article" : "website"}
+        schema={schemas}
+      />
       {/* =====================================================
           JOURNAL INTRO SEQUENCE LOADER (3.5s CINEMATIC STORY)
           Water -> Falling Leaf -> Ripple -> Book Appears -> Book Opens
@@ -405,7 +499,7 @@ export default function Journal() {
 
                   <button
                     type="button"
-                    onClick={() => setSelectedStory(story)}
+                    onClick={() => handleOpenStory(story)}
                   >
                     READ <span>✦</span>
                   </button>
@@ -425,7 +519,7 @@ export default function Journal() {
           className="journal-story-overlay"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              setSelectedStory(null);
+              handleCloseStory();
             }
           }}
         >
@@ -435,7 +529,7 @@ export default function Journal() {
               type="button"
               className="journal-story-close"
               aria-label="Close story"
-              onClick={() => setSelectedStory(null)}
+              onClick={handleCloseStory}
             >
               ×
             </button>
@@ -443,7 +537,7 @@ export default function Journal() {
             <div className="journal-story-modal-image">
               <img
                 src={selectedStory.image}
-                alt={selectedStory.title}
+                alt={`Leafly Journal - ${selectedStory.title}`}
               />
             </div>
 
@@ -468,6 +562,23 @@ export default function Journal() {
                     {paragraph}
                   </p>
                 ))}
+              </div>
+
+              {/* NATURAL INTERNAL LINKS */}
+              <div className="journal-story-related" style={{
+                marginTop: "24px",
+                padding: "16px 18px",
+                background: "rgba(201, 162, 75, 0.08)",
+                borderRadius: "8px",
+                fontSize: "13.5px"
+              }}>
+                <strong style={{ color: "#0b2b1e", display: "block", marginBottom: "8px" }}>Explore Leafly Teas &amp; Guides:</strong>
+                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                  <Link to="/tea-maker" style={{ color: "#0b2b1e", textDecoration: "underline" }}>Interactive Steeping Guide →</Link>
+                  <Link to="/collections/green-tea" style={{ color: "#0b2b1e", textDecoration: "underline" }}>Single-Origin Green Teas →</Link>
+                  <Link to="/collections/black-tea" style={{ color: "#0b2b1e", textDecoration: "underline" }}>Bold Assam Black Teas →</Link>
+                  <Link to="/shop" style={{ color: "#0b2b1e", textDecoration: "underline" }}>Browse All Teas →</Link>
+                </div>
               </div>
 
               <div className="journal-story-modal-footer">

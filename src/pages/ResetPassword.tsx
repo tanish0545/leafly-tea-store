@@ -5,6 +5,7 @@ import { auth } from "../lib/firebase";
 import logo from "../assets/leafly-logo.webp";
 import teaPlantationImg from "../assets/tea-plantation-hero.jpg";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
 import "./ResetPassword.css";
 
 export default function ResetPassword() {
@@ -96,6 +97,11 @@ export default function ResetPassword() {
 
   return (
     <div className="leafly-auth-page reset-password-page">
+      <SEO
+        title="Reset Password | Leafly"
+        description="Reset your Leafly account password."
+        noindex={true}
+      />
       <div className="leafly-auth-ambient-glow" aria-hidden="true" />
 
       <main className="leafly-auth-main-editorial">

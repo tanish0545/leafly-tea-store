@@ -3,6 +3,7 @@ import { useMemo, useState, useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useOrderContext } from "../context/OrderContext";
 import { useAuth, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
+import { useCoupons } from "../context/CouponContext";
 import { validatePhoneNumber } from "../lib/validation";
 import mainImage from "../assets/main.webp";
 import image2 from "../assets/image2.webp";
@@ -10,6 +11,7 @@ import image3 from "../assets/image3.webp";
 import image5 from "../assets/image5.webp";
 import Footer from "../components/Footer";
 import PhoneInput from "../components/PhoneInput";
+import SEO from "../components/SEO";
 import "./Profile.css";
 
 type SidebarItemId =
@@ -277,6 +279,27 @@ export default function Profile() {
   const [notice, setNotice] = useState("Welcome back. Your account is ready.");
   const [detailsSaved, setDetailsSaved] = useState(false);
   const [notifSaved, setNotifSaved] = useState(false);
+
+  const { coupons, globalCoupons } = useCoupons();
+  const [copiedCouponCode, setCopiedCouponCode] = useState<string | null>(null);
+
+  const allDisplayCoupons = useMemo(() => {
+    const list = [...coupons];
+    for (const gc of globalCoupons) {
+      if (!list.some((c) => c.code.toUpperCase() === gc.code.toUpperCase())) {
+        list.push(gc);
+      }
+    }
+    return list;
+  }, [coupons, globalCoupons]);
+
+  const handleCopyCoupon = (code: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(code);
+    }
+    setCopiedCouponCode(code);
+    setTimeout(() => setCopiedCouponCode(null), 2000);
+  };
   // Synchronize live user profile updates from Firestore / AuthContext
   useEffect(() => {
     if (user) {
@@ -482,6 +505,11 @@ export default function Profile() {
 
   return (
     <main className="profile-page">
+      <SEO
+        title="Your Account | Leafly"
+        description="Manage your Leafly account and preferences."
+        noindex={true}
+      />
       <div className="profile-page-shell">
         <aside className="profile-sidebar" aria-label="Profile navigation">
           <div className="profile-sidebar-brand">
@@ -768,22 +796,73 @@ export default function Profile() {
                   <p className="profile-card-kicker">REWARDS & PRIVILEGES</p>
                   <h2>COUPONS & REWARDS</h2>
                 </div>
+                <span className="profile-coupons-count-badge">
+                  {allDisplayCoupons.length} {allDisplayCoupons.length === 1 ? "Voucher" : "Vouchers"}
+                </span>
               </div>
 
-              <div className="profile-coming-soon-card">
-                <span className="profile-coming-soon-icon" aria-hidden="true">✦</span>
-                <span className="profile-coming-soon-badge">COMING SOON</span>
-                <h3>Exclusive Member Privileges</h3>
-                <p>
-                  Our bespoke tea reward and harvest voucher experience is currently being crafted.
-                  Soon, you’ll unlock ceremonial benefits, birthday gifts, and tiered single-estate privileges with every order.
-                </p>
-                <div className="profile-coming-soon-perks">
-                  <span>✦ First Harvest Access</span>
-                  <span>✦ Seasonal Vouchers</span>
-                  <span>✦ Sommelier Tastings</span>
+              {allDisplayCoupons.length === 0 ? (
+                <div className="profile-coming-soon-card">
+                  <span className="profile-coming-soon-icon" aria-hidden="true">✦</span>
+                  <h3>No Active Vouchers</h3>
+                  <p>
+                    You currently have no active promo vouchers. Check back during seasonal harvest releases for exclusive tasting privileges.
+                  </p>
                 </div>
-              </div>
+              ) : (
+                <div className="profile-coupons-grid">
+                  {allDisplayCoupons.map((coupon) => (
+                    <article
+                      key={coupon.code}
+                      className={`profile-coupon-card ${coupon.status === "used" ? "used" : ""}`}
+                    >
+                      <div className="profile-coupon-card-top">
+                        <span className="profile-coupon-tag">{coupon.title || "Harvest Privilege"}</span>
+                        <span className={`profile-coupon-status ${coupon.status || "available"}`}>
+                          {(coupon.status || "available").toUpperCase()}
+                        </span>
+                      </div>
+
+                      <div className="profile-coupon-discount">
+                        <strong>
+                          {coupon.discountValue}
+                          {coupon.discountType === "percentage" ? "% OFF" : "₹ OFF"}
+                        </strong>
+                      </div>
+
+                      <p className="profile-coupon-condition">
+                        {coupon.applicableCondition ||
+                          (coupon.minOrderValue && coupon.minOrderValue > 0
+                            ? `Valid on orders above ₹${coupon.minOrderValue.toLocaleString("en-IN")}`
+                            : "Valid on all eligible harvests")}
+                      </p>
+
+                      {coupon.expiryDate && (
+                        <p className="profile-coupon-expiry">
+                          Expires: {coupon.expiryDate}
+                        </p>
+                      )}
+
+                      <div className="profile-coupon-bottom">
+                        <div className="profile-coupon-code-box">
+                          <span>VOUCHER CODE</span>
+                          <strong>{coupon.code}</strong>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="profile-coupon-copy-btn"
+                          onClick={() => handleCopyCoupon(coupon.code)}
+                          disabled={coupon.status === "used"}
+                          aria-label={`Copy voucher code ${coupon.code}`}
+                        >
+                          {copiedCouponCode === coupon.code ? "COPIED ✓" : "COPY CODE"}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 

@@ -1,0 +1,199 @@
+/* ==========================================================
+   LEAFLY — BRAND LOADER
+   Luxurious dark-green entrance with logo, floating leaves,
+   and warm gold line.
+   ========================================================== */
+
+.leafly-brand-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+  transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.45s ease;
+}
+
+.leafly-brand-loader.loader-fade-out {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.brand-loader-backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 45%, #0d3625 0%, #061912 65%, #020b08 100%);
+  opacity: 0.98;
+}
+
+.brand-loader-center {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px;
+}
+
+.brand-loader-logo-wrap {
+  width: 140px;
+  height: 54px;
+  margin-bottom: 24px;
+  animation: brandLogoReveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.brand-loader-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+}
+
+.brand-loader-progress-track {
+  width: 180px;
+  height: 2px;
+  background: rgba(201, 162, 75, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.brand-loader-progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #c9a24b, #dfc07b, #c9a24b);
+  border-radius: 2px;
+  transform: translateX(-100%);
+  animation: brandProgressFill 1.3s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+.brand-loader-subtitle {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  color: #dfc07b;
+  opacity: 0;
+  animation: brandSubtitleFade 0.8s ease 0.35s forwards;
+}
+
+/* Floating ambient leaf particles around logo */
+.brand-loader-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.ambient-leaf {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 2C8 6 3 11 3 16C3 19.3 5.7 22 9 22C12.3 22 17 19.5 21 14C17 14 13 11 12 2Z' fill='%23C9A24B' fill-opacity='0.45'/%3E%3C/svg%3E");
+}
+
+.ambient-leaf.leaf-1 {
+  top: 40%;
+  left: 38%;
+  animation: floatLeaf1 2.2s ease-in-out infinite;
+}
+
+.ambient-leaf.leaf-2 {
+  top: 45%;
+  right: 36%;
+  width: 13px;
+  height: 13px;
+  animation: floatLeaf2 2.6s ease-in-out 0.4s infinite;
+}
+
+.ambient-leaf.leaf-3 {
+  bottom: 40%;
+  left: 42%;
+  width: 11px;
+  height: 11px;
+  animation: floatLeaf1 2s ease-in-out 0.8s infinite;
+}
+
+.ambient-leaf.leaf-4 {
+  top: 36%;
+  right: 43%;
+  width: 14px;
+  height: 14px;
+  animation: floatLeaf2 2.4s ease-in-out 0.2s infinite;
+}
+
+@keyframes brandLogoReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes brandProgressFill {
+  0% {
+    transform: translateX(-100%);
+  }
+  60% {
+    transform: translateX(-15%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes brandSubtitleFade {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 0.85;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatLeaf1 {
+  0%, 100% {
+    opacity: 0;
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translateY(-16px) translateX(8px) rotate(35deg);
+  }
+}
+
+@keyframes floatLeaf2 {
+  0%, 100% {
+    opacity: 0;
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    opacity: 0.55;
+    transform: translateY(-14px) translateX(-10px) rotate(-30deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-loader-logo-wrap,
+  .brand-loader-progress-bar,
+  .brand-loader-subtitle,
+  .ambient-leaf {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

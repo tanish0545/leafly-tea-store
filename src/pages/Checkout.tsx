@@ -13,9 +13,11 @@ import { useAuth } from "../context/AuthContext";
 import { validatePhoneNumber, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../lib/validation";
 import { COUNTRIES_LIST, INDIAN_STATES_AND_CITIES } from "../data/indianLocations";
 import { auth, db } from "../lib/firebase";
-import { doc, getDoc, setDoc, updateDoc, increment } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { NotificationService } from "../lib/notifications";
+import { useCoupons } from "../context/CouponContext";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
 import "./Checkout.css";
 
 type AddressForm = {
@@ -91,6 +93,17 @@ export default function Checkout() {
   const { items, subtotal, clearCart } = useCart();
   const { addOrder } = useOrderContext();
   const { currentUser, loading: authLoading, isAuthenticated } = useAuth();
+  const { validateUserCoupon, markCouponUsed } = useCoupons();
+
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountType: "percentage" | "fixed";
+    discountValue: number;
+    minOrderValue: number;
+  } | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [couponSuccess, setCouponSuccess] = useState("");
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -100,6 +113,15 @@ export default function Checkout() {
 
   const [email, setEmail] = useState(() => currentUser?.email || "");
   const [phone, setPhone] = useState(() => currentUser?.phone || currentUser?.phoneNumber || "");
+
+  useEffect(() => {
+    if (currentUser?.email && !email) {
+      setEmail(currentUser.email);
+    }
+    if ((currentUser?.phone || currentUser?.phoneNumber) && !phone) {
+      setPhone(currentUser.phone || currentUser.phoneNumber || "");
+    }
+  }, [currentUser, email, phone]);
 
   const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express">("standard");
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "cod">("cod");
@@ -247,10 +269,47 @@ export default function Checkout() {
     return deliveryMethod === "express" ? 99 : 0;
   }, [deliveryMethod, items.length]);
 
+  const discountAmount = useMemo(() => {
+    if (!appliedCoupon) return 0;
+    if (appliedCoupon.discountType === "percentage") {
+      return Math.round((subtotal * appliedCoupon.discountValue) / 100);
+    }
+    return Math.min(subtotal, appliedCoupon.discountValue);
+  }, [appliedCoupon, subtotal]);
+
   const total = useMemo(
-    () => Math.max(0, subtotal + deliveryFee),
-    [deliveryFee, subtotal]
+    () => Math.max(0, subtotal - discountAmount + deliveryFee),
+    [deliveryFee, subtotal, discountAmount]
   );
+
+  const handleApplyCoupon = () => {
+    setCouponError("");
+    setCouponSuccess("");
+    const trimmed = couponInput.trim();
+    if (!trimmed) {
+      setCouponError("Please enter a voucher or promo code.");
+      return;
+    }
+    const res = validateUserCoupon(trimmed, subtotal);
+    if (res.isValid) {
+      setAppliedCoupon({
+        code: res.code,
+        discountType: res.discountType,
+        discountValue: res.discountValue,
+        minOrderValue: res.minOrderValue,
+      });
+      setCouponSuccess(res.message);
+      setCouponInput("");
+    } else {
+      setCouponError(res.message || "Invalid coupon code.");
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponError("");
+    setCouponSuccess("");
+  };
 
   const updateAddressField = (field: keyof AddressForm, value: string) => {
     setShippingAddress((current) => ({
@@ -356,7 +415,12 @@ export default function Checkout() {
       userId: currentUid,
       customerId: currentUid,
       customerName: shippingAddress.fullName.trim(),
-      customerEmail: email.trim().toLowerCase(),
+      customerEmail: (
+        email.trim() ||
+        currentUser?.email ||
+        auth.currentUser?.email ||
+        ""
+      ).toLowerCase(),
       customerPhone: phone.trim() || currentUser?.phone || undefined,
       createdAt: new Date().toISOString(),
       status: resolvedPaymentMethod === "Pay on Delivery" ? "Confirmed" : "Processing",
@@ -373,8 +437,8 @@ export default function Checkout() {
         category: item.product.category,
       })),
       subtotal: orderSubtotal,
-      discount: 0,
-      couponCode: undefined,
+      discount: discountAmount,
+      couponCode: appliedCoupon ? appliedCoupon.code : undefined,
       deliveryFee: orderDeliveryFee,
       total: orderTotal,
       deliveryMethod:
@@ -426,25 +490,67 @@ export default function Checkout() {
     try {
       const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
       await setDoc(doc(db, "orders", order.id), cleanOrder);
+
+      if (appliedCoupon) {
+        try {
+          await markCouponUsed(appliedCoupon.code);
+        } catch (couponErr) {
+          console.warn("Could not mark coupon as used:", couponErr);
+        }
+      }
       for (const item of order.items) {
         if (item.productId) {
+          const idStr = String(item.productId);
+          const cat = (item.category || "").toLowerCase();
+
+          // Determine preferred collection
+          let preferredCol = "products";
+          if (cat === "teaware" || cat === "teapots" || cat === "tea cups" || cat === "serving & trays" || cat === "storage & accessories") {
+            preferredCol = "teaware";
+          } else if (cat.includes("hamper") || cat.includes("gift")) {
+            preferredCol = "hampers";
+          }
+
           try {
-            const pRef = doc(db, "products", String(item.productId));
-            const pSnap = await getDoc(pRef);
-            if (pSnap.exists()) {
-              const currentStock = typeof pSnap.data().stock === "number" ? pSnap.data().stock : 10;
+            let docRef = doc(db, preferredCol, idStr);
+            let snap = await getDoc(docRef);
+
+            // Probe remaining collections if not in preferred
+            if (!snap.exists() && preferredCol !== "teaware") {
+              const twRef = doc(db, "teaware", idStr);
+              const twSnap = await getDoc(twRef);
+              if (twSnap.exists()) {
+                docRef = twRef;
+                snap = twSnap;
+              }
+            }
+            if (!snap.exists() && preferredCol !== "hampers") {
+              const hRef = doc(db, "hampers", idStr);
+              const hSnap = await getDoc(hRef);
+              if (hSnap.exists()) {
+                docRef = hRef;
+                snap = hSnap;
+              }
+            }
+            if (!snap.exists() && preferredCol !== "products") {
+              const pRef = doc(db, "products", idStr);
+              const pSnap = await getDoc(pRef);
+              if (pSnap.exists()) {
+                docRef = pRef;
+                snap = pSnap;
+              }
+            }
+
+            if (snap.exists()) {
+              const currentStock = typeof snap.data().stock === "number" ? snap.data().stock : 10;
               const newStock = Math.max(0, currentStock - item.quantity);
-              await updateDoc(pRef, {
+              await updateDoc(docRef, {
                 stock: newStock,
                 inStock: newStock > 0,
               });
-            } else {
-              await updateDoc(pRef, {
-                stock: increment(-item.quantity),
-              });
             }
           } catch (stockError) {
-            console.error(`Failed to update stock for product ${item.productId}:`, stockError);
+            console.error(`Failed to update stock for item ${item.productId}:`, stockError);
           }
         }
       }
@@ -587,6 +693,11 @@ export default function Checkout() {
 
   return (
     <main className="checkout-page">
+      <SEO
+        title="Secure Checkout | Leafly"
+        description="Secure checkout for your Leafly tea order."
+        noindex={true}
+      />
       <div className="checkout-header">
         <div>
           <p className="checkout-eyebrow">LEAFLY CHECKOUT</p>
@@ -940,11 +1051,72 @@ export default function Checkout() {
             ))}
           </div>
 
+          {/* COUPON SECTION */}
+          <div className="checkout-coupon-section">
+            <label className="checkout-coupon-title">HAVE A VOUCHER OR PROMO CODE?</label>
+            {appliedCoupon ? (
+              <div className="checkout-applied-coupon-card">
+                <div className="checkout-applied-coupon-info">
+                  <span className="checkout-applied-badge">APPLIED</span>
+                  <strong className="checkout-applied-code">{appliedCoupon.code}</strong>
+                  <span className="checkout-applied-saving">
+                    -{currencyFormatter.format(discountAmount)} OFF
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="checkout-remove-coupon-btn"
+                  onClick={handleRemoveCoupon}
+                  aria-label="Remove coupon"
+                >
+                  REMOVE
+                </button>
+              </div>
+            ) : (
+              <div className="checkout-coupon-form">
+                <div className="checkout-coupon-input-wrap">
+                  <input
+                    type="text"
+                    className="checkout-coupon-input"
+                    placeholder="Enter promo code (e.g. Leafly10)"
+                    value={couponInput}
+                    onChange={(e) => {
+                      setCouponInput(e.target.value);
+                      if (couponError) setCouponError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleApplyCoupon();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="checkout-coupon-apply-btn"
+                    onClick={handleApplyCoupon}
+                    disabled={!couponInput.trim()}
+                  >
+                    APPLY
+                  </button>
+                </div>
+                {couponError && <p className="checkout-coupon-msg error">{couponError}</p>}
+                {couponSuccess && <p className="checkout-coupon-msg success">{couponSuccess}</p>}
+              </div>
+            )}
+          </div>
+
           <div className="checkout-total-box">
             <div>
               <span>Subtotal</span>
               <strong>{currencyFormatter.format(subtotal)}</strong>
             </div>
+            {discountAmount > 0 && (
+              <div className="checkout-discount-row">
+                <span>Voucher ({appliedCoupon?.code})</span>
+                <strong className="checkout-discount-amount">-{currencyFormatter.format(discountAmount)}</strong>
+              </div>
+            )}
             <div>
               <span>Delivery</span>
               <strong>{deliveryFee === 0 ? "Free" : currencyFormatter.format(deliveryFee)}</strong>

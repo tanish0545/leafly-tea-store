@@ -4,9 +4,11 @@ import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { type Product, type ProductVariantKey, getProductSlug, isProductInStock } from "../data/products";
 import { useTeaware } from "../context/TeawareContext";
+import { useGifting } from "../context/GiftingContext";
 import { useProducts } from "../context/ProductContext";
 import Footer from "../components/Footer";
-import { Helmet } from "react-helmet-async";
+import SEO from "../components/SEO";
+import { generateProductSchema, generateTeawareSchema, generateBreadcrumbSchema } from "../lib/seoData";
 import "./ProductDetail.css";
 
 export default function ProductDetail() {
@@ -14,6 +16,7 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { products } = useProducts();
   const { teaware } = useTeaware();
+  const { hampers } = useGifting();
 
   const { addToCart } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
@@ -29,6 +32,10 @@ export default function ProductDetail() {
     (t) => getProductSlug(t) === identifier || String(t.id) === identifier
   );
 
+  const hamperItem = hampers.find(
+    (h) => getProductSlug(h) === identifier || String(h.id) === identifier
+  );
+
   const product: Product | undefined =
     products.find(
       (p) => getProductSlug(p) === identifier || String(p.id) === identifier
@@ -37,27 +44,59 @@ export default function ProductDetail() {
       ? {
           id: teawareItem.id,
           name: teawareItem.name,
-          category: "Green",
-          origin: teawareItem.material,
-          caffeine: "Low",
+          category: "Teaware" as unknown as Product["category"],
+          origin: teawareItem.material || "Artisan Craft",
+          caffeine: "Teaware" as unknown as Product["caffeine"],
           weight: teawareItem.capacity || "1 Unit",
-          price: teawareItem.price,
-          oldPrice: teawareItem.oldPrice,
-          badge: teawareItem.badge,
+          price: Number(teawareItem.price) || 0,
+          oldPrice: teawareItem.oldPrice ? Number(teawareItem.oldPrice) : undefined,
+          badge: teawareItem.badge || "Ceremonial",
           image: teawareItem.image,
           variants: {
             "100g": {
-              weight: "100g",
-              price: teawareItem.price,
-              oldPrice: teawareItem.oldPrice,
+              weight: teawareItem.capacity || "Standard",
+              price: Number(teawareItem.price) || 0,
+              oldPrice: teawareItem.oldPrice ? Number(teawareItem.oldPrice) : undefined,
             },
-            "250g": { weight: "250g", price: teawareItem.price },
+            "250g": {
+              weight: teawareItem.capacity || "Standard",
+              price: Number(teawareItem.price) || 0,
+              oldPrice: teawareItem.oldPrice ? Number(teawareItem.oldPrice) : undefined,
+            },
           },
           rating: teawareItem.rating,
           reviewCount: teawareItem.reviewCount,
           description: teawareItem.description,
-          stock: 10,
-          inStock: true,
+          stock: typeof teawareItem.stock === "number" ? teawareItem.stock : 10,
+          inStock: teawareItem.inStock !== false && (typeof teawareItem.stock !== "number" || teawareItem.stock > 0),
+        }
+      : hamperItem
+      ? {
+          id: hamperItem.id,
+          name: hamperItem.name,
+          category: "Gifting" as unknown as Product["category"],
+          origin: "Curated Estate Blend",
+          caffeine: "Varied" as unknown as Product["caffeine"],
+          weight: "Gift Box",
+          price: Number(hamperItem.price) || 0,
+          oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
+          badge: hamperItem.badge || "Luxury Gift Set",
+          image: hamperItem.image,
+          variants: {
+            "100g": {
+              weight: "Gift Box",
+              price: Number(hamperItem.price) || 0,
+              oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
+            },
+            "250g": {
+              weight: "Gift Box",
+              price: Number(hamperItem.price) || 0,
+              oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
+            },
+          },
+          description: hamperItem.description || hamperItem.subtitle,
+          stock: typeof hamperItem.stock === "number" ? hamperItem.stock : 10,
+          inStock: hamperItem.inStock !== false && (typeof hamperItem.stock !== "number" || hamperItem.stock > 0),
         }
       : undefined);
 
@@ -153,13 +192,52 @@ export default function ProductDetail() {
   /* --- render ---------------------------------------------- */
 
   const isTeaware = Boolean(teawareItem);
+  const canonicalPath = isTeaware
+    ? `/teaware/${getProductSlug(product)}`
+    : `/shop/${getProductSlug(product)}`;
+
+  const pageTitle = isTeaware
+    ? `${product.name} | Artisan Teaware | Leafly`
+    : `${product.name} | Premium ${product.category} Tea | Leafly`;
+
+  const pageDescription = product.description
+    ? product.description
+    : isTeaware
+    ? `Discover ${product.name}, a handcrafted teaware piece from Leafly. Crafted from ${teawareItem?.material || "artisanal materials"} for mindful tea rituals.`
+    : `Discover ${product.name}, a premium single-origin ${product.category} tea from ${product.origin} by Leafly. Hand-harvested whole leaves crafted for mindful brewing moments. Available in 100g and 250g tins.`;
+
+  const breadcrumbs = isTeaware
+    ? [
+        { name: "Home", url: "/" },
+        { name: "Teaware", url: "/teaware" },
+        { name: product.name, url: canonicalPath },
+      ]
+    : [
+        { name: "Home", url: "/" },
+        { name: "Shop", url: "/shop" },
+        {
+          name: `${product.category} Tea`,
+          url: `/collections/${product.category.toLowerCase()}-tea`,
+        },
+        { name: product.name, url: canonicalPath },
+      ];
+
+  const productSchema = isTeaware && teawareItem
+    ? generateTeawareSchema(teawareItem, canonicalPath)
+    : generateProductSchema(product, canonicalPath);
+
+  const breadcrumbSchema = generateBreadcrumbSchema(breadcrumbs);
 
   return (
     <main className="product-detail-page">
-      <Helmet>
-        <title>{product.name} | Leafly Premium Tea</title>
-        <meta name="description" content={product.description || `Buy ${product.name}, a premium ${product.category} tea from ${product.origin}.`} />
-      </Helmet>
+      <SEO
+        title={pageTitle}
+        description={pageDescription}
+        canonicalPath={canonicalPath}
+        image={product.image}
+        type="product"
+        schema={[productSchema, breadcrumbSchema]}
+      />
       {/* HEADER / BREADCRUMB */}
 
       <div className="pdp-header">
@@ -191,7 +269,7 @@ export default function ProductDetail() {
         <div className="pdp-image-wrap">
           <img
             src={product.image}
-            alt={`Leafly ${product.name}`}
+            alt={`Leafly ${product.name} - ${isTeaware ? teawareItem?.material : `${product.origin} ${product.category} Tea`}`}
             className="pdp-image"
             loading="eager"
             fetchPriority="high"
@@ -445,6 +523,37 @@ export default function ProductDetail() {
           </div>
         </div>
       </div>
+
+      {/* RITUAL & PAIRING INTERNAL LINKS */}
+      <section className="pdp-ritual-links" aria-label="Explore Tea Rituals" style={{
+        maxWidth: "1200px",
+        margin: "48px auto 24px",
+        padding: "24px 20px",
+        borderTop: "1px solid rgba(201, 162, 75, 0.25)",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "20px",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }}>
+        <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", fontSize: "14px", fontWeight: 500 }}>
+          {!isTeaware && (
+            <Link to={`/collections/${product.category.toLowerCase()}-tea`} style={{ color: "#0b2b1e", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <span>🍃</span> Explore {product.category} Tea Collection →
+            </Link>
+          )}
+          <Link to="/tea-maker" style={{ color: "#0b2b1e", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            <span>♨</span> Interactive Steeping Guide →
+          </Link>
+          <Link to="/teaware" style={{ color: "#0b2b1e", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            <span>☕</span> Handcrafted Teaware &amp; Cups →
+          </Link>
+          <Link to="/gifting" style={{ color: "#0b2b1e", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            <span>♧</span> Luxury Tea Gift Boxes →
+          </Link>
+        </div>
+      </section>
+
       <Footer />
     </main>
   );

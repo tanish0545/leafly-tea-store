@@ -7,9 +7,14 @@ export type GiftHamper = {
   name: string;
   subtitle: string;
   price: number;
+  oldPrice?: number;
   image: string;
   includes: string[];
   badge?: string;
+  description?: string;
+  stock?: number;
+  inStock?: boolean;
+  category?: string;
 };
 
 export const giftHampers: GiftHamper[] = [

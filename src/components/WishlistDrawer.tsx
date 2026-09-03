@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCart } from "../context/CartContext";
+import { useCart, type CartProduct, resolveLiveCatalogProduct } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
+import { useProducts } from "../context/ProductContext";
+import { useTeaware } from "../context/TeawareContext";
+import { useGifting } from "../context/GiftingContext";
 import "./WishlistDrawer.css";
 
 export default function WishlistDrawer() {
@@ -9,12 +12,29 @@ export default function WishlistDrawer() {
     useWishlist();
 
   const { addToCart } = useCart();
+  const { products } = useProducts();
+  const { teaware } = useTeaware();
+  const { hampers } = useGifting();
 
   const navigate = useNavigate();
 
   const [addingId, setAddingId] = useState<number | string | null>(null);
   const [addedId, setAddedId] = useState<number | string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const isProductOutOfStock = (product: CartProduct): boolean => {
+    const live = resolveLiveCatalogProduct(product, products, teaware, hampers);
+    if (live) {
+      return !live.inStock || live.stock <= 0;
+    }
+    // Differentiate: NOT FOUND vs FOUND + stock = 0.
+    // If not found in live catalogs yet (e.g. initial load), do NOT assume out of stock.
+    // Only flag as OOS if snapshot explicitly specified stock <= 0 and inStock === false.
+    if (product.inStock === false && typeof product.stock === "number" && product.stock === 0) {
+      return true;
+    }
+    return false;
+  };
 
   useEffect(() => {
     if (!isWishlistOpen) {
@@ -55,10 +75,28 @@ export default function WishlistDrawer() {
       return;
     }
 
+    const live = resolveLiveCatalogProduct(wishlistItem.product, products, teaware, hampers);
+    const isOutOfStock = live ? (!live.inStock || live.stock <= 0) : isProductOutOfStock(wishlistItem.product);
+
+    if (isOutOfStock) {
+      return;
+    }
+
+    const productToAdd = live
+      ? {
+          ...wishlistItem.product,
+          price: live.price,
+          oldPrice: live.oldPrice,
+          stock: live.stock,
+          inStock: live.inStock,
+          image: live.image,
+        }
+      : wishlistItem.product;
+
     setAddingId(id);
 
     window.setTimeout(() => {
-      addToCart(wishlistItem.product);
+      addToCart(productToAdd);
       setAddingId(null);
       setAddedId(id);
 
@@ -191,27 +229,23 @@ export default function WishlistDrawer() {
                           </span>
 
                           <div className="leafly-wishlist-item-footer">
-                            <div className="leafly-wishlist-price">
-                              <strong>
-                                ₹
-                                {(
-                                  product.price
-                                ).toLocaleString(
-                                  "en-IN"
-                                )}
-                              </strong>
-
-                              {product.oldPrice && (
-                                <span className="leafly-wishlist-oldprice">
-                                  ₹
-                                  {(
-                                    product.oldPrice
-                                  ).toLocaleString(
-                                    "en-IN"
+                            {(() => {
+                              const live = resolveLiveCatalogProduct(product, products, teaware, hampers);
+                              const currentPrice = live ? live.price : product.price;
+                              const currentOldPrice = live ? live.oldPrice : product.oldPrice;
+                              return (
+                                <div className="leafly-wishlist-price">
+                                  <strong>
+                                    ₹{currentPrice.toLocaleString("en-IN")}
+                                  </strong>
+                                  {currentOldPrice && currentOldPrice > currentPrice && (
+                                    <span className="leafly-wishlist-oldprice">
+                                      ₹{currentOldPrice.toLocaleString("en-IN")}
+                                    </span>
                                   )}
-                                </span>
-                              )}
-                            </div>
+                                </div>
+                              );
+                            })()}
 
                             <button
                               type="button"
@@ -228,29 +262,38 @@ export default function WishlistDrawer() {
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          className={`leafly-wishlist-add-to-cart ${
-                            isAdding
-                              ? "loading"
-                              : ""
-                          } ${isAdded ? "added" : ""}`}
-                          onClick={() =>
-                            handleAddToCart(
-                              product.id
-                            )
-                          }
-                          disabled={
-                            addingId !== null
-                          }
-                          aria-label={`Add ${product.name} to cart`}
-                        >
-                          {isAdded
-                            ? "ADDED ✓"
-                            : isAdding
-                              ? "..."
-                              : "ADD TO CART"}
-                        </button>
+                        {(() => {
+                          const isOutOfStock = isProductOutOfStock(product);
+                          return (
+                            <button
+                              type="button"
+                              className={`leafly-wishlist-add-to-cart ${
+                                isOutOfStock
+                                  ? "out-of-stock"
+                                  : isAdding
+                                    ? "loading"
+                                    : ""
+                              } ${isAdded ? "added" : ""}`}
+                              onClick={() =>
+                                !isOutOfStock && handleAddToCart(product.id)
+                              }
+                              disabled={addingId !== null || isOutOfStock}
+                              aria-label={
+                                isOutOfStock
+                                  ? `${product.name} is currently out of stock`
+                                  : `Add ${product.name} to cart`
+                              }
+                            >
+                              {isOutOfStock
+                                ? "OUT OF STOCK"
+                                : isAdded
+                                  ? "ADDED ✓"
+                                  : isAdding
+                                    ? "..."
+                                    : "ADD TO CART"}
+                            </button>
+                          );
+                        })()}
                       </article>
                     );
                   }

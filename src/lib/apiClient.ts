@@ -32,6 +32,7 @@ export interface GiftingResponse {
 export interface ContactFormPayload {
   name: string;
   email: string;
+  phone?: string;
   subject: string;
   message: string;
 }
@@ -163,7 +164,9 @@ export const ApiService = {
    */
   async submitContactInquiry(payload: ContactFormPayload): Promise<ContactResponse> {
     const cleanEmail = payload.email.trim().toLowerCase();
+    const cleanPhone = payload.phone?.trim() || "";
     const referenceId = `CT-${Date.now().toString(36).toUpperCase()}`;
+    let firestoreSaved = false;
 
     // 1. Save to Firestore
     try {
@@ -171,12 +174,14 @@ export const ApiService = {
         referenceId,
         name: payload.name.trim(),
         email: cleanEmail,
+        phone: cleanPhone || null,
         subject: payload.subject.trim(),
         message: payload.message.trim(),
         status: "Unread",
         createdAt: new Date().toISOString(),
         timestamp: serverTimestamp(),
       });
+      firestoreSaved = true;
     } catch (dbError) {
       console.warn("[ApiService] Firestore contact record notice:", dbError);
     }
@@ -186,18 +191,41 @@ export const ApiService = {
       const result = await postApi<ContactResponse>("/api/contact", {
         ...payload,
         email: cleanEmail,
+        phone: cleanPhone || undefined,
       });
+
+      if (result && result.success) {
+        return {
+          success: true,
+          referenceId: result.referenceId || referenceId,
+          message: result.message || "Your message has been received. Check your email for confirmation.",
+        };
+      }
+
+      if (firestoreSaved) {
+        return {
+          success: true,
+          referenceId,
+          message: "Your inquiry has been received (Ref #" + referenceId + "). Our team will review your message shortly.",
+        };
+      }
+
       return {
-        success: true,
-        referenceId: result.referenceId || referenceId,
-        message: "Your message has been received. Check your email for confirmation.",
+        success: false,
+        error: result?.error || "We couldn't submit your message right now. Please try again.",
       };
     } catch (apiError) {
       console.warn("[ApiService] Contact API error, fallback handled:", apiError);
+      if (firestoreSaved) {
+        return {
+          success: true,
+          referenceId,
+          message: "Thank you for reaching out. We have received your note (Ref #" + referenceId + ") and our concierge team will reply soon.",
+        };
+      }
       return {
-        success: true,
-        referenceId,
-        message: "Thank you for reaching out. We have received your note and will reply soon.",
+        success: false,
+        error: "Unable to submit inquiry. Please check your internet connection or email us directly at leaflydatabase@gmail.com.",
       };
     }
   },
@@ -210,6 +238,24 @@ export const ApiService = {
       await postApi("/api/order-notification", payload as unknown as Record<string, unknown>);
     } catch (err) {
       console.warn("[ApiService] Order email API notification notice:", err);
+    }
+  },
+
+  /**
+   * Dispatches new user welcome email (for both Email/Password and Google sign-up)
+   */
+  async sendWelcomeEmail(payload: { name: string; email: string }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const cleanEmail = payload.email.trim().toLowerCase();
+      if (!cleanEmail) return { success: false, error: "Email is required" };
+      const res = await postApi<{ success: boolean; error?: string }>("/api/welcome", {
+        name: payload.name.trim() || "Valued Patron",
+        email: cleanEmail,
+      });
+      return res;
+    } catch (err) {
+      console.warn("[ApiService] Welcome email API notice:", err);
+      return { success: false, error: err instanceof Error ? err.message : "Failed to send welcome email" };
     }
   },
 };

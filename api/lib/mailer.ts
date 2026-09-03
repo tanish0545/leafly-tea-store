@@ -15,6 +15,7 @@ export type EmailPayload = {
 
 export type MailResult = {
   success: boolean;
+  delivered: boolean;
   messageId?: string;
   simulated?: boolean;
   error?: string;
@@ -39,7 +40,7 @@ export function getTransporter(): nodemailer.Transporter | null {
   }
 
   // Check for Gmail App Password or generic SMTP
-  const user = process.env.GMAIL_USER || process.env.EMAIL_USER || process.env.SMTP_USER || process.env.VITE_ADMIN_EMAIL;
+  const user = process.env.GMAIL_USER || process.env.EMAIL_USER || process.env.SMTP_USER;
   const pass = process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD || process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
   const host = process.env.SMTP_HOST || "smtp.gmail.com";
   const port = parseInt(process.env.SMTP_PORT || "465", 10);
@@ -63,16 +64,20 @@ export function getTransporter(): nodemailer.Transporter | null {
 
 export async function sendMail(payload: EmailPayload): Promise<MailResult> {
   const transporter = getTransporter();
+  const configured = Boolean(transporter);
+
+  console.info(`[Leafly Mailer] SMTP credentials configured: ${configured ? "yes" : "no"}`);
+  console.info(`[Leafly Mailer] Sending email...`);
+  console.info(`[Leafly Mailer] Recipient: ${payload.to}`);
 
   if (!transporter) {
-    // In local development or before SMTP credentials are added to Vercel/environment:
-    console.info(
-      `[Leafly Mailer Dev Mode] No SMTP credentials configured. Simulated email to: <${payload.to}> | Subject: "${payload.subject}"`
-    );
+    console.error(`[Leafly Mailer] ERROR: GMAIL_USER/GMAIL_APP_PASSWORD missing. Email not delivered.`);
+    console.info(`[Leafly Mailer] Provider accepted message: false`);
     return {
-      success: true,
+      success: false,
+      delivered: false,
       simulated: true,
-      messageId: `simulated-${Date.now()}`,
+      error: "GMAIL_USER and GMAIL_APP_PASSWORD are required in environment variables for email delivery.",
     };
   }
 
@@ -85,16 +90,20 @@ export async function sendMail(payload: EmailPayload): Promise<MailResult> {
       replyTo: payload.replyTo || getAdminEmail(),
     });
 
+    console.info(`[Leafly Mailer] Provider accepted message: true`);
     console.info(`[Leafly Mailer] Successfully sent email to <${payload.to}> (ID: ${info.messageId})`);
     return {
       success: true,
+      delivered: true,
       messageId: info.messageId,
       simulated: false,
     };
   } catch (error) {
+    console.error(`[Leafly Mailer] Provider accepted message: false`);
     console.error(`[Leafly Mailer Error] Failed to send email to <${payload.to}>:`, error);
     return {
       success: false,
+      delivered: false,
       error: error instanceof Error ? error.message : String(error),
     };
   }

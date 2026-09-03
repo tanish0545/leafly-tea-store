@@ -301,6 +301,7 @@ export function getGiftingAdminNotification(data: GiftingEmailData): { subject: 
 export interface ContactEmailData {
   name: string;
   email: string;
+  phone?: string;
   subject: string;
   message: string;
   referenceId: string;
@@ -361,6 +362,11 @@ export function getContactAdminNotification(data: ContactEmailData): { subject: 
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Customer Email:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};"><a href="mailto:${data.email}">${data.email}</a></td>
       </tr>
+      ${data.phone ? `
+      <tr>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Phone:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};"><a href="tel:${data.phone}">${data.phone}</a></td>
+      </tr>` : ""}
       <tr>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Subject:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_TEXT};">${data.subject}</td>
@@ -475,5 +481,44 @@ export function getOrderAdminNotificationEmail(data: OrderEmailData): { subject:
   return {
     subject,
     html: baseEmailWrapper("New Order", content),
+  };
+}
+
+export function getAccountWelcomeEmail(userName: string, userEmail: string): { subject: string; html: string } {
+  const subject = "Welcome to Leafly — Your Account is Ready 🍃";
+  const content = `
+    <h2 style="margin: 0 0 16px; font-family: Georgia, serif; font-size: 22px; color: ${LEAFLY_GREEN}; font-weight: normal; line-height: 1.3;">
+      Welcome to the Leafly Family, ${userName || "Valued Patron"}!
+    </h2>
+    <p style="font-size: 15px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 0 0 16px;">
+      Your account with Leafly has been created successfully. We're excited to have you embark on this sensory exploration of India's finest single-origin harvest teas and handcrafted teaware.
+    </p>
+
+    <!-- Account Details Box -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${LEAFLY_CREAM}; border: 1px solid ${LEAFLY_BORDER}; border-radius: 6px; margin: 20px 0;">
+      <tr>
+        <td style="padding: 12px 18px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">Account Email:</td>
+        <td style="padding: 12px 18px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 14px; font-weight: 600; color: ${LEAFLY_GREEN};">${userEmail}</td>
+      </tr>
+      <tr>
+        <td style="padding: 12px 18px; font-size: 13px; color: ${LEAFLY_MUTED};">Member Status:</td>
+        <td style="padding: 12px 18px; font-size: 13px; font-weight: 600; color: ${LEAFLY_GOLD};">Active Patron · Pure Leaf Access</td>
+      </tr>
+    </table>
+
+    <p style="font-size: 14px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 20px 0 28px;">
+      From your account, you can curate your ritual wishlist, track real-time dispatches, and access bespoke seasonal reserve teas before general release.
+    </p>
+
+    <div align="center" style="margin: 28px 0 12px;">
+      <a href="https://leafly.vercel.app/shop" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #f7f3ec; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; padding: 14px 30px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD};">
+        Explore Teas &amp; Teaware
+      </a>
+    </div>
+  `;
+
+  return {
+    subject,
+    html: baseEmailWrapper("Welcome to Leafly", content),
   };
 }

@@ -27,24 +27,35 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
   }
 
   try {
-    let body = req.body;
-    if (typeof body === "string") {
+    interface ContactBody {
+      name?: string;
+      email?: string;
+      phone?: string;
+      subject?: string;
+      message?: string;
+    }
+
+    let rawBody = req.body;
+    if (typeof rawBody === "string") {
       try {
-        body = JSON.parse(body);
+        rawBody = JSON.parse(rawBody);
       } catch {
         // keep
       }
-    } else if (!body) {
+    } else if (!rawBody) {
       const buffers = [];
       for await (const chunk of req) {
         buffers.push(chunk);
       }
       const raw = Buffer.concat(buffers).toString();
-      body = raw ? JSON.parse(raw) : {};
+      rawBody = raw ? JSON.parse(raw) : {};
     }
+
+    const body = rawBody as ContactBody;
 
     const name = (body?.name || "").trim();
     const email = (body?.email || "").trim().toLowerCase();
+    const phone = (body?.phone || "").trim();
     const subject = (body?.subject || "General Inquiry").trim();
     const message = (body?.message || "").trim();
 
@@ -92,6 +103,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
     const contactData: ContactEmailData = {
       name,
       email,
+      phone: phone || undefined,
       subject,
       message,
       referenceId,

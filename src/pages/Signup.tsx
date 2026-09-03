@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import logo from "../assets/leafly-logo.webp";
 import teapotImg from "../assets/glass-infuser-teapot.webp";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
 import { useAuth, formatAuthError, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
 import "./Signup.css";
 
@@ -115,6 +116,11 @@ export default function Signup() {
 
   return (
     <div className="leafly-auth-page">
+      <SEO
+        title="Create an Account | Leafly"
+        description="Join Leafly to unlock member rewards, order tracking, and bespoke tea rituals."
+        noindex={true}
+      />
       {/* Background warm light leaks and tea atmosphere */}
       <div className="leafly-auth-ambient-glow" aria-hidden="true" />
       <div className="leafly-auth-ambient-glow-secondary" aria-hidden="true" />

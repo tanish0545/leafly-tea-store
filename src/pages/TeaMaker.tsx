@@ -4,6 +4,8 @@ import { useCart } from "../context/CartContext";
 import { useProducts } from "../context/ProductContext";
 import TeaRitualSoundscape from "../components/TeaRitualSoundscape";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateBreadcrumbSchema } from "../lib/seoData";
 import "./TeaMaker.css";
 
 // Assets
@@ -533,6 +535,15 @@ export default function TeaMaker() {
 
   return (
     <main className="tea-maker-page">
+      <SEO
+        title="Tea Brewing Guide & Interactive Steeping Ritual | Leafly"
+        description="Master loose leaf tea brewing with Leafly's interactive guide. Discover exact water temperatures, steeping times, and preparation rituals for green, black, white, and oolong teas."
+        canonicalPath="/tea-maker"
+        schema={generateBreadcrumbSchema([
+          { name: "Home", url: "/" },
+          { name: "Tea Maker", url: "/tea-maker" },
+        ])}
+      />
       {/* =======================================================
           HERO BANNER
           ======================================================= */}
@@ -1367,6 +1378,93 @@ export default function TeaMaker() {
             </div>
           )}
 
+        </div>
+      </section>
+
+      {/* =======================================================
+          INFORMATIONAL TEA BREWING REFERENCE GUIDE (SEO & USER VALUE)
+          ======================================================= */}
+      <section className="tm-brewing-reference" aria-label="Tea Brewing Reference Guide" style={{
+        maxWidth: "1200px",
+        margin: "60px auto 40px",
+        padding: "36px 28px",
+        background: "linear-gradient(135deg, rgba(251, 247, 239, 0.95) 0%, rgba(243, 228, 201, 0.95) 100%)",
+        border: "1px solid rgba(201, 162, 75, 0.35)",
+        borderRadius: "16px",
+        color: "#0b2b1e"
+      }}>
+        <div style={{ textAlign: "center", marginBottom: "32px" }}>
+          <p style={{ fontSize: "11px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#c9a24b", fontWeight: 700, margin: "0 0 8px" }}>
+            ESSENTIAL KNOWLEDGE
+          </p>
+          <h2 style={{ fontFamily: "var(--font-display, 'Georgia', serif)", fontSize: "clamp(24px, 3vw, 34px)", margin: "0 0 12px", fontWeight: 400 }}>
+            Artisan Tea Brewing &amp; Steeping Guide
+          </h2>
+          <p style={{ maxWidth: "680px", margin: "0 auto", fontSize: "14.5px", color: "rgba(11, 43, 30, 0.8)", lineHeight: 1.6 }}>
+            Every tea variety possesses a distinct personality shaped by its terroir and oxidation level. Use this guide to dial in the ideal water temperature, steeping time, and leaf ratio for the purest cup.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "20px", marginBottom: "28px" }}>
+          <div style={{ padding: "20px", background: "rgba(255, 255, 255, 0.7)", borderRadius: "10px", border: "1px solid rgba(201, 162, 75, 0.2)" }}>
+            <h3 style={{ fontSize: "17px", margin: "0 0 8px", color: "#0b2b1e" }}>🍃 Green Tea Brewing</h3>
+            <p style={{ fontSize: "13px", color: "#4b5563", margin: "0 0 10px", lineHeight: 1.5 }}>
+              Delicate, unoxidized whole leaves from Himalayan estates require cooler water to prevent bitterness and preserve volatile antioxidants.
+            </p>
+            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px", fontSize: "13px", color: "#0b2b1e", lineHeight: 1.8 }}>
+              <li><strong>Water Temp:</strong> 75°C – 80°C</li>
+              <li><strong>Steeping Time:</strong> 2 – 2.5 minutes</li>
+              <li><strong>Leaf Ratio:</strong> 2g per 200ml water</li>
+            </ul>
+            <Link to="/collections/green-tea" style={{ fontSize: "13px", color: "#0b2b1e", fontWeight: 600, textDecoration: "underline" }}>
+              Explore Green Teas →
+            </Link>
+          </div>
+
+          <div style={{ padding: "20px", background: "rgba(255, 255, 255, 0.7)", borderRadius: "10px", border: "1px solid rgba(201, 162, 75, 0.2)" }}>
+            <h3 style={{ fontSize: "17px", margin: "0 0 8px", color: "#0b2b1e" }}>⚪ White Tea Brewing</h3>
+            <p style={{ fontSize: "13px", color: "#4b5563", margin: "0 0 10px", lineHeight: 1.5 }}>
+              Unopened Silver Tips and gently dried tender buds require gentle warmth to release their silken floral sweetness.
+            </p>
+            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px", fontSize: "13px", color: "#0b2b1e", lineHeight: 1.8 }}>
+              <li><strong>Water Temp:</strong> 70°C – 75°C</li>
+              <li><strong>Steeping Time:</strong> 3 – 4 minutes</li>
+              <li><strong>Leaf Ratio:</strong> 2.5g per 200ml water</li>
+            </ul>
+            <Link to="/collections/white-tea" style={{ fontSize: "13px", color: "#0b2b1e", fontWeight: 600, textDecoration: "underline" }}>
+              Explore White Teas →
+            </Link>
+          </div>
+
+          <div style={{ padding: "20px", background: "rgba(255, 255, 255, 0.7)", borderRadius: "10px", border: "1px solid rgba(201, 162, 75, 0.2)" }}>
+            <h3 style={{ fontSize: "17px", margin: "0 0 8px", color: "#0b2b1e" }}>🍂 Black Tea Brewing</h3>
+            <p style={{ fontSize: "13px", color: "#4b5563", margin: "0 0 10px", lineHeight: 1.5 }}>
+              Fully oxidized Assam and Darjeeling black teas require hot water to draw out bold malty depth and golden liqueur notes.
+            </p>
+            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px", fontSize: "13px", color: "#0b2b1e", lineHeight: 1.8 }}>
+              <li><strong>Water Temp:</strong> 90°C – 95°C</li>
+              <li><strong>Steeping Time:</strong> 3 – 4 minutes</li>
+              <li><strong>Leaf Ratio:</strong> 2.5g per 200ml water</li>
+            </ul>
+            <Link to="/collections/black-tea" style={{ fontSize: "13px", color: "#0b2b1e", fontWeight: 600, textDecoration: "underline" }}>
+              Explore Black Teas →
+            </Link>
+          </div>
+
+          <div style={{ padding: "20px", background: "rgba(255, 255, 255, 0.7)", borderRadius: "10px", border: "1px solid rgba(201, 162, 75, 0.2)" }}>
+            <h3 style={{ fontSize: "17px", margin: "0 0 8px", color: "#0b2b1e" }}>🌺 Oolong Tea Brewing</h3>
+            <p style={{ fontSize: "13px", color: "#4b5563", margin: "0 0 10px", lineHeight: 1.5 }}>
+              Partially oxidized artisanal leaves unfurl across multiple infusions, releasing honeyed orchid notes and deep complexity.
+            </p>
+            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px", fontSize: "13px", color: "#0b2b1e", lineHeight: 1.8 }}>
+              <li><strong>Water Temp:</strong> 85°C – 90°C</li>
+              <li><strong>Steeping Time:</strong> 3 – 5 minutes</li>
+              <li><strong>Leaf Ratio:</strong> 3g per 200ml water</li>
+            </ul>
+            <Link to="/collections/oolong-tea" style={{ fontSize: "13px", color: "#0b2b1e", fontWeight: 600, textDecoration: "underline" }}>
+              Explore Oolong Teas →
+            </Link>
+          </div>
         </div>
       </section>
 

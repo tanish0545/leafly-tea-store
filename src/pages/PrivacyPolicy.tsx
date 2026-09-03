@@ -1,10 +1,21 @@
 import { Link } from "react-router-dom";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateBreadcrumbSchema } from "../lib/seoData";
 import "./PrivacyPolicy.css";
 
 export default function PrivacyPolicy() {
   return (
     <main className="privacy-policy-page">
+      <SEO
+        title="Privacy Policy — Leafly"
+        description="Read Leafly's Privacy Policy. Learn how we handle your personal data, secure payment processing, order details, and shopping privacy."
+        canonicalPath="/privacy-policy"
+        schema={generateBreadcrumbSchema([
+          { name: "Home", url: "/" },
+          { name: "Privacy Policy", url: "/privacy-policy" },
+        ])}
+      />
       {/* =====================================================
           HERO
           ===================================================== */}

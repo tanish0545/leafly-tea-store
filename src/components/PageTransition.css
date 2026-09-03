@@ -1,0 +1,45 @@
+/* ==========================================================
+   LEAFLY — SMOOTH PAGE TRANSITIONS
+   Subtle fade/slide transition between routes.
+   No layout jump, no white flash, GPU accelerated.
+   ========================================================== */
+
+.leafly-page-transition-wrap {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  will-change: opacity, transform;
+}
+
+.leafly-page-transition-wrap.fadeIn {
+  animation: leaflyRouteEnter 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.leafly-page-transition-wrap.fadeOut {
+  opacity: 0.85;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+@keyframes leaflyRouteEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leafly-page-transition-wrap,
+  .leafly-page-transition-wrap.fadeIn,
+  .leafly-page-transition-wrap.fadeOut {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}

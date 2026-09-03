@@ -29,10 +29,12 @@ export type TeawareItem = {
   oldPrice?: number;
   rating: number;
   reviewCount: number;
-  badge: "Premium" | "Popular" | "Bestseller";
+  badge?: string;
   image: string;
   description: string;
   features: string[];
+  stock?: number;
+  inStock?: boolean;
 };
 
 export const teawareProducts: TeawareItem[] = [

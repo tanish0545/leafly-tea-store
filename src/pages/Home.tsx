@@ -1,5 +1,6 @@
-import { Helmet } from "react-helmet-async";
+import SEO from "../components/SEO";
 import Footer from "../components/Footer";
+import { generateOrganizationSchema, generateWebSiteSchema } from "../lib/seoData";
 
 import Hero from "../sections/Hero";
 import BrandValues from "../sections/BrandValues";
@@ -8,12 +9,19 @@ import Gifting from "../sections/Gifting";
 import TeaRitual from "../sections/TeaRitual";
 
 export default function Home() {
+  const homeSchemas = [
+    generateOrganizationSchema(),
+    generateWebSiteSchema(),
+  ];
+
   return (
     <div className="leafly-app">
-      <Helmet>
-        <title>Premium Green Tea & Artisan Blends | Leafly</title>
-        <meta name="description" content="Discover India's finest single-origin green teas, white teas, and artisan blends. Shop fresh, organic, and expertly curated teas." />
-      </Helmet>
+      <SEO
+        title="Leafly — Premium Single-Origin Indian Teas & Brewing Rituals"
+        description="Discover rare single-origin Darjeeling, Assam, and Himalayan loose leaf green teas, black teas, white teas, and oolongs. Experience mindful brewing rituals and bespoke tea gifting."
+        canonicalPath="/"
+        schema={homeSchemas}
+      />
       <main>
 
         <Hero />

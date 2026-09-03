@@ -3,6 +3,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswor
 import { auth } from "../lib/firebase";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import SEO from "../components/SEO";
 import "./AdminLogin.css";
 
 export default function AdminLogin() {
@@ -82,6 +83,11 @@ export default function AdminLogin() {
 
   return (
     <div className="admin-login-container">
+      <SEO
+        title="Admin Login | Leafly"
+        description="Leafly Administrative Portal Sign In."
+        noindex={true}
+      />
       <div className="admin-login-box">
         <h2>
           {isForgotPassword 

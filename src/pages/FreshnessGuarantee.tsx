@@ -1,10 +1,21 @@
 import { Link } from "react-router-dom";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateBreadcrumbSchema } from "../lib/seoData";
 import "./FreshnessGuarantee.css";
 
 export default function FreshnessGuarantee() {
   return (
     <main className="freshness-page">
+      <SEO
+        title="Freshness Guarantee — Small-Batch Sealed Whole Leaf Teas | Leafly"
+        description="Discover the Leafly freshness promise: 100% orthodox whole leaves vacuum-sealed within weeks of harvest in 4-layer aroma-barrier pouches."
+        canonicalPath="/freshness-guarantee"
+        schema={generateBreadcrumbSchema([
+          { name: "Home", url: "/" },
+          { name: "Freshness Guarantee", url: "/freshness-guarantee" },
+        ])}
+      />
       {/* =====================================================
           HERO
           ===================================================== */}

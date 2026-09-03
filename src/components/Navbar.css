@@ -1281,3 +1281,26 @@
     transition: none;
   }
 }
+
+/* =========================================================
+   CART ICON ARRIVAL BOUNCE
+   ========================================================= */
+
+.leafly-cart-nav-button.cart-bounce {
+  animation: leaflyCartIconBounce 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes leaflyCartIconBounce {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.28) translateY(-2px);
+  }
+  70% {
+    transform: scale(0.92) translateY(1px);
+  }
+  100% {
+    transform: scale(1) translateY(0);
+  }
+}

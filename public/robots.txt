@@ -1,0 +1,19 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Disallow private and transactional routes
+Disallow: /admin
+Disallow: /admin/
+Disallow: /admin/login
+Disallow: /profile
+Disallow: /profile/
+Disallow: /orders
+Disallow: /orders/
+Disallow: /checkout
+Disallow: /checkout/
+Disallow: /order-success
+Disallow: /reset-password
+
+# Canonical XML Sitemap
+Sitemap: https://leafly.vercel.app/sitemap.xml

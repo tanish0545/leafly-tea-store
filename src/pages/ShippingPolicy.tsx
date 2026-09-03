@@ -1,10 +1,21 @@
 import { Link } from "react-router-dom";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateBreadcrumbSchema } from "../lib/seoData";
 import "./ShippingPolicy.css";
 
 export default function ShippingPolicy() {
   return (
     <main className="shipping-policy-page">
+      <SEO
+        title="Shipping Policy — Nationwide Delivery & Packaging | Leafly"
+        description="Read Leafly's shipping and delivery policy. Fast nationwide dispatch, tamper-proof airtight packaging, and complimentary free shipping on orders above ₹999."
+        canonicalPath="/shipping-policy"
+        schema={generateBreadcrumbSchema([
+          { name: "Home", url: "/" },
+          { name: "Shipping Policy", url: "/shipping-policy" },
+        ])}
+      />
       {/* =====================================================
           HERO
           ===================================================== */}

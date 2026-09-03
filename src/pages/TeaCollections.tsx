@@ -1,9 +1,12 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useProducts } from "../context/ProductContext";
 import { getProductSlug, isProductInStock, type Product } from "../data/products";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateBreadcrumbSchema } from "../lib/seoData";
 import "./TeaCollections.css";
 
 type TeaCollection = {
@@ -64,13 +67,53 @@ const collections: TeaCollection[] = [
   },
 ];
 
+const collectionSeoData: Record<string, { title: string; description: string; canonical: string }> = {
+  green: {
+    title: "Premium Green Tea Online | Himalayan Loose Leaf | Leafly",
+    description: "Buy premium single-origin green tea online from Leafly. Handcrafted whole leaves with fresh, delicate vegetal notes. Learn how to brew green tea at the optimal temperature.",
+    canonical: "/collections/green-tea",
+  },
+  black: {
+    title: "Premium Black Tea Online | Assam & Darjeeling Loose Leaf | Leafly",
+    description: "Shop bold, full-bodied premium black teas online from Assam and Darjeeling estates. Rich malty depth and golden tips crafted for purposeful morning rituals.",
+    canonical: "/collections/black-tea",
+  },
+  white: {
+    title: "Premium White Tea Online | Delicate Silver Tips & Reserve | Leafly",
+    description: "Explore exquisite single-origin white teas online. Pure unopened Silver Tips and gentle sun-dried leaves with silken texture and floral sweetness.",
+    canonical: "/collections/white-tea",
+  },
+  oolong: {
+    title: "Premium Oolong Tea Online | Artisan Handcrafted Leaves | Leafly",
+    description: "Discover artisan semi-oxidized oolong tea online from Leafly. Complex orchid fragrance, honeyed roasted finish, and multi-steep depth.",
+    canonical: "/collections/oolong-tea",
+  },
+};
+
+function parseCategoryParam(param?: string): string {
+  if (!param) return "green";
+  const clean = param.toLowerCase().replace(/-tea$/, "").trim();
+  if (["green", "white", "black", "oolong"].includes(clean)) {
+    return clean;
+  }
+  return "green";
+}
+
 export default function TeaCollections() {
   const navigate = useNavigate();
+  const { category: categoryParam } = useParams<{ category?: string }>();
   const { products } = useProducts();
   const { addToCart } = useCart();
 
-  const [activeCollection, setActiveCollection] =
-    useState("green");
+  const [activeCollection, setActiveCollection] = useState(() =>
+    categoryParam ? parseCategoryParam(categoryParam) : "green"
+  );
+
+  useEffect(() => {
+    if (categoryParam) {
+      setActiveCollection(parseCategoryParam(categoryParam));
+    }
+  }, [categoryParam]);
 
   const [addedId, setAddedId] =
     useState<number | string | null>(null);
@@ -88,7 +131,16 @@ export default function TeaCollections() {
     collection: TeaCollection
   ) => {
     setActiveCollection(collection.id);
+    navigate(`/collections/${collection.id}-tea`);
   };
+
+  const currentSeo = collectionSeoData[activeCollection] || collectionSeoData.green;
+
+  const breadcrumbs = [
+    { name: "Home", url: "/" },
+    { name: "Collections", url: "/collections" },
+    { name: active.name, url: currentSeo.canonical },
+  ];
 
   const handleAddToCart = (
     product: Product
@@ -112,6 +164,13 @@ export default function TeaCollections() {
 
   return (
     <main className="leafly-collections-page">
+      <SEO
+        title={currentSeo.title}
+        description={currentSeo.description}
+        canonicalPath={currentSeo.canonical}
+        image={active.image}
+        schema={generateBreadcrumbSchema(breadcrumbs)}
+      />
 
       {/* =====================================================
           HERO
@@ -283,7 +342,7 @@ export default function TeaCollections() {
               type="button"
               className="collection-explore-button"
               onClick={() =>
-                navigate("/shop")
+                navigate(`/shop?category=${encodeURIComponent(active.name.replace(/ Tea$/i, ""))}`)
               }
             >
               EXPLORE THIS COLLECTION

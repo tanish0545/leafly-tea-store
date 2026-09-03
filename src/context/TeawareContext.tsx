@@ -6,13 +6,35 @@ import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch } f
 
 type TeawareContextType = {
   teaware: TeawareItem[];
-  addTeaware: (item: TeawareItem) => Promise<void>;
-  updateTeaware: (updatedItem: TeawareItem) => Promise<void>;
-  deleteTeaware: (id: number | string) => Promise<void>;
+  addTeaware: (item: TeawareItem) => Promise<{ success: boolean; error?: string }>;
+  updateTeaware: (updatedItem: TeawareItem) => Promise<{ success: boolean; error?: string }>;
+  deleteTeaware: (id: number | string) => Promise<{ success: boolean; error?: string }>;
   loading: boolean;
 };
 
 const TeawareContext = createContext<TeawareContextType | undefined>(undefined);
+
+function sanitizeTeawarePayload(item: TeawareItem): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(item)) {
+    if (value !== undefined) {
+      if (key === "price" || key === "oldPrice" || key === "stock" || key === "rating" || key === "reviewCount") {
+        if (value !== null && value !== "") {
+          clean[key] = Number(value);
+        }
+      } else if (key === "inStock") {
+        clean[key] = Boolean(value);
+      } else if (Array.isArray(value)) {
+        clean[key] = [...value];
+      } else if (value !== null && typeof value === "object") {
+        clean[key] = { ...(value as Record<string, unknown>) };
+      } else {
+        clean[key] = value;
+      }
+    }
+  }
+  return clean;
+}
 
 export function TeawareProvider({ children }: { children: React.ReactNode }) {
   const [teaware, setTeaware] = useState<TeawareItem[]>(initialTeaware);
@@ -29,8 +51,13 @@ export function TeawareProvider({ children }: { children: React.ReactNode }) {
           console.log("Initializing Firestore teaware...");
           const batch = writeBatch(db);
           initialTeaware.forEach((item) => {
-            const docRef = doc(teawareRef, item.id.toString());
-            batch.set(docRef, item);
+            const docRef = doc(teawareRef, String(item.id));
+            const clean = sanitizeTeawarePayload({
+              ...item,
+              stock: item.stock ?? 10,
+              inStock: item.inStock ?? true,
+            });
+            batch.set(docRef, clean);
           });
           await batch.commit();
           console.log("Firestore teaware initialized successfully.");
@@ -52,13 +79,32 @@ export function TeawareProvider({ children }: { children: React.ReactNode }) {
         }
 
         const fetchedTeaware: TeawareItem[] = [];
-        snapshot.forEach((doc) => {
-          const data = doc.data() as TeawareItem;
-          fetchedTeaware.push({ ...data, id: Number(doc.id) || data.id });
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as TeawareItem;
+          const rawId = docSnap.id;
+          const parsedId = !isNaN(Number(rawId)) ? Number(rawId) : rawId;
+          const stock = typeof data.stock === "number" ? data.stock : 10;
+          const inStock = data.inStock !== false && stock > 0;
+
+          fetchedTeaware.push({
+            ...data,
+            id: parsedId as number,
+            price: Number(data.price) || 0,
+            oldPrice: data.oldPrice ? Number(data.oldPrice) : undefined,
+            stock,
+            inStock,
+            category: data.category || "Teapots",
+            features: Array.isArray(data.features) ? data.features : [],
+          });
         });
 
         // Sort by ID to maintain consistent order
-        fetchedTeaware.sort((a, b) => Number(a.id) - Number(b.id));
+        fetchedTeaware.sort((a, b) => {
+          const numA = Number(a.id);
+          const numB = Number(b.id);
+          if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+          return String(a.id).localeCompare(String(b.id));
+        });
         setTeaware(fetchedTeaware);
         setLoading(false);
       },
@@ -73,32 +119,63 @@ export function TeawareProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  const addTeaware = async (item: TeawareItem) => {
+  const addTeaware = async (item: TeawareItem): Promise<{ success: boolean; error?: string }> => {
     try {
       const newId = item.id || Date.now();
-      const newItem = { ...item, id: newId };
-      await setDoc(doc(db, "teaware", newItem.id.toString()), newItem);
-      setTeaware((prev) => [...prev.filter((p) => p.id !== newItem.id), newItem]);
+      const stock = typeof item.stock === "number" ? item.stock : 10;
+      const inStock = item.inStock !== false && stock > 0;
+      const newItem: TeawareItem = {
+        ...item,
+        id: newId as number,
+        price: Number(item.price) || 0,
+        oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
+        stock,
+        inStock,
+      };
+      const clean = sanitizeTeawarePayload(newItem);
+      await setDoc(doc(db, "teaware", String(newId)), clean);
+      setTeaware((prev) => [...prev.filter((p) => String(p.id) !== String(newId)), newItem]);
+      return { success: true };
     } catch (error) {
       console.error("Error adding teaware:", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      return { success: false, error: msg };
     }
   };
 
-  const updateTeaware = async (updatedItem: TeawareItem) => {
+  const updateTeaware = async (updatedItem: TeawareItem): Promise<{ success: boolean; error?: string }> => {
     try {
-      await setDoc(doc(db, "teaware", updatedItem.id.toString()), updatedItem, { merge: true });
-      setTeaware((prev) => prev.map((p) => (p.id === updatedItem.id ? updatedItem : p)));
+      const docId = String(updatedItem.id);
+      const stock = typeof updatedItem.stock === "number" ? updatedItem.stock : 10;
+      const inStock = updatedItem.inStock !== false && stock > 0;
+      const normalizedItem: TeawareItem = {
+        ...updatedItem,
+        price: Number(updatedItem.price) || 0,
+        oldPrice: updatedItem.oldPrice ? Number(updatedItem.oldPrice) : undefined,
+        stock,
+        inStock,
+      };
+      const clean = sanitizeTeawarePayload(normalizedItem);
+      await setDoc(doc(db, "teaware", docId), clean, { merge: true });
+      setTeaware((prev) => prev.map((p) => (String(p.id) === docId ? normalizedItem : p)));
+      return { success: true };
     } catch (error) {
       console.error("Error updating teaware:", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      return { success: false, error: msg };
     }
   };
 
-  const deleteTeaware = async (id: number | string) => {
+  const deleteTeaware = async (id: number | string): Promise<{ success: boolean; error?: string }> => {
     try {
-      await deleteDoc(doc(db, "teaware", id.toString()));
-      setTeaware((prev) => prev.filter((p) => p.id !== id && String(p.id) !== String(id)));
+      const docId = String(id);
+      await deleteDoc(doc(db, "teaware", docId));
+      setTeaware((prev) => prev.filter((p) => String(p.id) !== docId));
+      return { success: true };
     } catch (error) {
       console.error("Error deleting teaware:", error);
+      const msg = error instanceof Error ? error.message : String(error);
+      return { success: false, error: msg };
     }
   };
 

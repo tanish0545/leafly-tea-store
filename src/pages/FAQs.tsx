@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateBreadcrumbSchema } from "../lib/seoData";
 import "./FAQs.css";
 
 type FaqCategory =
@@ -140,8 +142,32 @@ export default function FAQs() {
     });
   }, [activeCategory, searchQuery]);
 
+  const faqPageSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": FAQ_DATA.slice(0, 15).map((f) => ({
+      "@type": "Question",
+      "name": f.question,
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": f.answer,
+      },
+    })),
+  };
+
+  const breadcrumbs = [
+    { name: "Home", url: "/" },
+    { name: "FAQs", url: "/faqs" },
+  ];
+
   return (
     <main className="faqs-page">
+      <SEO
+        title="Frequently Asked Questions — Tea Freshness, Brewing & Orders | Leafly"
+        description="Find answers to common questions about Leafly single-origin teas, whole-leaf freshness, steeping temperatures, order tracking, shipping, and returns."
+        canonicalPath="/faqs"
+        schema={[faqPageSchema, generateBreadcrumbSchema(breadcrumbs)]}
+      />
       {/* =====================================================
           HERO
           ===================================================== */}

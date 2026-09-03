@@ -11,6 +11,8 @@ import { useAuth } from "../context/AuthContext";
 import { db } from "../lib/firebase";
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
 import type { Order, OrderStatus } from "../types/contracts";
+import SEO from "../components/SEO";
+import ImageUploadControl from "../components/ImageUploadControl";
 import "./AdminDashboard.css";
 
 export type AccountUser = {
@@ -26,7 +28,19 @@ export type AccountUser = {
   preferences?: Record<string, unknown> | null;
 };
 
-type TabType = "dashboard" | "products" | "teaware" | "hampers" | "orders" | "accounts" | "coupons";
+export type ReviewItem = {
+  id: string;
+  orderId?: string;
+  customerName: string;
+  customerEmail?: string;
+  productName?: string;
+  rating: number;
+  feedback: string;
+  status: "Approved" | "Hidden";
+  createdAt: string;
+};
+
+type TabType = "dashboard" | "products" | "teaware" | "hampers" | "orders" | "accounts" | "coupons" | "reviews";
 
 export default function AdminDashboard() {
   const { products, updateProduct, addProduct, deleteProduct, loading: productsLoading } = useProducts();
@@ -72,7 +86,13 @@ export default function AdminDashboard() {
   const [teawareFilterCategory, setTeawareFilterCategory] = useState("all");
 
   const [hamperSearchQuery, setHamperSearchQuery] = useState("");
+  const [hamperFilterCategory, setHamperFilterCategory] = useState("all");
   const [couponSearchQuery, setCouponSearchQuery] = useState("");
+
+  // Reviews State
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [reviewSearchQuery, setReviewSearchQuery] = useState("");
+  const [reviewFilterStatus, setReviewFilterStatus] = useState<"all" | "Approved" | "Hidden">("all");
 
   // Orders State
   const [orders, setOrders] = useState<Order[]>([]);
@@ -150,6 +170,37 @@ export default function AdminDashboard() {
       (error) => {
         console.error("Error listening to accounts in Firestore:", error);
         setAccountsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Real-time Firestore customer reviews synchronization
+  useEffect(() => {
+    const reviewsCol = collection(db, "reviews");
+    const unsubscribe = onSnapshot(
+      reviewsCol,
+      (snapshot) => {
+        const fetchedReviews: ReviewItem[] = snapshot.docs.map((docSnap) => {
+          const d = docSnap.data();
+          return {
+            id: docSnap.id,
+            orderId: d.orderId,
+            customerName: d.customerName || "Verified Patron",
+            customerEmail: d.customerEmail || "",
+            productName: d.productName || "Leafly Botanical Harvest",
+            rating: typeof d.rating === "number" ? d.rating : 5,
+            feedback: d.feedback || "",
+            status: d.status === "Hidden" ? "Hidden" : "Approved",
+            createdAt: d.createdAt || new Date().toISOString(),
+          };
+        });
+        fetchedReviews.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setReviews(fetchedReviews);
+      },
+      (error) => {
+        console.warn("Error listening to reviews in Firestore:", error);
       }
     );
 
@@ -348,12 +399,14 @@ export default function AdminDashboard() {
       material: "",
       capacity: "",
       price: 0,
-      badge: "Popular",
+      badge: "",
       image: "",
       description: "",
       features: [""],
       rating: 5.0,
-      reviewCount: 0
+      reviewCount: 0,
+      inStock: true,
+      stock: 10,
     });
     setIsEditingTeaware(true);
   };
@@ -361,31 +414,44 @@ export default function AdminDashboard() {
   const handleSaveTeaware = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanItem = { ...currentTeaware } as TeawareItem;
-    if (cleanItem.oldPrice === undefined) cleanItem.oldPrice = null as unknown as number;
-    if (cleanItem.capacity === undefined) cleanItem.capacity = "";
+    cleanItem.price = Number(cleanItem.price) || 0;
+    cleanItem.oldPrice = cleanItem.oldPrice ? Number(cleanItem.oldPrice) : undefined;
+    cleanItem.capacity = cleanItem.capacity || "";
+    cleanItem.inStock = currentTeaware.inStock !== false;
+    cleanItem.stock = currentTeaware.inStock === false ? 0 : (typeof currentTeaware.stock === "number" ? currentTeaware.stock : 10);
+    cleanItem.badge = cleanItem.badge || "";
+    cleanItem.image = cleanItem.image?.trim() || "";
 
-    try {
-      if (currentTeaware.id) {
-        await updateTeaware(cleanItem);
-      } else {
-        cleanItem.id = Date.now();
-        await addTeaware(cleanItem);
-      }
-      showToast("success", `Teaware "${cleanItem.name}" saved successfully.`);
+    const res = currentTeaware.id ? await updateTeaware(cleanItem) : await addTeaware(cleanItem);
+    if (res.success) {
+      showToast("success", `Teaware "${cleanItem.name}" saved to database successfully!`);
       setIsEditingTeaware(false);
-    } catch {
-      showToast("error", "Failed to save teaware item.");
+    } else {
+      showToast("error", `Failed to save teaware: ${res.error || "Database error"}`);
     }
   };
 
   const handleDeleteTeaware = async (id: number | string) => {
     if (window.confirm("Are you sure you want to delete this teaware item?")) {
-      try {
-        await deleteTeaware(id);
+      const res = await deleteTeaware(id);
+      if (res.success) {
         showToast("success", "Teaware item removed successfully.");
-      } catch {
-        showToast("error", "Failed to delete teaware item.");
+      } else {
+        showToast("error", `Failed to delete teaware: ${res.error || "Database error"}`);
       }
+    }
+  };
+
+  const handleToggleTeawareStock = async (item: TeawareItem) => {
+    const isCurrentlyIn = item.inStock !== false && (typeof item.stock !== "number" || item.stock > 0);
+    const newInStock = !isCurrentlyIn;
+    const newStock = newInStock ? (item.stock && item.stock > 0 ? item.stock : 10) : 0;
+    const updated: TeawareItem = { ...item, stock: newStock, inStock: newInStock };
+    const res = await updateTeaware(updated);
+    if (res.success) {
+      showToast("success", `${item.name} is now ${newInStock ? "In Stock (10 units)" : "Out of Stock"}.`);
+    } else {
+      showToast("error", `Failed to update stock: ${res.error || "Database error"}`);
     }
   };
 
@@ -402,7 +468,11 @@ export default function AdminDashboard() {
       price: 0,
       image: "",
       includes: [""],
-      badge: ""
+      badge: "",
+      category: "Luxury Gift Sets",
+      description: "",
+      inStock: true,
+      stock: 10,
     });
     setIsEditingHamper(true);
   };
@@ -410,30 +480,45 @@ export default function AdminDashboard() {
   const handleSaveHamper = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanHamper = { ...currentHamper } as GiftHamper;
-    if (cleanHamper.badge === undefined) cleanHamper.badge = "";
+    cleanHamper.price = Number(cleanHamper.price) || 0;
+    cleanHamper.oldPrice = cleanHamper.oldPrice ? Number(cleanHamper.oldPrice) : undefined;
+    cleanHamper.badge = cleanHamper.badge || "";
+    cleanHamper.inStock = currentHamper.inStock !== false;
+    cleanHamper.stock = currentHamper.inStock === false ? 0 : (typeof currentHamper.stock === "number" ? currentHamper.stock : 10);
+    cleanHamper.category = currentHamper.category || "Luxury Gift Sets";
+    cleanHamper.description = currentHamper.description || "";
+    cleanHamper.image = cleanHamper.image?.trim() || "";
 
-    try {
-      if (currentHamper.id) {
-        await updateHamper(cleanHamper);
-      } else {
-        cleanHamper.id = Date.now();
-        await addHamper(cleanHamper);
-      }
+    const res = currentHamper.id ? await updateHamper(cleanHamper) : await addHamper(cleanHamper);
+    if (res.success) {
       showToast("success", `Hamper "${cleanHamper.name}" saved successfully.`);
       setIsEditingHamper(false);
-    } catch {
-      showToast("error", "Failed to save hamper.");
+    } else {
+      showToast("error", `Failed to save hamper: ${res.error || "Database error"}`);
     }
   };
 
   const handleDeleteHamper = async (id: number | string) => {
     if (window.confirm("Are you sure you want to delete this hamper?")) {
-      try {
-        await deleteHamper(id);
+      const res = await deleteHamper(id);
+      if (res.success) {
         showToast("success", "Hamper removed successfully.");
-      } catch {
-        showToast("error", "Failed to delete hamper.");
+      } else {
+        showToast("error", `Failed to delete hamper: ${res.error || "Database error"}`);
       }
+    }
+  };
+
+  const handleToggleHamperStock = async (hamper: GiftHamper) => {
+    const isCurrentlyIn = hamper.inStock !== false && (typeof hamper.stock !== "number" || hamper.stock > 0);
+    const newInStock = !isCurrentlyIn;
+    const newStock = newInStock ? (hamper.stock && hamper.stock > 0 ? hamper.stock : 10) : 0;
+    const updated: GiftHamper = { ...hamper, stock: newStock, inStock: newInStock };
+    const res = await updateHamper(updated);
+    if (res.success) {
+      showToast("success", `${hamper.name} is now ${newInStock ? "In Stock (10 units)" : "Out of Stock"}.`);
+    } else {
+      showToast("error", `Failed to update stock: ${res.error || "Database error"}`);
     }
   };
 
@@ -507,6 +592,31 @@ export default function AdminDashboard() {
     }
   };
 
+  // Review Actions
+  const handleToggleReviewStatus = async (review: ReviewItem) => {
+    const nextStatus = review.status === "Approved" ? "Hidden" : "Approved";
+    try {
+      await updateDoc(doc(db, "reviews", review.id), {
+        status: nextStatus,
+        updatedAt: new Date().toISOString(),
+      });
+      showToast("success", `Review status changed to ${nextStatus}.`);
+    } catch {
+      showToast("error", "Failed to update review status.");
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
+    if (window.confirm("Are you sure you want to delete this customer review?")) {
+      try {
+        await deleteDoc(doc(db, "reviews", reviewId));
+        showToast("success", "Review deleted successfully.");
+      } catch {
+        showToast("error", "Failed to delete review.");
+      }
+    }
+  };
+
   const handleLogout = async () => {
     await signOut();
     navigate("/admin/login");
@@ -558,7 +668,10 @@ export default function AdminDashboard() {
 
   // Pending & Low Stock counts
   const pendingOrdersCount = useMemo(() => {
-    return orders.filter(o => (o.orderStatus || o.status || "Processing").toLowerCase() === "processing").length;
+    return orders.filter((o) => {
+      const s = (o.orderStatus || o.status || "Pending").toLowerCase();
+      return s === "pending" || s === "processing" || s === "confirmed";
+    }).length;
   }, [orders]);
 
   const lowStockCount = useMemo(() => {
@@ -576,9 +689,12 @@ export default function AdminDashboard() {
         (order.customerEmail || "").toLowerCase().includes(queryLower) ||
         (order.shippingAddress?.city || "").toLowerCase().includes(queryLower);
 
-      const status = (order.orderStatus || order.status || "Processing").toLowerCase();
+      const status = (order.orderStatus || order.status || "Pending").toLowerCase();
       const matchesStatus =
-        orderFilterStatus === "all" || status === orderFilterStatus.toLowerCase();
+        orderFilterStatus === "all" ||
+        (orderFilterStatus === "pending"
+          ? (status === "pending" || status === "processing" || status === "confirmed")
+          : status === orderFilterStatus.toLowerCase());
 
       const isCOD = order.paymentMethod === "Pay on Delivery" || order.paymentMethod === "Cash on Delivery";
       const matchesPayment =
@@ -628,13 +744,16 @@ export default function AdminDashboard() {
   const filteredHampers = useMemo(() => {
     return hampers.filter(h => {
       const queryLower = hamperSearchQuery.toLowerCase().trim();
-      return (
+      const matchesSearch =
         !queryLower ||
         h.name.toLowerCase().includes(queryLower) ||
-        h.subtitle.toLowerCase().includes(queryLower)
-      );
+        h.subtitle.toLowerCase().includes(queryLower);
+      const matchesCat =
+        hamperFilterCategory === "all" ||
+        (h.category || "").toLowerCase() === hamperFilterCategory.toLowerCase();
+      return matchesSearch && matchesCat;
     });
-  }, [hampers, hamperSearchQuery]);
+  }, [hampers, hamperSearchQuery, hamperFilterCategory]);
 
   // Filtered Accounts
   const filteredAccounts = useMemo(() => {
@@ -667,6 +786,25 @@ export default function AdminDashboard() {
     });
   }, [globalCoupons, couponSearchQuery]);
 
+  // Filtered Reviews
+  const filteredReviews = useMemo(() => {
+    return reviews.filter((r) => {
+      const queryLower = reviewSearchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !queryLower ||
+        r.customerName.toLowerCase().includes(queryLower) ||
+        (r.customerEmail && r.customerEmail.toLowerCase().includes(queryLower)) ||
+        (r.feedback && r.feedback.toLowerCase().includes(queryLower)) ||
+        (r.productName && r.productName.toLowerCase().includes(queryLower)) ||
+        (r.orderId && r.orderId.toLowerCase().includes(queryLower));
+
+      const matchesStatus =
+        reviewFilterStatus === "all" || r.status === reviewFilterStatus;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [reviews, reviewSearchQuery, reviewFilterStatus]);
+
   const pageTitleMap: Record<TabType, string> = {
     dashboard: "Dashboard Overview",
     products: "Tea Catalog Management",
@@ -675,6 +813,7 @@ export default function AdminDashboard() {
     orders: "Order Fulfillment",
     accounts: "Customer Accounts",
     coupons: "Promotions & Coupons",
+    reviews: "Customer Reviews & Ratings",
   };
 
   const isInitialLoading = productsLoading || ordersLoading || teawareLoading || hampersLoading;
@@ -692,6 +831,11 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-layout">
+      <SEO
+        title="Admin Console | Leafly"
+        description="Leafly Administrative Portal."
+        noindex={true}
+      />
       {/* FLOATING TOAST NOTIFICATION */}
       {toast && (
         <div className={`admin-toast-banner ${toast.type}`} role="alert">
@@ -800,6 +944,16 @@ export default function AdminDashboard() {
             <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
             <span className="admin-nav-label">Coupons</span>
             <span className="admin-nav-badge neutral">{globalCoupons.length}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`admin-nav-item ${activeTab === "reviews" ? "active" : ""}`}
+            onClick={() => handleTabChange("reviews")}
+          >
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span className="admin-nav-label">Reviews</span>
+            <span className="admin-nav-badge neutral">{reviews.length}</span>
           </button>
         </nav>
 
@@ -913,7 +1067,16 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="admin-kpi-card">
+                <div
+                  className="admin-kpi-card clickable"
+                  onClick={() => {
+                    handleTabChange("orders");
+                    setOrderFilterStatus("pending");
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="View Pending Orders"
+                >
                   <div className="kpi-icon-wrap gold">
                     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   </div>
@@ -1169,8 +1332,11 @@ export default function AdminDashboard() {
                     className="toolbar-select"
                   >
                     <option value="all">All Statuses</option>
+                    <option value="pending">Pending (Awaiting Dispatch)</option>
+                    <option value="confirmed">Confirmed</option>
                     <option value="processing">Processing</option>
                     <option value="shipped">Shipped</option>
+                    <option value="out for delivery">Out for Delivery</option>
                     <option value="delivered">Delivered</option>
                     <option value="cancelled">Cancelled</option>
                   </select>
@@ -1271,8 +1437,11 @@ export default function AdminDashboard() {
                                   value={status}
                                   onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
                                 >
+                                  <option value="Pending">Pending</option>
+                                  <option value="Confirmed">Confirmed</option>
                                   <option value="Processing">Processing</option>
                                   <option value="Shipped">Shipped</option>
+                                  <option value="Out for Delivery">Out for Delivery</option>
                                   <option value="Delivered">Delivered</option>
                                   <option value="Cancelled">Cancelled</option>
                                 </select>
@@ -1358,8 +1527,11 @@ export default function AdminDashboard() {
                                 value={status}
                                 onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
                               >
+                                <option value="Pending">Pending</option>
+                                <option value="Confirmed">Confirmed</option>
                                 <option value="Processing">Processing</option>
                                 <option value="Shipped">Shipped</option>
+                                <option value="Out for Delivery">Out for Delivery</option>
                                 <option value="Delivered">Delivered</option>
                                 <option value="Cancelled">Cancelled</option>
                               </select>
@@ -1622,6 +1794,13 @@ export default function AdminDashboard() {
                     placeholder="e.g. Darjeeling Spring Blossom"
                   />
                 </div>
+
+                <ImageUploadControl
+                  currentImageUrl={currentProduct.image || ""}
+                  onImageChange={(url) => setCurrentProduct({ ...currentProduct, image: url })}
+                  folder="products"
+                  label="Tea Packaging / Leaf Image"
+                />
 
                 <div className="form-grid-2">
                   <div className="form-group">
@@ -1939,11 +2118,17 @@ export default function AdminDashboard() {
                           <th>Category</th>
                           <th>Capacity</th>
                           <th>Price</th>
+                          <th>Stock Level</th>
+                          <th>Quick Toggle</th>
                           <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredTeaware.map((item) => (
+                        {filteredTeaware.map((item) => {
+                          const twStock = typeof item.stock === "number" ? item.stock : 10;
+                          const twIsIn = item.inStock !== false && twStock > 0;
+                          const twIsLow = twIsIn && twStock <= 3;
+                          return (
                           <tr key={item.id}>
                             <td style={{ width: "70px" }}>
                               <img src={item.image} alt={item.name} className="product-thumb" />
@@ -1961,6 +2146,21 @@ export default function AdminDashboard() {
                             <td>
                               <strong className="gold-text">₹{item.price.toLocaleString()}</strong>
                               {item.oldPrice ? <span className="old-price-strike">₹{item.oldPrice}</span> : null}
+                            </td>
+                            <td>
+                              <span className={`stock-pill ${!twIsIn ? "out" : twIsLow ? "low" : "in"}`}>
+                                {!twIsIn ? "Out of Stock" : `Stock: ${twStock}`}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className={`admin-btn-stock-toggle ${twIsIn ? "in" : "out"}`}
+                                onClick={() => handleToggleTeawareStock(item)}
+                                title={twIsIn ? "Click to set Out of Stock" : "Click to Restock"}
+                              >
+                                {twIsIn ? "Set Out of Stock" : "Restock (+10)"}
+                              </button>
                             </td>
                             <td>
                               <div className="table-actions-group">
@@ -1981,14 +2181,19 @@ export default function AdminDashboard() {
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
 
                   {/* Mobile View */}
                   <div className="admin-mobile-catalog-grid mobile-only">
-                    {filteredTeaware.map((item) => (
+                    {filteredTeaware.map((item) => {
+                      const twStock = typeof item.stock === "number" ? item.stock : 10;
+                      const twIsIn = item.inStock !== false && twStock > 0;
+                      const twIsLow = twIsIn && twStock <= 3;
+                      return (
                       <div className="admin-catalog-card" key={item.id}>
                         <div className="catalog-card-media">
                           <img src={item.image} alt={item.name} />
@@ -1999,26 +2204,39 @@ export default function AdminDashboard() {
                           <span className="cell-subtext">{item.material} · {item.capacity}</span>
                           <div className="catalog-card-meta">
                             <span className="gold-text large">₹{item.price.toLocaleString()}</span>
+                            <span className={`stock-pill ${!twIsIn ? "out" : twIsLow ? "low" : "in"}`}>
+                              {!twIsIn ? "Out of Stock" : `${twStock} left`}
+                            </span>
                           </div>
                         </div>
-                        <div className="mobile-card-actions">
+                        <div className="catalog-card-actions-row">
                           <button
                             type="button"
-                            className="admin-btn-primary flex-1"
-                            onClick={() => handleEditTeawareClick(item)}
+                            className={`admin-btn-stock-toggle ${twIsIn ? "in" : "out"}`}
+                            onClick={() => handleToggleTeawareStock(item)}
                           >
-                            Edit
+                            {twIsIn ? "Mark Out of Stock" : "Restock (+10)"}
                           </button>
-                          <button
-                            type="button"
-                            className="admin-btn-danger"
-                            onClick={() => handleDeleteTeaware(item.id)}
-                          >
-                            Delete
-                          </button>
+                          <div className="catalog-btn-split">
+                            <button
+                              type="button"
+                              className="admin-btn-primary flex-1"
+                              onClick={() => handleEditTeawareClick(item)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="admin-btn-danger"
+                              onClick={() => handleDeleteTeaware(item.id)}
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -2100,24 +2318,46 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+                <div className="form-group">
+                  <label>Capacity / Volume</label>
+                  <input
+                    type="text"
+                    value={currentTeaware.capacity || ""}
+                    onChange={e => setCurrentTeaware({ ...currentTeaware, capacity: e.target.value })}
+                    placeholder="e.g. 600ml / 2-3 Cups"
+                  />
+                </div>
+
+                <ImageUploadControl
+                  currentImageUrl={currentTeaware.image || ""}
+                  onImageChange={(url) => setCurrentTeaware({ ...currentTeaware, image: url })}
+                  folder="teaware"
+                  label="Teaware Artisan Image"
+                />
+
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label>Capacity / Volume</label>
-                    <input
-                      type="text"
-                      value={currentTeaware.capacity || ""}
-                      onChange={e => setCurrentTeaware({ ...currentTeaware, capacity: e.target.value })}
-                      placeholder="e.g. 600ml / 2-3 Cups"
-                    />
+                    <label>Stock Status</label>
+                    <select
+                      value={currentTeaware.inStock !== false ? "in-stock" : "out-of-stock"}
+                      onChange={e => setCurrentTeaware({
+                        ...currentTeaware,
+                        inStock: e.target.value === "in-stock",
+                        stock: e.target.value === "in-stock" ? (currentTeaware.stock || 10) : 0,
+                      })}
+                    >
+                      <option value="in-stock">In Stock</option>
+                      <option value="out-of-stock">Out of Stock</option>
+                    </select>
                   </div>
 
                   <div className="form-group">
-                    <label>Image URL *</label>
+                    <label>Badge / Tag</label>
                     <input
                       type="text"
-                      required
-                      value={currentTeaware.image || ""}
-                      onChange={e => setCurrentTeaware({ ...currentTeaware, image: e.target.value })}
+                      value={currentTeaware.badge || ""}
+                      onChange={e => setCurrentTeaware({ ...currentTeaware, badge: e.target.value })}
+                      placeholder="e.g. BESPOKE, ARTISANAL, COMING SOON"
                     />
                   </div>
                 </div>
@@ -2159,7 +2399,7 @@ export default function AdminDashboard() {
                 </button>
               </div>
 
-              {/* SEARCH */}
+              {/* SEARCH & FILTERS */}
               <div className="admin-toolbar">
                 <div className="toolbar-search">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2172,6 +2412,19 @@ export default function AdminDashboard() {
                   {hamperSearchQuery && (
                     <button type="button" className="toolbar-clear" onClick={() => setHamperSearchQuery("")}>✕</button>
                   )}
+                </div>
+                <div className="toolbar-filters">
+                  <select
+                    value={hamperFilterCategory}
+                    onChange={(e) => setHamperFilterCategory(e.target.value)}
+                    className="toolbar-select"
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="Luxury Gift Sets">Luxury Gift Sets</option>
+                    <option value="Corporate Gifting">Corporate Gifting</option>
+                    <option value="Festive Collections">Festive Collections</option>
+                    <option value="Curated Boxes">Curated Boxes</option>
+                  </select>
                 </div>
               </div>
 
@@ -2193,11 +2446,17 @@ export default function AdminDashboard() {
                           <th>Hamper Details</th>
                           <th>Included Items</th>
                           <th>Price</th>
+                          <th>Stock Level</th>
+                          <th>Quick Toggle</th>
                           <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredHampers.map((hamper) => (
+                        {filteredHampers.map((hamper) => {
+                          const hStock = typeof hamper.stock === "number" ? hamper.stock : 10;
+                          const hIsIn = hamper.inStock !== false && hStock > 0;
+                          const hIsLow = hIsIn && hStock <= 3;
+                          return (
                           <tr key={hamper.id}>
                             <td style={{ width: "70px" }}>
                               <img src={hamper.image} alt={hamper.name} className="product-thumb" />
@@ -2212,6 +2471,22 @@ export default function AdminDashboard() {
                             </td>
                             <td>
                               <strong className="gold-text">₹{hamper.price.toLocaleString()}</strong>
+                              {hamper.oldPrice ? <span className="old-price-strike">₹{hamper.oldPrice}</span> : null}
+                            </td>
+                            <td>
+                              <span className={`stock-pill ${!hIsIn ? "out" : hIsLow ? "low" : "in"}`}>
+                                {!hIsIn ? "Out of Stock" : `Stock: ${hStock}`}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className={`admin-btn-stock-toggle ${hIsIn ? "in" : "out"}`}
+                                onClick={() => handleToggleHamperStock(hamper)}
+                                title={hIsIn ? "Click to set Out of Stock" : "Click to Restock"}
+                              >
+                                {hIsIn ? "Set Out of Stock" : "Restock (+10)"}
+                              </button>
                             </td>
                             <td>
                               <div className="table-actions-group">
@@ -2232,14 +2507,19 @@ export default function AdminDashboard() {
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
 
                   {/* Mobile View */}
                   <div className="admin-mobile-catalog-grid mobile-only">
-                    {filteredHampers.map((hamper) => (
+                    {filteredHampers.map((hamper) => {
+                      const hStock = typeof hamper.stock === "number" ? hamper.stock : 10;
+                      const hIsIn = hamper.inStock !== false && hStock > 0;
+                      const hIsLow = hIsIn && hStock <= 3;
+                      return (
                       <div className="admin-catalog-card" key={hamper.id}>
                         <div className="catalog-card-media">
                           <img src={hamper.image} alt={hamper.name} />
@@ -2250,26 +2530,39 @@ export default function AdminDashboard() {
                           <span className="cell-subtext">{hamper.subtitle}</span>
                           <div className="catalog-card-meta">
                             <span className="gold-text large">₹{hamper.price.toLocaleString()}</span>
+                            <span className={`stock-pill ${!hIsIn ? "out" : hIsLow ? "low" : "in"}`}>
+                              {!hIsIn ? "Out of Stock" : `${hStock} left`}
+                            </span>
                           </div>
                         </div>
-                        <div className="mobile-card-actions">
+                        <div className="catalog-card-actions-row">
                           <button
                             type="button"
-                            className="admin-btn-primary flex-1"
-                            onClick={() => handleEditHamperClick(hamper)}
+                            className={`admin-btn-stock-toggle ${hIsIn ? "in" : "out"}`}
+                            onClick={() => handleToggleHamperStock(hamper)}
                           >
-                            Edit
+                            {hIsIn ? "Mark Out of Stock" : "Restock (+10)"}
                           </button>
-                          <button
-                            type="button"
-                            className="admin-btn-danger"
-                            onClick={() => handleDeleteHamper(hamper.id)}
-                          >
-                            Delete
-                          </button>
+                          <div className="catalog-btn-split">
+                            <button
+                              type="button"
+                              className="admin-btn-primary flex-1"
+                              onClick={() => handleEditHamperClick(hamper)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="admin-btn-danger"
+                              onClick={() => handleDeleteHamper(hamper.id)}
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -2326,24 +2619,58 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="form-group">
-                    <label>Badge Tag</label>
+                    <label>Old Price (₹)</label>
                     <input
-                      type="text"
-                      value={currentHamper.badge || ""}
-                      onChange={e => setCurrentHamper({ ...currentHamper, badge: e.target.value })}
-                      placeholder="e.g. FESTIVE EDITION"
+                      type="number"
+                      value={currentHamper.oldPrice || ""}
+                      onChange={e => setCurrentHamper({ ...currentHamper, oldPrice: Number(e.target.value) || undefined })}
+                      placeholder="Leave blank if no discount"
                     />
                   </div>
                 </div>
 
                 <div className="form-group">
-                  <label>Image URL *</label>
+                  <label>Badge Tag</label>
                   <input
                     type="text"
-                    required
-                    value={currentHamper.image || ""}
-                    onChange={e => setCurrentHamper({ ...currentHamper, image: e.target.value })}
+                    value={currentHamper.badge || ""}
+                    onChange={e => setCurrentHamper({ ...currentHamper, badge: e.target.value })}
+                    placeholder="e.g. FESTIVE EDITION"
                   />
+                </div>
+
+                <ImageUploadControl
+                  currentImageUrl={currentHamper.image || ""}
+                  onImageChange={(url) => setCurrentHamper({ ...currentHamper, image: url })}
+                  folder="hampers"
+                  label="Hamper Presentation Image"
+                />
+
+                <div className="form-grid-2">
+                  <div className="form-group">
+                    <label>Stock Status</label>
+                    <select
+                      value={currentHamper.inStock !== false ? "in-stock" : "out-of-stock"}
+                      onChange={e => setCurrentHamper({
+                        ...currentHamper,
+                        inStock: e.target.value === "in-stock",
+                        stock: e.target.value === "in-stock" ? (currentHamper.stock || 10) : 0,
+                      })}
+                    >
+                      <option value="in-stock">In Stock</option>
+                      <option value="out-of-stock">Out of Stock</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Category</label>
+                    <input
+                      type="text"
+                      value={currentHamper.category || "Luxury Gift Sets"}
+                      onChange={e => setCurrentHamper({ ...currentHamper, category: e.target.value })}
+                      placeholder="e.g. Luxury Gift Sets, Corporate Gifting"
+                    />
+                  </div>
                 </div>
 
                 <div className="form-group">
@@ -2354,6 +2681,16 @@ export default function AdminDashboard() {
                     value={(currentHamper.includes || []).join(", ")}
                     onChange={e => setCurrentHamper({ ...currentHamper, includes: e.target.value.split(",").map(i => i.trim()) })}
                     placeholder="e.g. 1x Assam Orthodox, 1x Brass Infuser, 1x Tasting Journal"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Description</label>
+                  <textarea
+                    rows={2}
+                    value={currentHamper.description || ""}
+                    onChange={e => setCurrentHamper({ ...currentHamper, description: e.target.value })}
+                    placeholder="Curated tea gift experience overview..."
                   />
                 </div>
 
@@ -2778,6 +3115,186 @@ export default function AdminDashboard() {
               </form>
             </div>
           )}
+
+          {/* =========================================================
+              TAB 8: CUSTOMER REVIEWS
+             ========================================================= */}
+          {activeTab === "reviews" && (
+            <div className="admin-section-view">
+              <div className="admin-section-header">
+                <div>
+                  <h2 className="section-title">Customer Reviews & Ratings</h2>
+                  <p className="section-subtitle">Verified feedback from connoisseurs and tea patrons</p>
+                </div>
+                <div className="admin-header-quick-stats">
+                  <div className="header-stat-pill">
+                    <span className="stat-pill-label">Total Reviews</span>
+                    <span className="stat-pill-val">{reviews.length}</span>
+                  </div>
+                  <div className="header-stat-pill">
+                    <span className="stat-pill-label">Approved</span>
+                    <span className="stat-pill-val">{reviews.filter(r => r.status === "Approved").length}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* TOOLBAR */}
+              <div className="admin-toolbar">
+                <div className="toolbar-search">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input
+                    type="text"
+                    placeholder="Search by patron name, email, product or feedback..."
+                    value={reviewSearchQuery}
+                    onChange={(e) => setReviewSearchQuery(e.target.value)}
+                  />
+                  {reviewSearchQuery && (
+                    <button type="button" className="toolbar-clear" onClick={() => setReviewSearchQuery("")}>✕</button>
+                  )}
+                </div>
+
+                <div className="toolbar-filters">
+                  <select
+                    value={reviewFilterStatus}
+                    onChange={(e) => setReviewFilterStatus(e.target.value as "all" | "Approved" | "Hidden")}
+                    className="toolbar-select"
+                  >
+                    <option value="all">All Statuses ({reviews.length})</option>
+                    <option value="Approved">Approved ({reviews.filter(r => r.status === "Approved").length})</option>
+                    <option value="Hidden">Hidden ({reviews.filter(r => r.status === "Hidden").length})</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* REVIEWS LIST */}
+              {filteredReviews.length === 0 ? (
+                <div className="admin-empty-state-card">
+                  <span className="empty-icon">★</span>
+                  <h3>No Customer Reviews Found</h3>
+                  <p>Reviews submitted by patrons after delivery will appear here automatically.</p>
+                </div>
+              ) : (
+                <>
+                  {/* DESKTOP TABLE */}
+                  <div className="admin-table-container desktop-only">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Patron</th>
+                          <th>Product / Order</th>
+                          <th>Rating</th>
+                          <th>Feedback</th>
+                          <th>Date</th>
+                          <th>Status</th>
+                          <th className="th-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredReviews.map((rev) => (
+                          <tr key={rev.id}>
+                            <td>
+                              <strong>{rev.customerName}</strong>
+                              {rev.customerEmail && <span className="cell-subtext">{rev.customerEmail}</span>}
+                            </td>
+                            <td>
+                              <span className="cell-text">{rev.productName || "Tea Harvest"}</span>
+                              {rev.orderId && <span className="cell-subtext">Order #{rev.orderId}</span>}
+                            </td>
+                            <td>
+                              <div className="admin-rating-stars" aria-label={`${rev.rating} out of 5 stars`}>
+                                {"★".repeat(rev.rating)}
+                                {"☆".repeat(Math.max(0, 5 - rev.rating))}
+                              </div>
+                            </td>
+                            <td>
+                              <p className="admin-review-feedback" title={rev.feedback}>
+                                &ldquo;{rev.feedback}&rdquo;
+                              </p>
+                            </td>
+                            <td>
+                              <span className="cell-date">
+                                {rev.createdAt ? new Date(rev.createdAt).toLocaleDateString() : "Recent"}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`review-status-badge ${rev.status.toLowerCase()}`}>
+                                {rev.status}
+                              </span>
+                            </td>
+                            <td className="td-right">
+                              <div className="table-actions-group">
+                                <button
+                                  type="button"
+                                  className="admin-btn-action"
+                                  onClick={() => handleToggleReviewStatus(rev)}
+                                >
+                                  {rev.status === "Approved" ? "Hide" : "Approve"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="admin-btn-action danger"
+                                  onClick={() => handleDeleteReview(rev.id)}
+                                  title="Delete Review"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* MOBILE CARDS */}
+                  <div className="admin-mobile-cards-list mobile-only">
+                    {filteredReviews.map((rev) => (
+                      <div className="admin-mobile-card" key={rev.id}>
+                        <div className="mobile-card-header">
+                          <div>
+                            <strong>{rev.customerName}</strong>
+                            <span className="mobile-card-date">{rev.customerEmail || "Patron"}</span>
+                          </div>
+                          <span className={`review-status-badge ${rev.status.toLowerCase()}`}>
+                            {rev.status}
+                          </span>
+                        </div>
+                        <div className="mobile-card-body">
+                          <div className="mobile-card-info-row">
+                            <span>Rating:</span>
+                            <span className="admin-rating-stars">{"★".repeat(rev.rating)}</span>
+                          </div>
+                          <div className="mobile-card-info-row">
+                            <span>Product:</span>
+                            <span>{rev.productName || "Tea Harvest"}</span>
+                          </div>
+                          <p className="admin-review-feedback" style={{ marginTop: "8px" }}>
+                            &ldquo;{rev.feedback}&rdquo;
+                          </p>
+                        </div>
+                        <div className="mobile-card-actions">
+                          <button
+                            type="button"
+                            className="admin-btn-secondary"
+                            onClick={() => handleToggleReviewStatus(rev)}
+                          >
+                            {rev.status === "Approved" ? "Hide Review" : "Approve Review"}
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-btn-action danger"
+                            onClick={() => handleDeleteReview(rev.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </main>
       </div>
 
@@ -2815,6 +3332,10 @@ export default function AdminDashboard() {
                     <strong>{selectedOrder.customerEmail || "Not Provided"}</strong>
                   </div>
                   <div className="modal-info-line">
+                    <span>Phone:</span>
+                    <strong>{selectedOrder.customerPhone || ((selectedOrder.shippingAddress as unknown) as Record<string, unknown>)?.phone as string || "Not Provided"}</strong>
+                  </div>
+                  <div className="modal-info-line">
                     <span>Date:</span>
                     <span>{new Date(selectedOrder.createdAt).toLocaleString()}</span>
                   </div>
@@ -2839,6 +3360,18 @@ export default function AdminDashboard() {
                     <span>Method:</span>
                     <strong>{selectedOrder.paymentMethod || "Prepaid"}</strong>
                   </div>
+                  {selectedOrder.paymentId && (
+                    <div className="modal-info-line">
+                      <span>Payment ID:</span>
+                      <strong style={{ fontFamily: "monospace", fontSize: "11px" }}>{selectedOrder.paymentId}</strong>
+                    </div>
+                  )}
+                  <div className="modal-info-line">
+                    <span>Payment Status:</span>
+                    <span className={`payment-pill ${selectedOrder.paymentStatus === "Paid" ? "prepaid" : "cod"}`}>
+                      {selectedOrder.paymentStatus || "Pending"}
+                    </span>
+                  </div>
                   <div className="modal-info-line">
                     <span>Subtotal:</span>
                     <span>₹{selectedOrder.subtotal || 0}</span>
@@ -2861,12 +3394,15 @@ export default function AdminDashboard() {
                   <h4>Order Status & Action</h4>
                   <div className="modal-status-selector">
                     <select
-                      className={`status-dropdown ${(selectedOrder.orderStatus || selectedOrder.status || "processing").toLowerCase()}`}
-                      value={selectedOrder.orderStatus || selectedOrder.status || "Processing"}
+                      className={`status-dropdown ${(selectedOrder.orderStatus || selectedOrder.status || "pending").toLowerCase()}`}
+                      value={selectedOrder.orderStatus || selectedOrder.status || "Pending"}
                       onChange={(e) => handleUpdateOrderStatus(selectedOrder.id, e.target.value)}
                     >
+                      <option value="Pending">Pending</option>
+                      <option value="Confirmed">Confirmed</option>
                       <option value="Processing">Processing</option>
                       <option value="Shipped">Shipped</option>
+                      <option value="Out for Delivery">Out for Delivery</option>
                       <option value="Delivered">Delivered</option>
                       <option value="Cancelled">Cancelled</option>
                     </select>

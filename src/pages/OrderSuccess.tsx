@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useOrderContext } from "../context/OrderContext";
+import { db } from "../lib/firebase";
+import { collection, addDoc } from "firebase/firestore";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
 import "./OrderSuccess.css";
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
@@ -22,9 +25,30 @@ export default function OrderSuccess() {
 
   const order = latestOrder;
 
-  const handleSubmitRating = (e: React.FormEvent) => {
+  const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitted(true);
+
+    if (order) {
+      try {
+        const customerName = order.shippingAddress?.fullName || order.customerName || "Verified Patron";
+        const customerEmail = order.customerEmail || "";
+        const productName = (order.items || []).map((i) => i.name).join(", ") || "Leafly Botanical Harvest";
+        await addDoc(collection(db, "reviews"), {
+          orderId: order.id,
+          customerName,
+          customerEmail,
+          productName,
+          rating,
+          feedback: feedback.trim() || "Exquisite tea craftsmanship.",
+          status: "Approved",
+          createdAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn("Could not save review to Firestore:", err);
+      }
+    }
+
     setTimeout(() => {
       setShowRatingModal(false);
     }, 1800);
@@ -53,6 +77,11 @@ export default function OrderSuccess() {
 
   return (
     <main className="order-success-page">
+      <SEO
+        title="Order Confirmed | Leafly"
+        description="Your Leafly tea order has been placed successfully."
+        noindex={true}
+      />
       <div className="order-success-ambient-glow" aria-hidden="true" />
       <div className="order-success-card">
         <div className="order-success-header-wrap">

@@ -221,8 +221,7 @@ export default function CartDrawer() {
             </div>
 
             <p>
-              Taxes and shipping calculated
-              at checkout.
+              Coupons and shipping calculated at checkout.
             </p>
 
             <button

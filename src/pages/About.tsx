@@ -1,5 +1,7 @@
 import "./About.css";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateOrganizationSchema, generateBreadcrumbSchema } from "../lib/seoData";
 import mainImage from "../assets/main.webp";
 import image2 from "../assets/image2.webp";
 import image3 from "../assets/image3.webp";
@@ -64,8 +66,19 @@ const COMMUNITY_VIDEOS = [
 ];
 
 export default function About() {
+  const breadcrumbs = [
+    { name: "Home", url: "/" },
+    { name: "About", url: "/about" },
+  ];
+
   return (
     <main className="about-page">
+      <SEO
+        title="About Leafly — Single-Origin Indian Teas & Ethical Craft | Leafly"
+        description="Learn about Leafly's mission to curate exceptional loose leaf teas from India's finest estates in Darjeeling, Assam, and the Himalayas with ethical craft and slow rituals."
+        canonicalPath="/about"
+        schema={[generateOrganizationSchema(), generateBreadcrumbSchema(breadcrumbs)]}
+      />
       <section className="about-hero">
         <div className="about-hero-copy">
           <p className="about-eyebrow">OUR STORY</p>

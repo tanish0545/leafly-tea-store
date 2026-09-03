@@ -18,6 +18,7 @@ import { doc, setDoc, onSnapshot } from "firebase/firestore";
 import type { AuthUser, SignupProfileData } from "../types/contracts";
 
 import { isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../lib/validation";
+import { ApiService } from "../lib/apiClient";
 
 export type { AuthUser, SignupProfileData };
 export { isValidGmailAddress, GMAIL_ERROR_MESSAGE };
@@ -222,6 +223,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setDoc(doc(db, "users", currentFbUser.uid), initProfile, { merge: true }).catch((e) => {
                 console.warn("Initial user doc creation notice:", e);
               });
+              if (currentFbUser.email) {
+                ApiService.sendWelcomeEmail({
+                  name: String(initProfile.displayName || "Valued Patron"),
+                  email: currentFbUser.email,
+                }).catch(() => {});
+              }
               setUser(mapFirebaseUserToAuthUser(currentFbUser, initProfile));
             }
             setLoading(false);
@@ -292,6 +299,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await setDoc(doc(db, "users", result.user.uid), initialProfile, { merge: true });
       } catch (e) {
         console.error("Error creating users/{uid} record:", e);
+      }
+
+      if (cleanEmail) {
+        ApiService.sendWelcomeEmail({
+          name: displayName,
+          email: cleanEmail,
+        }).catch(() => {});
       }
 
       setFirebaseUser(result.user);

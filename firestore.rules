@@ -78,12 +78,18 @@ service cloud.firestore {
     // 5. Teaware & Hampers collections:
     match /teaware/{itemId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
+      );
     }
 
     match /hampers/{hamperId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
+      );
     }
 
     // 6. Newsletter Subscribers:

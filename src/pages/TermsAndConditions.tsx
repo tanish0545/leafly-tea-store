@@ -1,10 +1,21 @@
 import { Link } from "react-router-dom";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateBreadcrumbSchema } from "../lib/seoData";
 import "./TermsAndConditions.css";
 
 export default function TermsAndConditions() {
   return (
     <main className="terms-conditions-page">
+      <SEO
+        title="Terms & Conditions — Leafly"
+        description="Read Leafly's Terms & Conditions. Store policies, pricing, intellectual property, order fulfillment, and user terms for leafly.vercel.app."
+        canonicalPath="/terms-and-conditions"
+        schema={generateBreadcrumbSchema([
+          { name: "Home", url: "/" },
+          { name: "Terms & Conditions", url: "/terms-and-conditions" },
+        ])}
+      />
       {/* =====================================================
           HERO
           ===================================================== */}

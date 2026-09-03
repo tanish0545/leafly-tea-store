@@ -2,7 +2,8 @@ import { useState } from "react";
 import Footer from "../components/Footer";
 import { useCart } from "../context/CartContext";
 import PhoneInput from "../components/PhoneInput";
-import { Helmet } from "react-helmet-async";
+import SEO from "../components/SEO";
+import { generateBreadcrumbSchema } from "../lib/seoData";
 import { ApiService } from "../lib/apiClient";
 import "./GiftingPage.css";
 
@@ -26,18 +27,31 @@ export default function GiftingPage() {
   });
 
   const handleAddHamper = (hamper: GiftHamper) => {
-    addToCart({
-      id: hamper.id,
-      name: hamper.name,
-      price: hamper.price,
-      image: hamper.image,
-      category: "Gift Hamper",
-      origin: "Curated Estate Blend",
-      caffeine: "Varied",
-      weight: "Gift Box",
-      badge: hamper.badge || "GIFT",
-    });
-    setAddedHamperId(hamper.id);
+    const stock = typeof hamper.stock === "number" ? hamper.stock : 10;
+    const inStock = hamper.inStock !== false && stock > 0;
+    if (!inStock) return;
+
+    addToCart(
+      {
+        id: hamper.id,
+        name: hamper.name,
+        price: Number(hamper.price) || 0,
+        oldPrice: hamper.oldPrice ? Number(hamper.oldPrice) : undefined,
+        image: hamper.image,
+        category: "Luxury Gift Sets",
+        origin: "Curated Estate Blend",
+        caffeine: "Varied",
+        weight: "Gift Box",
+        badge: hamper.badge || "GIFT",
+        stock,
+        inStock: true,
+      },
+      1,
+      "100g",
+      Number(hamper.price) || 0,
+      hamper.oldPrice ? Number(hamper.oldPrice) : undefined
+    );
+    setAddedHamperId(Number(hamper.id));
     window.setTimeout(() => setAddedHamperId(null), 2000);
   };
 
@@ -85,10 +99,15 @@ export default function GiftingPage() {
 
   return (
     <div className="leafly-app gifting-page-container">
-      <Helmet>
-        <title>Bespoke Corporate Tea Gifting | Leafly</title>
-        <meta name="description" content="Discover our handcrafted collection of single-origin Indian tea hampers, artisan teaware, and customizable botanical packaging for corporate and bespoke gifting." />
-      </Helmet>
+      <SEO
+        title="Luxury Tea Gifts & Curated Gift Sets | Corporate & Bespoke Hampers | Leafly"
+        description="Curated luxury tea gifts, personalized hampers, and keepsake gift boxes featuring single-origin Indian teas and artisan teaware. Custom corporate branding and nationwide dispatch."
+        canonicalPath="/gifting"
+        schema={generateBreadcrumbSchema([
+          { name: "Home", url: "/" },
+          { name: "Gifting", url: "/gifting" },
+        ])}
+      />
 
       <main className="gifting-main">
         <section className="gifting-hero-section">
@@ -149,16 +168,32 @@ export default function GiftingPage() {
                   <div className="gifting-hamper-footer">
                     <div className="gifting-hamper-price">
                       <span>PRICE</span>
-                      <strong>₹{hamper.price}</strong>
+                      <strong>₹{Number(hamper.price).toLocaleString("en-IN")}</strong>
+                      {hamper.oldPrice && hamper.oldPrice > hamper.price && (
+                        <del style={{ fontSize: "0.85rem", color: "rgba(11,43,30,0.45)", marginLeft: "6px" }}>
+                          ₹{Number(hamper.oldPrice).toLocaleString("en-IN")}
+                        </del>
+                      )}
                     </div>
 
-                    <button
-                      type="button"
-                      className={`gifting-add-button ${addedHamperId === hamper.id ? "added" : ""}`}
-                      onClick={() => handleAddHamper(hamper)}
-                    >
-                      {addedHamperId === hamper.id ? "ADDED TO CART ✓" : "ADD TO CART"}
-                    </button>
+                    {hamper.inStock === false || (typeof hamper.stock === "number" && hamper.stock <= 0) ? (
+                      <button
+                        type="button"
+                        className="gifting-add-button disabled"
+                        disabled
+                        style={{ opacity: 0.5, cursor: "not-allowed", background: "#333", color: "#aaa" }}
+                      >
+                        OUT OF STOCK
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`gifting-add-button ${addedHamperId === hamper.id ? "added" : ""}`}
+                        onClick={() => handleAddHamper(hamper)}
+                      >
+                        {addedHamperId === hamper.id ? "ADDED TO CART ✓" : "ADD TO CART"}
+                      </button>
+                    )}
                   </div>
                 </div>
               </article>

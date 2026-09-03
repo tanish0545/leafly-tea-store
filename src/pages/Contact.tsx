@@ -2,11 +2,14 @@ import { useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
+import { generateOrganizationSchema, generateBreadcrumbSchema } from "../lib/seoData";
 import "./Contact.css";
 
 type ContactForm = {
   name: string;
   email: string;
+  phone: string;
   subject: string;
   message: string;
 };
@@ -65,6 +68,7 @@ const faqItems: FaqItem[] = [
 const initialForm: ContactForm = {
   name: "",
   email: "",
+  phone: "",
   subject: "",
   message: "",
 };
@@ -165,6 +169,18 @@ export default function Contact() {
 
   return (
     <main className="contact-page">
+      <SEO
+        title="Contact Leafly — Tea Guidance, Support & Order Inquiries | Leafly"
+        description="Get in touch with Leafly customer care. Contact us for personalized tea guidance, estate questions, order status, or bespoke corporate gifting inquiries."
+        canonicalPath="/contact"
+        schema={[
+          generateOrganizationSchema(),
+          generateBreadcrumbSchema([
+            { name: "Home", url: "/" },
+            { name: "Contact", url: "/contact" },
+          ]),
+        ]}
+      />
       <section className="contact-hero">
         <div className="contact-hero-copy">
           <p className="contact-eyebrow">CONTACT LEAFLY</p>
@@ -206,49 +222,66 @@ export default function Contact() {
           <form className="contact-form" onSubmit={handleSubmit} noValidate>
             <div className="field-row">
               <label className="field">
-                <span>Name</span>
+                <span>Name *</span>
                 <input
                   type="text"
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
+                  placeholder="Your full name"
                   aria-invalid={Boolean(errors.name)}
                 />
                 {errors.name && <small>{errors.name}</small>}
               </label>
 
               <label className="field">
-                <span>Email</span>
+                <span>Email *</span>
                 <input
                   type="email"
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
+                  placeholder="name@example.com"
                   aria-invalid={Boolean(errors.email)}
                 />
                 {errors.email && <small>{errors.email}</small>}
               </label>
             </div>
 
-            <label className="field">
-              <span>Subject</span>
-              <input
-                type="text"
-                name="subject"
-                value={formData.subject}
-                onChange={handleChange}
-                aria-invalid={Boolean(errors.subject)}
-              />
-              {errors.subject && <small>{errors.subject}</small>}
-            </label>
+            <div className="field-row">
+              <label className="field">
+                <span>Phone (Optional)</span>
+                <input
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder="+91 98765 43210"
+                />
+              </label>
+
+              <label className="field">
+                <span>Subject *</span>
+                <input
+                  type="text"
+                  name="subject"
+                  value={formData.subject}
+                  onChange={handleChange}
+                  placeholder="Order inquiry, tea guidance, etc."
+                  aria-invalid={Boolean(errors.subject)}
+                />
+                {errors.subject && <small>{errors.subject}</small>}
+              </label>
+            </div>
 
             <label className="field">
-              <span>Message</span>
+              <span>Message *</span>
               <textarea
                 name="message"
                 rows={6}
                 value={formData.message}
                 onChange={handleChange}
+                placeholder="How may our tea masters assist your ritual?"
                 aria-invalid={Boolean(errors.message)}
               />
               {errors.message && <small>{errors.message}</small>}

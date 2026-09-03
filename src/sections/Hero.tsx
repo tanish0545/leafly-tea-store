@@ -48,6 +48,7 @@ export default function Hero() {
         playsInline
         preload="metadata"
         aria-hidden="true"
+        aria-label="Leafly artisanal tea harvesting and mindful brewing ritual"
       />
 
       {/* =====================================================

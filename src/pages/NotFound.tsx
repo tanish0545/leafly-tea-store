@@ -1,10 +1,16 @@
 import { Link } from "react-router-dom";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
 import "./NotFound.css";
 
 export default function NotFound() {
   return (
     <main className="not-found-page">
+      <SEO
+        title="Page Not Found | Leafly"
+        description="The page you are looking for does not exist."
+        noindex={true}
+      />
       <div className="not-found-inner">
 
         <p className="not-found-code" aria-hidden="true">404</p>

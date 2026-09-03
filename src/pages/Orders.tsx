@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useOrderContext, type Order } from "../context/OrderContext";
 import { useAuth } from "../context/AuthContext";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
 import "./Orders.css";
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
@@ -188,6 +189,11 @@ export default function Orders() {
 
   return (
     <main className="orders-page">
+      <SEO
+        title="Your Orders | Leafly"
+        description="View and track your Leafly orders."
+        noindex={true}
+      />
       <div className="orders-header">
         <div>
           <p className="orders-eyebrow">MY ORDERS</p>

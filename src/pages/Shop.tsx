@@ -1,9 +1,10 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import {
   useEffect,
   useMemo,
   useState,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
@@ -15,7 +16,8 @@ import {
 } from "../data/products";
 import { useProducts } from "../context/ProductContext";
 import Footer from "../components/Footer";
-import { Helmet } from "react-helmet-async";
+import SEO from "../components/SEO";
+import { generateBreadcrumbSchema } from "../lib/seoData";
 
 import "./Shop.css";
 const categories = [
@@ -45,7 +47,22 @@ export default function Shop() {
     isInWishlist,
   } = useWishlist();
 
+  const [searchParams] = useSearchParams();
+  const queryParam = searchParams.get("q") || searchParams.get("search") || "";
+  const categoryParam = searchParams.get("category") || "";
+
   const [category, setCategory] = useState("All Teas");
+
+  useEffect(() => {
+    if (categoryParam) {
+      const match = categories.find(
+        (c) => c.toLowerCase() === categoryParam.toLowerCase()
+      );
+      if (match) {
+        setCategory(match);
+      }
+    }
+  }, [categoryParam]);
 
   const [priceFilter, setPriceFilter] =
     useState("All Prices");
@@ -130,6 +147,17 @@ export default function Shop() {
   const filteredProducts = useMemo(() => {
     let result = [...products];
 
+    if (queryParam.trim()) {
+      const q = queryParam.trim().toLowerCase();
+      result = result.filter(
+        (item) =>
+          item.name.toLowerCase().includes(q) ||
+          item.category.toLowerCase().includes(q) ||
+          item.origin.toLowerCase().includes(q) ||
+          (item.description && item.description.toLowerCase().includes(q))
+      );
+    }
+
     if (category !== "All Teas") {
       result = result.filter(
         (item) => item.category === category
@@ -182,6 +210,7 @@ export default function Shop() {
     return result;
   }, [
     products,
+    queryParam,
     category,
     priceFilter,
     originFilter,
@@ -262,10 +291,15 @@ export default function Shop() {
 
   return (
     <main className="leafly-shop-page">
-      <Helmet>
-        <title>Shop Premium Tea Collections | Leafly</title>
-        <meta name="description" content="Browse our complete collection of premium teas, including Green, White, Black, and Oolong. Filter by origin, price, and caffeine level." />
-      </Helmet>
+      <SEO
+        title="Premium Tea Collection | Buy Loose Leaf Tea Online | Leafly"
+        description="Explore single-origin loose leaf green tea, black tea, white tea, and artisan oolong from Darjeeling and Assam. Handcrafted small batches delivered fresh across India."
+        canonicalPath="/shop"
+        schema={generateBreadcrumbSchema([
+          { name: "Home", url: "/" },
+          { name: "Shop", url: "/shop" },
+        ])}
+      />
 
       {/* =====================================================
           HERO
@@ -517,7 +551,7 @@ export default function Shop() {
 
                   <img
                     src={product.image}
-                    alt={`Leafly ${product.name}`}
+                    alt={`Leafly ${product.name} pouch - single origin ${product.origin} ${product.category} tea`}
                     className="product-image"
                     onClick={() => navigate(`/shop/${getProductSlug(product)}`)}
                     style={{ cursor: "pointer" }}
