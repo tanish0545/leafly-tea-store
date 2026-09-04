@@ -577,9 +577,6 @@ export default function Checkout() {
       // Add to context (which handles saving to Firestore)
       await addOrder(order);
 
-      // Clear the local cart
-      clearCart();
-
       // Trigger Notifications (Fire and Forget)
       NotificationService.sendOrderConfirmationEmail({
         id: order.id,
@@ -597,11 +594,15 @@ export default function Checkout() {
         total: order.total
       });
 
-      // Navigate to order success after celebratory burst
+      // Navigate to order success after celebratory burst.
+      // clearCart() is called AFTER navigate so the Checkout page
+      // never renders the empty-cart state while still mounted.
       setTimeout(() => {
         setIsProcessing(false);
         setIsBursting(false);
         navigate("/order-success");
+        // Defer cart clear by one more tick so it happens after unmount
+        Promise.resolve().then(() => clearCart());
       }, 450);
 
     } catch (error) {

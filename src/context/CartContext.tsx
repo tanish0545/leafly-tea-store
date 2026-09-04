@@ -359,7 +359,7 @@ export function CartProvider({
     const itemPrice = live ? live.price : typeof customPrice === "number" ? customPrice : product.price;
     const itemOldPrice = live ? live.oldPrice : (customOldPrice ?? product.oldPrice);
 
-    // Trigger Fly-To-Cart visual animation
+    // Trigger Fly-To-Cart visual animation (product image arcs toward cart icon)
     if (typeof window !== "undefined") {
       let startRect: DOMRect | undefined;
       const activeEl = document.activeElement;
@@ -378,6 +378,9 @@ export function CartProvider({
         })
       );
     }
+
+    // Trigger the ritual pouch+trolley modal animation (AddedToRitualModal)
+    triggerAddedAnimation(product);
 
     setRawItems((current) => {
       const existingIndex = current.findIndex(
