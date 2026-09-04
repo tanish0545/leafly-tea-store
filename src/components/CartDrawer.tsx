@@ -47,6 +47,10 @@ export default function CartDrawer() {
     navigate("/shop");
   };
 
+  const hasUnavailableItems = items.some(
+    item => item.product.inStock === false || (typeof item.product.stock === "number" && item.product.stock <= 0)
+  );
+
   return (
     <div className="leafly-cart-overlay" onClick={closeCart}>
       <aside
@@ -112,9 +116,11 @@ export default function CartDrawer() {
           ) : (
             <>
               <div className="leafly-cart-items">
-                {items.map((item) => (
+                {items.map((item) => {
+                  const isItemUnavailable = item.product.inStock === false || (typeof item.product.stock === "number" && item.product.stock <= 0);
+                  return (
                   <article
-                    className="leafly-cart-item"
+                    className={`leafly-cart-item ${isItemUnavailable ? "item-unavailable" : ""}`}
                     key={item.id}
                   >
                     <div className="leafly-cart-item-image">
@@ -139,6 +145,12 @@ export default function CartDrawer() {
                         {" · "}
                         {item.product.caffeine} caffeine
                       </span>
+
+                      {isItemUnavailable && (
+                        <div className="leafly-cart-item-oos-badge">
+                          Currently unavailable — Please remove to checkout
+                        </div>
+                      )}
 
                       <strong>
                         ₹
@@ -189,7 +201,8 @@ export default function CartDrawer() {
                       </div>
                     </div>
                   </article>
-                ))}
+                );
+                })}
               </div>
 
               <div className="leafly-cart-actions">
@@ -224,10 +237,19 @@ export default function CartDrawer() {
               Coupons and shipping calculated at checkout.
             </p>
 
+            {hasUnavailableItems && (
+              <div className="leafly-cart-oos-warning" role="alert">
+                <span className="oos-icon">⚠️</span>
+                <span>An item in your cart is currently out of stock. Please remove it before proceeding.</span>
+              </div>
+            )}
+
             <button
               type="button"
-              className="leafly-checkout-button"
+              className={`leafly-checkout-button ${hasUnavailableItems ? "disabled" : ""}`}
+              disabled={hasUnavailableItems}
               onClick={() => {
+                if (hasUnavailableItems) return;
                 closeCart();
                 navigate("/checkout");
               }}

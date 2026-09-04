@@ -632,11 +632,14 @@
 }
 
 .teaware-add-btn.disabled,
-.teaware-add-btn:disabled {
-  background: rgba(11, 43, 30, 0.08);
-  border-color: rgba(11, 43, 30, 0.15);
-  color: rgba(11, 43, 30, 0.4);
+.teaware-add-btn:disabled,
+.teaware-add-btn.coming-soon {
+  background: rgba(201, 162, 75, 0.08);
+  border: 1px solid rgba(201, 162, 75, 0.35);
+  color: #8c6823;
   cursor: not-allowed;
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 .teaware-modal-price-row {
@@ -682,11 +685,14 @@
 }
 
 .teaware-modal-add-btn.disabled,
-.teaware-modal-add-btn:disabled {
-  background: rgba(11, 43, 30, 0.1);
-  border-color: rgba(11, 43, 30, 0.2);
-  color: rgba(11, 43, 30, 0.4);
+.teaware-modal-add-btn:disabled,
+.teaware-modal-add-btn.coming-soon {
+  background: rgba(201, 162, 75, 0.08);
+  border: 1px solid rgba(201, 162, 75, 0.35);
+  color: #8c6823;
   cursor: not-allowed;
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 /* =========================================================

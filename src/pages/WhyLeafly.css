@@ -11,10 +11,25 @@
 .why-leafly-page {
   width: 100%;
   min-height: 100vh;
-  background-color: #011111;
-  color: #f7f3ec;
+  background-color: #faf7f2;
+  color: #1c2826;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   overflow-x: hidden;
+  transition: opacity 0.4s ease;
+}
+
+.why-leafly-page.page-intro-active {
+  opacity: 0.96;
+}
+
+.why-leafly-page.page-intro-complete {
+  opacity: 1;
+  animation: whyPageReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes whyPageReveal {
+  from { opacity: 0.85; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ==========================================================
@@ -24,12 +39,14 @@
 .why-leafly-typewriter-loader {
   position: fixed;
   inset: 0;
-  z-index: 99999;
+  z-index: 999999;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 45%, #0d3625 0%, #061912 65%, #011111 100%);
-  transition: opacity 0.45s ease, visibility 0.45s ease;
+  background: radial-gradient(ellipse at 50% 45%, #0e3d29 0%, #0b2b1e 55%, #061912 100%);
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s ease;
+  pointer-events: all;
+  overflow: hidden;
 }
 
 .why-leafly-typewriter-loader.fade-out {
@@ -38,56 +55,74 @@
   pointer-events: none;
 }
 
+.typewriter-ambient-glow {
+  position: absolute;
+  width: 640px;
+  height: 640px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201, 162, 75, 0.16) 0%, rgba(14, 61, 41, 0.35) 45%, transparent 70%);
+  pointer-events: none;
+  filter: blur(40px);
+  -webkit-filter: blur(40px);
+}
+
 .typewriter-content {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 24px;
+  padding: 32px 24px;
 }
 
 .typewriter-brand-eyebrow {
-  font-size: 11px;
+  font-size: 11.5px;
   letter-spacing: 0.28em;
-  color: #c9a24b;
+  color: #dfc07b;
   font-weight: 700;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 .typewriter-heading {
   font-family: "Playfair Display", Georgia, serif;
-  font-size: clamp(32px, 5.5vw, 64px);
+  font-size: clamp(38px, 6vw, 76px);
   color: #f7f3ec;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   font-weight: 600;
-  margin: 0 0 16px;
+  margin: 0 0 20px;
   display: inline-flex;
   align-items: baseline;
   justify-content: center;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+  min-height: 1.2em;
 }
 
 .typewriter-text {
-  border-right: 2px solid #c9a24b;
-  padding-right: 4px;
+  border-right: 3px solid #dfc07b;
+  padding-right: 6px;
   animation: typewriterCaret 0.75s step-end infinite;
 }
 
 .typewriter-qmark {
-  color: #c9a24b;
-  font-size: 1.25em;
+  color: #dfc07b;
+  font-size: 1.3em;
   font-weight: 700;
-  margin-left: 2px;
+  margin-left: 6px;
   display: inline-block;
-  transform: translateY(2px);
-  animation: qmarkPop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  vertical-align: baseline;
+  animation: qmarkPop 0.24s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  text-shadow: 0 0 20px rgba(223, 192, 123, 0.5);
 }
 
 .typewriter-gold-accent {
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: 140px;
-  margin-top: 10px;
+  gap: 14px;
+  width: 160px;
+  margin-top: 12px;
 }
 
 .typewriter-line {
@@ -102,17 +137,17 @@
 
 .typewriter-spark {
   color: #c9a24b;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 @keyframes typewriterCaret {
   from, to { border-color: transparent; }
-  50% { border-color: #c9a24b; }
+  50% { border-color: #dfc07b; }
 }
 
 @keyframes qmarkPop {
-  0% { transform: scale(0.6) translateY(6px); opacity: 0; }
-  100% { transform: scale(1) translateY(2px); opacity: 1; }
+  0% { opacity: 0; transform: scale(0.6) translateY(4px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 /* ==========================================================
@@ -380,13 +415,15 @@
 }
 
 /* ==========================================================
-   4. THE LEAFLY DIFFERENCE
+   4. THE LEAFLY DIFFERENCE (LIGHT SECTION)
    ========================================================== */
 
 .why-difference-section {
-  background-color: #f7f3ec;
-  color: #0b2b1e;
+  background: #faf7f2;
+  color: #1c2826;
   padding: 100px 24px;
+  border-top: 1px solid rgba(201, 162, 75, 0.2);
+  border-bottom: 1px solid rgba(201, 162, 75, 0.2);
 }
 
 .why-section-header {
@@ -398,7 +435,7 @@
 .why-section-kicker {
   font-size: 11px;
   letter-spacing: 0.22em;
-  color: #9b7c38;
+  color: #8c6d23;
   font-weight: 800;
   margin-bottom: 12px;
   text-transform: uppercase;
@@ -432,14 +469,14 @@
 }
 
 .why-gold-divider b {
-  color: #c9a24b;
+  color: #8c6d23;
   font-size: 14px;
 }
 
 .why-section-desc {
   font-size: 15px;
   line-height: 1.6;
-  color: #4a5d54;
+  color: #4a5550;
   margin: 0;
 }
 
@@ -453,26 +490,27 @@
 
 .why-diff-card {
   background: #ffffff;
-  border: 1px solid rgba(201, 162, 75, 0.2);
+  border: 1px solid rgba(201, 162, 75, 0.28);
   border-radius: 14px;
   padding: 32px 22px;
   position: relative;
   transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 6px 20px rgba(11, 43, 30, 0.04);
+  box-shadow: 0 8px 24px rgba(11, 43, 30, 0.05);
   display: flex;
   flex-direction: column;
 }
 
 .why-diff-card:hover {
   transform: translateY(-6px);
-  box-shadow: 0 16px 32px rgba(11, 43, 30, 0.09);
+  box-shadow: 0 16px 36px rgba(11, 43, 30, 0.12);
   border-color: #c9a24b;
+  background: #ffffff;
 }
 
 .diff-card-num {
   font-family: "Playfair Display", Georgia, serif;
   font-size: 16px;
-  color: #c9a24b;
+  color: #8c6d23;
   font-weight: 700;
   margin-bottom: 14px;
 }
@@ -481,8 +519,9 @@
   width: 38px;
   height: 38px;
   border-radius: 8px;
-  background: #fbf7ee;
-  color: #0b2b1e;
+  background: rgba(201, 162, 75, 0.12);
+  border: 1px solid rgba(201, 162, 75, 0.3);
+  color: #8c6d23;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -505,7 +544,7 @@
 .why-diff-card p {
   font-size: 13px;
   line-height: 1.6;
-  color: #556960;
+  color: #55625c;
   margin: 0;
 }
 
@@ -603,12 +642,15 @@
 }
 
 /* ==========================================================
-   6. TEA BENEFITS SECTION
+   6. TEA BENEFITS SECTION (LIGHT SECTION)
    ========================================================== */
 
 .why-benefits-section {
-  background-color: #0b2b1e;
+  background-color: #f5f0e6;
+  color: #1c2826;
   padding: 90px 24px;
+  border-top: 1px solid rgba(201, 162, 75, 0.2);
+  border-bottom: 1px solid rgba(201, 162, 75, 0.2);
 }
 
 .why-benefits-header {
@@ -617,8 +659,12 @@
   text-align: center;
 }
 
+.why-benefits-header .why-section-kicker {
+  color: #8c6d23;
+}
+
 .why-benefits-header .why-section-title {
-  color: #ffffff;
+  color: #0b2b1e;
 }
 
 .why-benefits-grid {
@@ -630,18 +676,20 @@
 }
 
 .why-benefit-block {
-  background: rgba(1, 17, 17, 0.45);
-  border: 1px solid rgba(201, 162, 75, 0.22);
+  background: #ffffff;
+  border: 1px solid rgba(201, 162, 75, 0.26);
   border-radius: 14px;
   padding: 32px 24px;
   text-align: center;
   transition: all 0.3s ease;
+  box-shadow: 0 6px 20px rgba(11, 43, 30, 0.05);
 }
 
 .why-benefit-block:hover {
   border-color: #c9a24b;
   transform: translateY(-4px);
-  background: rgba(1, 17, 17, 0.7);
+  box-shadow: 0 12px 28px rgba(11, 43, 30, 0.1);
+  background: #ffffff;
 }
 
 .benefit-icon-wrap {
@@ -654,7 +702,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #dfc07b;
+  color: #8c6d23;
 }
 
 .benefit-icon-wrap svg {
@@ -665,7 +713,7 @@
 .why-benefit-block h3 {
   font-size: 13px;
   letter-spacing: 0.12em;
-  color: #dfc07b;
+  color: #0b2b1e;
   font-weight: 700;
   margin: 0 0 10px;
 }
@@ -673,7 +721,7 @@
 .why-benefit-block p {
   font-size: 13px;
   line-height: 1.6;
-  color: rgba(247, 243, 236, 0.75);
+  color: #55625c;
   margin: 0;
 }
 
@@ -793,12 +841,13 @@
 }
 
 /* ==========================================================
-   8. STATISTICS / TRUST SECTION
+   8. STATISTICS / TRUST SECTION (LIGHT SECTION)
    ========================================================== */
 
 .why-stats-section {
-  background-color: #061912;
-  border-bottom: 1px solid rgba(201, 162, 75, 0.15);
+  background-color: #ffffff;
+  border-top: 1px solid rgba(201, 162, 75, 0.22);
+  border-bottom: 1px solid rgba(201, 162, 75, 0.22);
   padding: 60px 24px;
 }
 
@@ -821,7 +870,7 @@
 .stat-num {
   font-family: "Playfair Display", Georgia, serif;
   font-size: clamp(34px, 4.5vw, 54px);
-  color: #dfc07b;
+  color: #0b2b1e;
   font-weight: 600;
   line-height: 1;
 }
@@ -829,8 +878,9 @@
 .stat-label {
   font-size: 12px;
   letter-spacing: 0.12em;
-  color: rgba(247, 243, 236, 0.72);
+  color: #55645e;
   text-transform: uppercase;
+  font-weight: 600;
 }
 
 /* ==========================================================

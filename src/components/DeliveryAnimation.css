@@ -5,13 +5,6 @@
    ========================================================= */
 
 .leafly-delivery-stage {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  width: 100vw;
-  height: 100vh;
-  max-width: 100%;
-  max-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -23,6 +16,146 @@
     linear-gradient(180deg, #04140e 0%, #061d14 45%, #03120c 100%);
   overflow: hidden;
   animation: leafly-stage-fade-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.leafly-delivery-stage.leafly-delivery-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  width: 100vw;
+  height: 100vh;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.leafly-delivery-stage.leafly-delivery-compact {
+  position: relative;
+  width: 100%;
+  height: clamp(220px, 28vw, 270px);
+  max-height: 320px;
+  border-radius: 18px;
+  margin: 0 0 32px 0;
+  border: 1px solid rgba(201, 162, 75, 0.28);
+  box-shadow: 0 10px 30px rgba(6, 29, 20, 0.22), inset 0 0 40px rgba(11, 43, 30, 0.4);
+}
+
+.leafly-delivery-compact .leafly-delivery-scene {
+  padding: 18px 20px 14px;
+}
+
+.leafly-delivery-compact .leafly-delivery-hud-zone {
+  min-height: auto;
+  padding-top: 0;
+}
+
+.leafly-delivery-compact .leafly-delivery-heading {
+  font-size: clamp(17px, 2.2vw, 22px);
+  margin: 2px 0 0;
+  letter-spacing: 0.5px;
+}
+
+.leafly-delivery-compact .leafly-delivery-eyebrow {
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.leafly-delivery-compact .leafly-delivery-subtext {
+  font-size: 12px;
+  letter-spacing: 0.3px;
+}
+
+.leafly-delivery-compact .leafly-success-badge {
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.leafly-delivery-compact .leafly-delivery-track-zone {
+  height: 130px;
+}
+
+.leafly-delivery-compact .leafly-courier-img {
+  height: 115px;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.65));
+}
+
+.leafly-delivery-compact .leafly-courier-package-glow {
+  width: 55px;
+  height: 55px;
+}
+
+.leafly-delivery-compact .leafly-courier-glide {
+  animation: leafly-courier-compact-journey 4.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+}
+
+@keyframes leafly-courier-compact-journey {
+  0% {
+    transform: translate3d(-340px, 0, 0) scale(0.96);
+    opacity: 0;
+  }
+  14% {
+    transform: translate3d(-140px, 0, 0) scale(1);
+    opacity: 1;
+  }
+  48% {
+    transform: translate3d(0, 0, 0) scale(1.02);
+    opacity: 1;
+  }
+  64% {
+    transform: translate3d(30px, -4px, 0) scale(1.03);
+    opacity: 1;
+  }
+  82% {
+    transform: translate3d(140px, 0, 0) scale(1);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate3d(340px, 0, 0) scale(0.96);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .leafly-delivery-compact {
+    height: 230px;
+    margin: 0 0 24px 0;
+  }
+
+  .leafly-delivery-compact .leafly-courier-img {
+    height: 98px;
+  }
+
+  .leafly-delivery-compact .leafly-delivery-track-zone {
+    height: 110px;
+  }
+
+  @keyframes leafly-courier-compact-journey {
+    0% {
+      transform: translate3d(-170px, 0, 0) scale(0.94);
+      opacity: 0;
+    }
+    14% {
+      transform: translate3d(-70px, 0, 0) scale(1);
+      opacity: 1;
+    }
+    48% {
+      transform: translate3d(0, 0, 0) scale(1.02);
+      opacity: 1;
+    }
+    64% {
+      transform: translate3d(15px, -3px, 0) scale(1.02);
+      opacity: 1;
+    }
+    82% {
+      transform: translate3d(70px, 0, 0) scale(1);
+      opacity: 0.95;
+    }
+    100% {
+      transform: translate3d(170px, 0, 0) scale(0.94);
+      opacity: 0;
+    }
+  }
 }
 
 @keyframes leafly-stage-fade-in {

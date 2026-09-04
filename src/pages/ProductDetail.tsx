@@ -391,7 +391,9 @@ export default function ProductDetail() {
                 </div>
                 <div className="pdp-spec">
                   <span>STATUS</span>
-                  <strong>Coming Soon</strong>
+                  <strong style={{ color: inStock ? "#1e824c" : "#b98428" }}>
+                    {inStock ? "In Stock" : isTeaware ? "Coming Soon" : "Out of Stock"}
+                  </strong>
                 </div>
               </>
             ) : (
@@ -412,60 +414,76 @@ export default function ProductDetail() {
                   <span>CAFFEINE</span>
                   <strong>{product.caffeine}</strong>
                 </div>
+                <div className="pdp-spec">
+                  <span>STATUS</span>
+                  <strong style={{ color: inStock ? "#1e824c" : "#b98428" }}>
+                    {inStock ? "In Stock" : "Out of Stock"}
+                  </strong>
+                </div>
               </>
             )}
           </div>
 
-          {/* PRICE (TEA ONLY) */}
-          {!isTeaware && (
-            <div className="pdp-price-row">
-              <span className="pdp-price">
-                ₹{currentPrice.toLocaleString("en-IN")}
-              </span>
-              {currentOldPrice && (
-                <del className="pdp-old-price">
-                  ₹{currentOldPrice.toLocaleString("en-IN")}
-                </del>
-              )}
-              {savings && <span className="pdp-savings">{savings}% OFF</span>}
-            </div>
-          )}
+          {/* PRICE */}
+          <div className="pdp-price-row">
+            <span className="pdp-price">
+              ₹{currentPrice.toLocaleString("en-IN")}
+            </span>
+            {currentOldPrice && currentOldPrice > currentPrice && (
+              <del className="pdp-old-price">
+                ₹{currentOldPrice.toLocaleString("en-IN")}
+              </del>
+            )}
+            {savings && <span className="pdp-savings">{savings}% OFF</span>}
+          </div>
 
-          {/* QUANTITY COUNTER & ACTIONS */}
-          {!isTeaware && (
-            <div className="pdp-qty-row">
-              <span className="pdp-qty-label">QUANTITY</span>
-              <div className="pdp-qty-selector">
-                <button
-                  type="button"
-                  className="pdp-qty-btn"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  disabled={quantity <= 1 || !inStock}
-                  aria-label="Decrease quantity"
-                >
-                  −
-                </button>
-                <span className="pdp-qty-val">{quantity}</span>
-                <button
-                  type="button"
-                  className="pdp-qty-btn"
-                  onClick={() => setQuantity((q) => Math.min(10, q + 1))}
-                  disabled={quantity >= 10 || !inStock}
-                  aria-label="Increase quantity"
-                >
-                  +
-                </button>
-              </div>
+          {/* QUANTITY COUNTER */}
+          <div className="pdp-qty-row">
+            <span className="pdp-qty-label">QUANTITY</span>
+            <div className="pdp-qty-selector">
+              <button
+                type="button"
+                className="pdp-qty-btn"
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                disabled={quantity <= 1 || !inStock}
+                aria-label="Decrease quantity"
+              >
+                −
+              </button>
+              <span className="pdp-qty-val">{quantity}</span>
+              <button
+                type="button"
+                className="pdp-qty-btn"
+                onClick={() => setQuantity((q) => Math.min(10, q + 1))}
+                disabled={quantity >= 10 || !inStock}
+                aria-label="Increase quantity"
+              >
+                +
+              </button>
             </div>
-          )}
+          </div>
 
           {/* ACTIONS */}
           <div className="pdp-actions">
-            {isTeaware ? (
-              <div className="pdp-coming-soon-btn" aria-label="Coming Soon">
-                <span>✦</span>
-                COMING SOON · LAUNCHING SHORTLY
-              </div>
+            {isTeaware && !inStock ? (
+              <>
+                <button
+                  type="button"
+                  className="pdp-cart-button disabled out-of-stock"
+                  disabled={true}
+                  aria-label={`${product.name} is coming soon`}
+                >
+                  COMING SOON
+                </button>
+                <button
+                  type="button"
+                  className="pdp-buy-now-button disabled"
+                  disabled={true}
+                  aria-label={`${product.name} is coming soon`}
+                >
+                  UNAVAILABLE
+                </button>
+              </>
             ) : (
               <>
                 <button
@@ -478,7 +496,7 @@ export default function ProductDetail() {
                       ? `${product.name} is out of stock`
                       : addedToCart
                       ? "Added to cart"
-                      : `Add ${quantity} of ${product.name} (${selectedVariant}) to cart`
+                      : `Add ${quantity} of ${product.name} to cart`
                   }
                 >
                   {!inStock ? (
@@ -500,7 +518,7 @@ export default function ProductDetail() {
                   className={`pdp-buy-now-button ${!inStock ? "disabled" : ""}`}
                   disabled={!inStock}
                   onClick={handleBuyNow}
-                  aria-label={!inStock ? `${product.name} is currently out of stock` : `Buy ${product.name} now`}
+                  aria-label={!inStock ? `${product.name} is unavailable` : `Buy ${product.name} now`}
                 >
                   {!inStock ? "UNAVAILABLE" : "BUY NOW ❧"}
                 </button>

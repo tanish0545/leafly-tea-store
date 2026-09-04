@@ -3,11 +3,13 @@ import deliveryBoyImg from "../assets/delivery-boy.webp";
 import "./DeliveryAnimation.css";
 
 type DeliveryAnimationProps = {
-  onComplete: () => void;
+  onComplete?: () => void;
+  compact?: boolean;
 };
 
 export default function DeliveryAnimation({
   onComplete,
+  compact = false,
 }: DeliveryAnimationProps) {
   const prefersReducedMotion = useMemo(() => {
     if (typeof window === "undefined") {
@@ -22,24 +24,27 @@ export default function DeliveryAnimation({
 
   useEffect(() => {
     if (prefersReducedMotion) {
-      const timer = window.setTimeout(() => {
-        onComplete();
-      }, 1500);
-      return () => window.clearTimeout(timer);
+      if (onComplete) {
+        const timer = window.setTimeout(() => {
+          onComplete();
+        }, 1500);
+        return () => window.clearTimeout(timer);
+      }
+      return;
     }
 
-    const t1 = window.setTimeout(() => setPhase("confirmed"), 1900);
-    const t2 = window.setTimeout(() => onComplete(), 3900);
+    const t1 = window.setTimeout(() => setPhase("confirmed"), 2200);
+    const t2 = onComplete ? window.setTimeout(() => onComplete(), 4200) : undefined;
 
     return () => {
       window.clearTimeout(t1);
-      window.clearTimeout(t2);
+      if (t2) window.clearTimeout(t2);
     };
   }, [onComplete, prefersReducedMotion]);
 
   return (
     <div
-      className="leafly-delivery-stage"
+      className={`leafly-delivery-stage ${compact ? "leafly-delivery-compact" : "leafly-delivery-fullscreen"}`}
       role="status"
       aria-live="polite"
       aria-label="Order placed. Dispatching your tea in progress"
@@ -70,8 +75,8 @@ export default function DeliveryAnimation({
               <div className="leafly-delivery-text-block pop-in">
                 <span className="leafly-success-badge" aria-hidden="true">✓</span>
                 <p className="leafly-delivery-eyebrow">CONFIRMED</p>
-                <h2 className="leafly-delivery-heading">ORDER PLACED SUCCESSFULLY</h2>
-                <span className="leafly-delivery-subtext">Your fresh harvest tea is on its journey</span>
+                <h2 className="leafly-delivery-heading">ORDER ON ITS JOURNEY</h2>
+                <span className="leafly-delivery-subtext">Your fresh harvest tea is on its way</span>
               </div>
             )}
           </div>

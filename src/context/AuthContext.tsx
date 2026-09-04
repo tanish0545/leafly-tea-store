@@ -159,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (result?.user) {
           const currentFbUser = result.user;
           const displayName = currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer";
+          const isUserAdmin = currentFbUser.email?.toLowerCase() === adminEmail.toLowerCase();
           const googleProfile: Record<string, unknown> = {
             uid: currentFbUser.uid,
             email: currentFbUser.email,
@@ -168,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             photoURL: currentFbUser.photoURL || currentFbUser.providerData?.find((p) => p.photoURL)?.photoURL || null,
             authProvider: "Google",
             status: "Active",
+            isAdmin: isUserAdmin,
             updatedAt: new Date().toISOString(),
           };
           await setDoc(doc(db, "users", currentFbUser.uid), googleProfile, { merge: true }).catch((e) => {
@@ -194,13 +196,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         unsubscribeDoc = onSnapshot(
           doc(db, "users", currentFbUser.uid),
           (docSnap) => {
+            const isUserAdmin = currentFbUser.email?.toLowerCase() === adminEmail.toLowerCase();
             if (docSnap.exists()) {
               const firestoreData = docSnap.data();
               const activePhoto = currentFbUser.photoURL || currentFbUser.providerData?.find((p) => p.photoURL)?.photoURL;
+              const updates: Record<string, unknown> = {};
               if (activePhoto && !firestoreData.photoURL) {
-                setDoc(doc(db, "users", currentFbUser.uid), { photoURL: activePhoto }, { merge: true }).catch(() => {});
+                updates.photoURL = activePhoto;
               }
-              setUser(mapFirebaseUserToAuthUser(currentFbUser, firestoreData));
+              if (isUserAdmin && firestoreData.isAdmin !== true) {
+                updates.isAdmin = true;
+              }
+              if (Object.keys(updates).length > 0) {
+                setDoc(doc(db, "users", currentFbUser.uid), updates, { merge: true }).catch(() => {});
+              }
+              setUser(mapFirebaseUserToAuthUser(currentFbUser, { ...firestoreData, ...updates }));
             } else {
               // Create initial profile record only if not present
               const providerId = currentFbUser.providerData[0]?.providerId === "google.com" ? "Google" : "Email/Password";
@@ -213,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 photoURL: currentFbUser.photoURL || currentFbUser.providerData?.find((p) => p.photoURL)?.photoURL || null,
                 authProvider: providerId,
                 status: "Active",
+                isAdmin: isUserAdmin,
                 createdAt: currentFbUser.metadata?.creationTime ? new Date(currentFbUser.metadata.creationTime).toISOString() : new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               };
@@ -282,6 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await updateProfile(result.user, { displayName });
       }
 
+      const isUserAdmin = cleanEmail.toLowerCase() === adminEmail.toLowerCase();
       const initialProfile: Record<string, unknown> = {
         uid: result.user.uid,
         email: result.user.email,
@@ -291,6 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         favoriteTea: favoriteTea || null,
         authProvider: "Email/Password",
         status: "Active",
+        isAdmin: isUserAdmin,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -333,6 +346,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (userCred?.user) {
         const currentFbUser = userCred.user;
         const displayName = currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer";
+        const isUserAdmin = currentFbUser.email?.toLowerCase() === adminEmail.toLowerCase();
         const googleProfile: Record<string, unknown> = {
           uid: currentFbUser.uid,
           email: currentFbUser.email,
@@ -342,6 +356,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           photoURL: currentFbUser.photoURL || null,
           authProvider: "Google",
           status: "Active",
+          isAdmin: isUserAdmin,
           updatedAt: new Date().toISOString(),
         };
         await setDoc(doc(db, "users", currentFbUser.uid), googleProfile, { merge: true }).catch((e) => {

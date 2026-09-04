@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Footer from "../components/Footer";
 import { useCart } from "../context/CartContext";
 import PhoneInput from "../components/PhoneInput";
@@ -10,10 +11,66 @@ import "./GiftingPage.css";
 import { useGifting } from "../context/GiftingContext";
 import type { GiftHamper } from "../data/gifting";
 
+const GIFTING_TYPEWRITER_STEPS = [
+  "L",
+  "LE",
+  "LEA",
+  "LEAF",
+  "LEAFL",
+  "LEAFLY",
+  "LEAFLY ",
+  "LEAFLY G",
+  "LEAFLY GI",
+  "LEAFLY GIF",
+  "LEAFLY GIFT",
+  "LEAFLY GIFTI",
+  "LEAFLY GIFTIN",
+  "LEAFLY GIFTING",
+];
+
 export default function GiftingPage() {
   const { hampers } = useGifting();
   const { addToCart } = useCart();
+  const [loading, setLoading] = useState(true);
+  const [typedText, setTypedText] = useState("");
+  const [loaderFadeOut, setLoaderFadeOut] = useState(false);
   const [addedHamperId, setAddedHamperId] = useState<number | null>(null);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+      setLoading(false);
+      return;
+    }
+
+    // Prevent background scrolling while intro is playing
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    let stepIndex = 0;
+    const interval = setInterval(() => {
+      if (stepIndex < GIFTING_TYPEWRITER_STEPS.length) {
+        setTypedText(GIFTING_TYPEWRITER_STEPS[stepIndex]);
+        stepIndex++;
+      } else {
+        clearInterval(interval);
+        setTimeout(() => {
+          setLoaderFadeOut(true);
+          document.body.style.overflow = prevOverflow;
+        }, 280);
+        setTimeout(() => {
+          setLoading(false);
+        }, 700);
+      }
+    }, 65);
+
+    return () => {
+      clearInterval(interval);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
   const [enquirySent, setEnquirySent] = useState(false);
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -109,6 +166,30 @@ export default function GiftingPage() {
         ])}
       />
 
+      {/* 1. TYPEWRITER LOADING INTRO (PORTALED TO BODY FOR PROPER VIEWPORT STACKING) */}
+      {loading &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className={`gifting-page-typewriter-loader ${loaderFadeOut ? "fade-out" : ""}`}
+            aria-live="polite"
+            role="status"
+          >
+            <div className="gifting-typewriter-content">
+              <span className="gifting-typewriter-eyebrow">BESPOKE CURATIONS</span>
+              <h1 className="gifting-typewriter-heading">
+                <span className="gifting-typewriter-text">{typedText}</span>
+              </h1>
+              <div className="gifting-typewriter-accent">
+                <span className="gifting-typewriter-line" />
+                <span className="gifting-typewriter-spark">✦</span>
+                <span className="gifting-typewriter-line" />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
       <main className="gifting-main">
         <section className="gifting-hero-section">
           <div className="gifting-hero-inner">
@@ -179,9 +260,9 @@ export default function GiftingPage() {
                     {hamper.inStock === false || (typeof hamper.stock === "number" && hamper.stock <= 0) ? (
                       <button
                         type="button"
-                        className="gifting-add-button disabled"
+                        className="gifting-add-button disabled out-of-stock"
                         disabled
-                        style={{ opacity: 0.5, cursor: "not-allowed", background: "#333", color: "#aaa" }}
+                        aria-label={`${hamper.name} is currently out of stock`}
                       >
                         OUT OF STOCK
                       </button>

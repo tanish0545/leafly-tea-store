@@ -7,7 +7,6 @@ import {
   type Order,
   type ShippingAddress,
 } from "../context/OrderContext";
-import DeliveryAnimation from "../components/DeliveryAnimation";
 import PhoneInput from "../components/PhoneInput";
 import { useAuth } from "../context/AuthContext";
 import { validatePhoneNumber, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../lib/validation";
@@ -132,7 +131,6 @@ export default function Checkout() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBursting, setIsBursting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [deliveryPhase, setDeliveryPhase] = useState<"idle" | "delivery">("idle");
 
   const [shippingAddress, setShippingAddress] = useState<AddressForm>(() => {
     if (currentUser?.uid) {
@@ -578,11 +576,11 @@ export default function Checkout() {
         total: order.total
       });
 
-      // Navigate after burst animation
+      // Navigate to order success after celebratory burst
       setTimeout(() => {
         setIsProcessing(false);
         setIsBursting(false);
-        setDeliveryPhase("delivery");
+        navigate("/order-success");
       }, 450);
 
     } catch (error) {
@@ -611,20 +609,59 @@ export default function Checkout() {
       return;
     }
 
-    // Live inventory verification before placing order
+    // Live inventory verification across products, teaware, and hampers before placing order
     setIsProcessing(true);
     let outOfStockItemName = "";
 
     for (const item of items) {
       if (item.product?.id) {
+        // First check local product stock flags
+        if (item.product.inStock === false || (typeof item.product.stock === "number" && item.product.stock <= 0)) {
+          outOfStockItemName = item.product.name || "Item";
+          break;
+        }
+
+        const pId = String(item.product.id);
+        const cat = (item.product.category || "").toLowerCase();
+
+        let preferredCol = "products";
+        const isTeaware =
+          cat === "teapots" ||
+          cat === "tea cups" ||
+          cat === "serving & trays" ||
+          cat === "storage & accessories" ||
+          cat.includes("teaware") ||
+          item.product.caffeine === "Teaware";
+
+        if (isTeaware) {
+          preferredCol = "teaware";
+        } else if (cat.includes("hamper") || cat.includes("gift")) {
+          preferredCol = "hampers";
+        }
+
         try {
-          const snap = await getDoc(doc(db, "products", String(item.product.id)));
+          let snap = await getDoc(doc(db, preferredCol, pId));
+
+          // Fallback probe across other collections
+          if (!snap.exists() && preferredCol !== "teaware") {
+            const twSnap = await getDoc(doc(db, "teaware", pId));
+            if (twSnap.exists()) snap = twSnap;
+          }
+          if (!snap.exists() && preferredCol !== "hampers") {
+            const hSnap = await getDoc(doc(db, "hampers", pId));
+            if (hSnap.exists()) snap = hSnap;
+          }
+          if (!snap.exists() && preferredCol !== "products") {
+            const pSnap = await getDoc(doc(db, "products", pId));
+            if (pSnap.exists()) snap = pSnap;
+          }
+
           if (snap.exists()) {
             const data = snap.data();
             const currentStock = typeof data.stock === "number" ? data.stock : 10;
             const inStock = data.inStock !== false && currentStock > 0;
             if (!inStock || currentStock < item.quantity) {
-              outOfStockItemName = item.product.name || "item";
+              outOfStockItemName = item.product.name || data.name || "Item";
               break;
             }
           }
@@ -638,7 +675,7 @@ export default function Checkout() {
       setIsProcessing(false);
       setErrors((prev) => ({
         ...prev,
-        submit: "Some items in your cart are currently out of stock. Please review your cart before continuing.",
+        submit: `This item is currently unavailable: "${outOfStockItemName}". Please remove it from your cart to proceed.`,
       }));
       return;
     }
@@ -665,7 +702,7 @@ export default function Checkout() {
     await finalizeOrder();
   };
 
-  if (items.length === 0 && deliveryPhase === "idle" && !isProcessing) {
+  if (items.length === 0 && !isProcessing) {
     return (
       <main className="checkout-page checkout-page-empty">
         <div className="checkout-empty-state">
@@ -677,17 +714,6 @@ export default function Checkout() {
           </button>
         </div>
       </main>
-    );
-  }
-
-  // Delivery animation -> Order Success
-  if (deliveryPhase === "delivery") {
-    return (
-      <DeliveryAnimation
-        onComplete={() => {
-          navigate("/order-success");
-        }}
-      />
     );
   }
 

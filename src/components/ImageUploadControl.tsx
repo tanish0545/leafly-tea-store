@@ -104,7 +104,7 @@ export default function ImageUploadControl({
           className="image-upload-toggle-manual"
           onClick={() => setManualMode(!manualMode)}
         >
-          {manualMode ? "← Use File Upload" : "Enter Image URL"}
+          {manualMode ? "← Use Direct File Upload" : "Or Paste Image URL"}
         </button>
       </div>
 
@@ -130,20 +130,22 @@ export default function ImageUploadControl({
 
           <div className="image-upload-preview-area">
             {currentImageUrl ? (
-              <div className="image-upload-preview-wrapper">
-                <img src={currentImageUrl} alt="Product Preview" className="image-upload-preview-img" />
-                <div className="image-upload-preview-overlay">
+              <div className="image-upload-existing-box">
+                <div className="image-upload-preview-wrapper">
+                  <img src={currentImageUrl} alt="Product Preview" className="image-upload-preview-img" />
+                </div>
+                <div className="image-upload-actions-row">
                   <button
                     type="button"
-                    className="image-upload-btn-change"
+                    className="image-upload-btn-action-primary"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
                   >
-                    Change Image
+                    {isUploading ? "UPLOADING..." : "UPLOAD NEW IMAGE"}
                   </button>
                   <button
                     type="button"
-                    className="image-upload-btn-remove"
+                    className="image-upload-btn-action-secondary"
                     onClick={handleRemoveImage}
                     disabled={isUploading}
                   >

@@ -73,6 +73,32 @@ const STORAGE_KEY = "leafly-cart-v2";
 
 import AddedToRitualModal from "../components/AddedToRitualModal";
 
+export function isTeawareItem(
+  product?: CartProduct | null,
+  teawareList: TeawareItem[] = []
+): boolean {
+  if (!product) return false;
+  const pCat = (product.category || "").toLowerCase();
+  const pCaff = (product.caffeine || "").toLowerCase();
+  const pId = String(product.id);
+
+  if (
+    pCat === "teaware" ||
+    pCat.includes("teaware") ||
+    pCat === "teapots" ||
+    pCat === "tea cups" ||
+    pCat === "serving & trays" ||
+    pCat === "storage & accessories" ||
+    pCaff === "teaware"
+  ) {
+    return true;
+  }
+
+  return teawareList.some(
+    (t) => String(t.id) === pId || t.name.toLowerCase() === (product.name || "").toLowerCase()
+  );
+}
+
 export function resolveLiveCatalogProduct(
   itemProduct: CartProduct,
   products: Product[],
@@ -100,6 +126,8 @@ export function resolveLiveCatalogProduct(
 
   // 2. Check Teaware
   if (
+    pCat === "Teaware" ||
+    pCat.toLowerCase().includes("teaware") ||
     pCat === "Teapots" ||
     pCat === "Tea Cups" ||
     pCat === "Serving & Trays" ||
@@ -216,8 +244,19 @@ export function CartProvider({
     useState(false);
 
   // Synchronize cart items with live catalog data dynamically whenever products, teaware, or hampers update
+  // Filter out any Teaware items that are out of stock / Coming Soon (stock <= 0)
   const items = useMemo<CartItem[]>(() => {
-    return rawItems.map((item) => {
+    return rawItems
+      .filter((item) => {
+        if (isTeawareItem(item.product, teaware)) {
+          const live = resolveLiveCatalogProduct(item.product, products, teaware, hampers);
+          if (!live || live.inStock === false || (typeof live.stock === "number" && live.stock <= 0)) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .map((item) => {
       const live = resolveLiveCatalogProduct(item.product, products, teaware, hampers);
       if (!live) return item;
 
@@ -262,6 +301,11 @@ export function CartProvider({
   }, [items]);
 
   const triggerAddedAnimation = (product: CartProduct) => {
+    if (isTeawareItem(product, teaware)) {
+      const live = resolveLiveCatalogProduct(product, products, teaware, hampers);
+      const stock = live ? live.stock : typeof product.stock === "number" ? product.stock : 0;
+      if (stock <= 0) return;
+    }
     setAnimatingProduct(product);
   };
 
@@ -276,7 +320,23 @@ export function CartProvider({
     customPrice?: number,
     customOldPrice?: number
   ) => {
+    // Teaware availability check: block if stock <= 0 (Coming Soon)
+    if (isTeawareItem(product, teaware)) {
+      const live = resolveLiveCatalogProduct(product, products, teaware, hampers);
+      const stock = live ? live.stock : typeof product.stock === "number" ? product.stock : 0;
+      const inStock = live ? live.inStock : product.inStock !== false;
+      if (!inStock || stock <= 0) {
+        console.warn("Teaware items with zero stock are in Coming Soon status.");
+        return;
+      }
+    }
+
     if (product && (product.inStock === false || (typeof product.stock === "number" && product.stock <= 0))) {
+      return;
+    }
+
+    const live = resolveLiveCatalogProduct(product, products, teaware, hampers);
+    if (live && (live.inStock === false || (typeof live.stock === "number" && live.stock <= 0))) {
       return;
     }
 

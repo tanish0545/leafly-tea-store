@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, Link } from "react-router-dom";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
@@ -11,7 +12,14 @@ import centerCupImg from "../assets/Five-small.webp";
 
 import "./WhyLeafly.css";
 
-const FULL_TYPEWRITER_TEXT = "WHY LEAFLY";
+const TYPEWRITER_STEPS = [
+  "W",
+  "WH",
+  "WHY",
+  "WHY L",
+  "WHY LE",
+  "WHY LEAFLY",
+];
 
 export default function WhyLeafly() {
   const navigate = useNavigate();
@@ -23,6 +31,11 @@ export default function WhyLeafly() {
   const [loaderFadeOut, setLoaderFadeOut] = useState(false);
 
   useEffect(() => {
+    // Ensure viewport starts at top
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
     // Check reduced motion preference
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReducedMotion) {
@@ -30,35 +43,34 @@ export default function WhyLeafly() {
       return;
     }
 
-    let charIndex = 0;
+    let stepIndex = 0;
+    // Step interval: 140ms * 6 steps = ~840ms typing
     const typingInterval = setInterval(() => {
-      charIndex++;
-      setTypedText(FULL_TYPEWRITER_TEXT.slice(0, charIndex));
-
-      if (charIndex >= FULL_TYPEWRITER_TEXT.length) {
+      if (stepIndex < TYPEWRITER_STEPS.length) {
+        setTypedText(TYPEWRITER_STEPS[stepIndex]);
+        stepIndex++;
+      } else {
         clearInterval(typingInterval);
         // Reveal enlarged gold question mark
-        setTimeout(() => {
-          setShowQuestionMark(true);
-        }, 180);
+        setShowQuestionMark(true);
 
-        // Begin fade out of loader
+        // Elegant short pause ~280ms then begin smooth fade out (~400ms)
         setTimeout(() => {
           setLoaderFadeOut(true);
-        }, 1400);
+        }, 280);
 
-        // Remove loader from DOM
+        // Total intro: ~840ms typing + 280ms pause + 400ms fade = ~1.52s
         setTimeout(() => {
           setLoading(false);
-        }, 1850);
+        }, 680);
       }
-    }, 90);
+    }, 140);
 
     return () => clearInterval(typingInterval);
   }, []);
 
   return (
-    <main className="why-leafly-page">
+    <main className={`why-leafly-page ${loading ? "page-intro-active" : "page-intro-complete"}`}>
       <SEO
         title="Why Leafly — Sourcing, Craft & The Mindful Tea Experience | Leafly"
         description="Discover why Leafly exists: 100% single-origin whole leaves, direct ethical partnerships with Indian tea gardens, small-batch packing, and zero shortcuts."
@@ -73,27 +85,35 @@ export default function WhyLeafly() {
       />
 
       {/* =====================================================
-          1. TYPEWRITER LOADING EXPERIENCE
+          1. TYPEWRITER LOADING INTRO (PORTALED TO BODY)
           ===================================================== */}
-      {loading && (
-        <div className={`why-leafly-typewriter-loader ${loaderFadeOut ? "fade-out" : ""}`} aria-live="polite">
-          <div className="typewriter-backdrop" />
-          <div className="typewriter-content">
-            <span className="typewriter-brand-eyebrow">A MINDFUL RITUAL</span>
-            <h1 className="typewriter-heading">
-              <span className="typewriter-text">{typedText}</span>
-              {showQuestionMark && (
-                <span className="typewriter-qmark" aria-hidden="true">?</span>
-              )}
-            </h1>
-            <div className="typewriter-gold-accent">
-              <span className="typewriter-line" />
-              <span className="typewriter-spark">✦</span>
-              <span className="typewriter-line" />
+      {loading &&
+        createPortal(
+          <div
+            className={`why-leafly-typewriter-loader ${loaderFadeOut ? "fade-out" : ""}`}
+            aria-live="polite"
+          >
+            <div className="typewriter-backdrop" />
+            <div className="typewriter-ambient-glow" />
+            <div className="typewriter-content">
+              <span className="typewriter-brand-eyebrow">A MINDFUL RITUAL</span>
+              <h1 className="typewriter-heading">
+                <span className="typewriter-text">{typedText}</span>
+                {showQuestionMark && (
+                  <span className="typewriter-qmark" aria-hidden="true">
+                    {" "}?
+                  </span>
+                )}
+              </h1>
+              <div className="typewriter-gold-accent">
+                <span className="typewriter-line" />
+                <span className="typewriter-spark">✦</span>
+                <span className="typewriter-line" />
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {/* =====================================================
           2. HERO SECTION

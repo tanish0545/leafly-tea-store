@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { type TeawareCategory, type TeawareItem } from "../data/teaware";
 import { useTeaware } from "../context/TeawareContext";
 import { useWishlist } from "../context/WishlistContext";
-import { useCart, type CartProduct } from "../context/CartContext";
+import { useCart } from "../context/CartContext";
 import { getProductSlug } from "../data/products";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
@@ -28,27 +28,35 @@ export default function Teaware() {
   const [sortBy, setSortBy] = useState("Featured Collection");
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TeawareItem | null>(null);
+  const [addedId, setAddedId] = useState<string | number | null>(null);
 
   const handleAddToCart = (item: TeawareItem) => {
-    const stock = typeof item.stock === "number" ? item.stock : 10;
-    const inStock = item.inStock !== false && stock > 0;
-    if (!inStock) return;
+    const stock = typeof item.stock === "number" ? item.stock : 0;
+    if (stock <= 0 || item.inStock === false) return;
 
-    const cartProduct: CartProduct = {
-      id: item.id,
-      name: item.name,
-      category: item.category,
-      origin: item.material || "Artisan Craft",
-      caffeine: "Teaware",
-      weight: item.capacity || "Standard",
-      price: Number(item.price) || 0,
-      oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
-      badge: item.badge,
-      image: item.image,
-      stock,
-      inStock: true,
-    };
-    addToCart(cartProduct, 1, "100g", Number(item.price) || 0, item.oldPrice ? Number(item.oldPrice) : undefined);
+    addToCart(
+      {
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        origin: item.material || "Artisan Craft",
+        caffeine: "Teaware",
+        weight: item.capacity || "1 Unit",
+        price: Number(item.price) || 0,
+        oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
+        badge: item.badge || "Artisan",
+        image: item.image,
+        stock,
+        inStock: true,
+      },
+      1,
+      "100g",
+      Number(item.price) || 0,
+      item.oldPrice ? Number(item.oldPrice) : undefined
+    );
+
+    setAddedId(item.id);
+    window.setTimeout(() => setAddedId(null), 1500);
   };
 
   useEffect(() => {
@@ -155,7 +163,7 @@ export default function Teaware() {
       <section className="teaware-collection" id="teaware-collection">
         <div className="teaware-collection-header">
           <div>
-            <p className="teaware-eyebrow">CURATED COLLECTION · COMING SOON</p>
+            <p className="teaware-eyebrow">CURATED COLLECTION · ARTISAN EDITION</p>
             <h2>Teaware for every ritual.</h2>
           </div>
 
@@ -185,7 +193,7 @@ export default function Teaware() {
           <div className="teaware-filters">
             <span className="teaware-filter-status">
               <span className="teaware-status-dot">✦</span>
-              Exclusive Artisan Edition · Launching Soon
+              Curated Artisan Vessels · Direct from Master Potters
             </span>
           </div>
 
@@ -217,9 +225,10 @@ export default function Teaware() {
         <div className="teaware-product-grid">
           {filteredProducts.map((item, index) => {
             const isWishlisted = isInWishlist(item.id);
+            const isAvailable = item.inStock !== false && typeof item.stock === "number" && item.stock > 0;
 
             return (
-              <article className="teaware-card teaware-coming-soon-card" key={item.id}>
+              <article className={`teaware-card ${isAvailable ? "" : "teaware-coming-soon-card"}`} key={item.id}>
                 {/* PRODUCT IMAGE */}
                 <div
                   className="teaware-image-wrap"
@@ -235,8 +244,8 @@ export default function Teaware() {
                     {...(index < 2 ? { fetchPriority: "high" as const } : {})}
                   />
 
-                  <span className={`teaware-badge ${item.inStock === false ? "out-of-stock" : "coming-soon"}`}>
-                    {item.inStock === false ? "OUT OF STOCK" : item.badge || "COMING SOON"}
+                  <span className={`teaware-badge ${isAvailable ? "in-stock" : "coming-soon"}`}>
+                    {isAvailable ? item.badge || "IN STOCK" : "COMING SOON"}
                   </span>
 
                   <button
@@ -259,8 +268,8 @@ export default function Teaware() {
                     <p className="teaware-meta">
                       {item.material} · {item.category}
                     </p>
-                    <span className={`teaware-stock-pill ${!item.inStock || (typeof item.stock === "number" && item.stock <= 0) ? "out-of-stock" : "in-stock"}`}>
-                      {!item.inStock || (typeof item.stock === "number" && item.stock <= 0) ? "Out of Stock" : "In Stock"}
+                    <span className={`teaware-stock-pill ${isAvailable ? "in-stock" : "out-of-stock"}`}>
+                      {isAvailable ? ((item.stock ?? 0) <= 3 ? `Only ${item.stock} left` : "In Stock") : "Coming Soon"}
                     </span>
                   </div>
 
@@ -297,19 +306,15 @@ export default function Teaware() {
                       VIEW DETAILS
                     </button>
 
-                    {(() => {
-                      const isOutOfStock = item.inStock === false || (typeof item.stock === "number" && item.stock <= 0);
-                      return (
-                        <button
-                          type="button"
-                          className={`teaware-add-btn ${isOutOfStock ? "disabled" : ""}`}
-                          onClick={() => handleAddToCart(item)}
-                          disabled={isOutOfStock}
-                        >
-                          {isOutOfStock ? "OUT OF STOCK" : "ADD TO RITUAL"}
-                        </button>
-                      );
-                    })()}
+                    <button
+                      type="button"
+                      className={`teaware-add-btn ${!isAvailable ? "disabled coming-soon" : addedId === item.id ? "added" : ""}`}
+                      disabled={!isAvailable}
+                      onClick={() => isAvailable && handleAddToCart(item)}
+                      aria-label={!isAvailable ? `${item.name} is coming soon` : `Add ${item.name} to cart`}
+                    >
+                      {!isAvailable ? "COMING SOON" : addedId === item.id ? "ADDED ✓" : "ADD TO CART"}
+                    </button>
                   </div>
                 </div>
               </article>
@@ -351,58 +356,62 @@ export default function Teaware() {
             </div>
 
             <div className="teaware-modal-info">
-              <span className={`teaware-badge ${!selectedItem.inStock || (typeof selectedItem.stock === "number" && selectedItem.stock <= 0) ? "out-of-stock" : "craft"}`}>
-                {!selectedItem.inStock || (typeof selectedItem.stock === "number" && selectedItem.stock <= 0) ? "OUT OF STOCK" : "ARTISAN CRAFT"}
-              </span>
+              {(() => {
+                const isModalItemAvailable =
+                  selectedItem.inStock !== false &&
+                  typeof selectedItem.stock === "number" &&
+                  selectedItem.stock > 0;
 
-              <p className="teaware-meta">
-                {selectedItem.material} · {selectedItem.category}
-              </p>
+                return (
+                  <>
+                    <span className={`teaware-badge ${isModalItemAvailable ? "in-stock" : "coming-soon"}`}>
+                      {isModalItemAvailable ? selectedItem.badge || "IN STOCK" : "COMING SOON"}
+                    </span>
 
-              <h2>{selectedItem.name}</h2>
+                    <p className="teaware-meta">
+                      {selectedItem.material} · {selectedItem.category}
+                    </p>
 
-              <div className="teaware-modal-price-row">
-                <span className="teaware-modal-price">₹{Number(selectedItem.price).toLocaleString("en-IN")}</span>
-                {selectedItem.oldPrice && selectedItem.oldPrice > selectedItem.price && (
-                  <span className="teaware-modal-old-price">₹{Number(selectedItem.oldPrice).toLocaleString("en-IN")}</span>
-                )}
-                <span className={`teaware-stock-pill ${!selectedItem.inStock || (typeof selectedItem.stock === "number" && selectedItem.stock <= 0) ? "out-of-stock" : "in-stock"}`}>
-                  {!selectedItem.inStock || (typeof selectedItem.stock === "number" && selectedItem.stock <= 0) ? "Out of Stock" : "In Stock"}
-                </span>
-              </div>
+                    <h2>{selectedItem.name}</h2>
 
-              <p className="teaware-modal-desc">{selectedItem.description}</p>
+                    <div className="teaware-modal-price-row">
+                      <span className="teaware-modal-price">₹{Number(selectedItem.price).toLocaleString("en-IN")}</span>
+                      {selectedItem.oldPrice && selectedItem.oldPrice > selectedItem.price && (
+                        <span className="teaware-modal-old-price">₹{Number(selectedItem.oldPrice).toLocaleString("en-IN")}</span>
+                      )}
+                      <span className={`teaware-stock-pill ${isModalItemAvailable ? "in-stock" : "out-of-stock"}`}>
+                        {isModalItemAvailable ? ((selectedItem.stock ?? 0) <= 3 ? `Only ${selectedItem.stock} left` : "In Stock") : "Coming Soon"}
+                      </span>
+                    </div>
 
-              <div className="teaware-features-list">
-                <h4>ARTISAN SPECIFICATIONS</h4>
-                <ul>
-                  {selectedItem.features.map((feat, idx) => (
-                    <li key={idx}>
-                      <span className="teaware-feature-dot">✦</span>
-                      <span>{feat}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                    <p className="teaware-modal-desc">{selectedItem.description}</p>
 
-              <div className="teaware-modal-actions">
-                {(() => {
-                  const isModalOos = selectedItem.inStock === false || (typeof selectedItem.stock === "number" && selectedItem.stock <= 0);
-                  return (
-                    <button
-                      type="button"
-                      className={`teaware-modal-add-btn ${isModalOos ? "disabled" : ""}`}
-                      onClick={() => {
-                        handleAddToCart(selectedItem);
-                        setSelectedItem(null);
-                      }}
-                      disabled={isModalOos}
-                    >
-                      {isModalOos ? "OUT OF STOCK" : `ADD TO RITUAL · ₹${Number(selectedItem.price).toLocaleString("en-IN")}`}
-                    </button>
-                  );
-                })()}
-              </div>
+                    <div className="teaware-features-list">
+                      <h4>ARTISAN SPECIFICATIONS</h4>
+                      <ul>
+                        {selectedItem.features.map((feat, idx) => (
+                          <li key={idx}>
+                            <span className="teaware-feature-dot">✦</span>
+                            <span>{feat}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="teaware-modal-actions">
+                      <button
+                        type="button"
+                        className={`teaware-modal-add-btn ${!isModalItemAvailable ? "disabled coming-soon" : addedId === selectedItem.id ? "added" : ""}`}
+                        disabled={!isModalItemAvailable}
+                        onClick={() => isModalItemAvailable && handleAddToCart(selectedItem)}
+                        aria-label={!isModalItemAvailable ? `${selectedItem.name} is coming soon` : `Add ${selectedItem.name} to cart`}
+                      >
+                        {!isModalItemAvailable ? "COMING SOON" : addedId === selectedItem.id ? "ADDED ✓" : "ADD TO CART"}
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

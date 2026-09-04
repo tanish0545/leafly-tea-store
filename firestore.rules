@@ -13,8 +13,10 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == "leaflydatabase@gmail.com" ||
-        request.auth.token.get('admin', false) == true
+        (request.auth.token.email != null && request.auth.token.email.lower() == 'leaflydatabase@gmail.com') ||
+        request.auth.token.get('admin', false) == true ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == true)
       );
     }
 
@@ -59,13 +61,12 @@ service cloud.firestore {
 
     // 3. Products collection:
     // Publicly readable. Admin has full write access.
-    // Authenticated customers can only decrement stock when an order is placed.
+    // Authenticated customers can decrement stock & inStock when an order is placed.
     match /products/{productId} {
       allow read: if true;
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
-        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
-      );
+      allow write: if isAdmin();
+      allow update: if isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'inStock']);
     }
 
     // 4. Coupons collection:
@@ -75,42 +76,53 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // 5. Teaware & Hampers collections:
+    // 5. Teaware collection:
+    // Publicly readable. Admin has full write access.
+    // Authenticated customers can decrement stock & inStock during checkout when purchased.
     match /teaware/{itemId} {
       allow read: if true;
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
-        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
-      );
+      allow write: if isAdmin();
+      allow update: if isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'inStock']);
     }
 
+    // 6. Hampers collection:
+    // Publicly readable. Admin has full write access.
+    // Authenticated customers can decrement stock & inStock during checkout.
     match /hampers/{hamperId} {
       allow read: if true;
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
-        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
-      );
+      allow write: if isAdmin();
+      allow update: if isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'inStock']);
     }
 
-    // 6. Newsletter Subscribers:
+    // 7. Reviews collection:
+    // Publicly readable. Customers can submit reviews. Admins can moderate/delete.
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // 8. Newsletter Subscribers:
     match /subscribers/{subscriberId} {
       allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
-    // 7. Gifting Requests:
+    // 9. Gifting Requests:
     match /gifting_requests/{requestId} {
       allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
-    // 8. Contact Inquiries:
+    // 10. Contact Inquiries:
     match /contact_messages/{messageId} {
       allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
-    // 9. Firebase Trigger Email extension queue:
+    // 11. Firebase Trigger Email extension queue:
     match /mail/{mailId} {
       allow create: if true;
       allow read, update, delete: if isAdmin();

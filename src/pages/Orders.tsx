@@ -159,9 +159,10 @@ export default function Orders() {
   const handleCancel = async (order: Order) => {
     const { isWithin2Hours } = getOrderCancellationState(order);
     if (!isWithin2Hours) {
-      alert(
+      setCancelFeedback(
         "Your tea is being packed now, so you can no longer cancel this order. The cancellation window was 2 hours."
       );
+      setTimeout(() => setCancelFeedback(null), 5000);
       return;
     }
 
@@ -181,7 +182,8 @@ export default function Orders() {
         err instanceof Error
           ? err.message
           : "Failed to cancel order. Please check your connection or contact support.";
-      alert(msg);
+      setCancelFeedback(msg);
+      setTimeout(() => setCancelFeedback(null), 6000);
     } finally {
       setCancellingOrderId(null);
     }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { useProducts } from "../context/ProductContext";
 import { useTeaware } from "../context/TeawareContext";
@@ -105,6 +106,27 @@ export default function AdminDashboard() {
   const [accountSearchQuery, setAccountSearchQuery] = useState("");
   const [accountFilterProvider, setAccountFilterProvider] = useState("all");
   const [selectedAccount, setSelectedAccount] = useState<AccountUser | null>(null);
+
+  // Lock background body scroll and listen for Escape key when any admin modal is open
+  useEffect(() => {
+    if (selectedOrder || selectedAccount) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setSelectedOrder(null);
+          setSelectedAccount(null);
+        }
+      };
+
+      window.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        window.removeEventListener("keydown", handleKeyDown);
+      };
+    }
+  }, [selectedOrder, selectedAccount]);
 
   // Real-time Firestore orders synchronization
   useEffect(() => {
@@ -417,8 +439,9 @@ export default function AdminDashboard() {
     cleanItem.price = Number(cleanItem.price) || 0;
     cleanItem.oldPrice = cleanItem.oldPrice ? Number(cleanItem.oldPrice) : undefined;
     cleanItem.capacity = cleanItem.capacity || "";
-    cleanItem.inStock = currentTeaware.inStock !== false;
-    cleanItem.stock = currentTeaware.inStock === false ? 0 : (typeof currentTeaware.stock === "number" ? currentTeaware.stock : 10);
+    const stockQty = typeof currentTeaware.stock === "number" ? currentTeaware.stock : (currentTeaware.inStock === false ? 0 : 10);
+    cleanItem.stock = stockQty;
+    cleanItem.inStock = currentTeaware.inStock !== false && stockQty > 0;
     cleanItem.badge = cleanItem.badge || "";
     cleanItem.image = cleanItem.image?.trim() || "";
 
@@ -483,8 +506,9 @@ export default function AdminDashboard() {
     cleanHamper.price = Number(cleanHamper.price) || 0;
     cleanHamper.oldPrice = cleanHamper.oldPrice ? Number(cleanHamper.oldPrice) : undefined;
     cleanHamper.badge = cleanHamper.badge || "";
-    cleanHamper.inStock = currentHamper.inStock !== false;
-    cleanHamper.stock = currentHamper.inStock === false ? 0 : (typeof currentHamper.stock === "number" ? currentHamper.stock : 10);
+    const stockQty = typeof currentHamper.stock === "number" ? currentHamper.stock : (currentHamper.inStock === false ? 0 : 10);
+    cleanHamper.stock = stockQty;
+    cleanHamper.inStock = currentHamper.inStock !== false && stockQty > 0;
     cleanHamper.category = currentHamper.category || "Luxury Gift Sets";
     cleanHamper.description = currentHamper.description || "";
     cleanHamper.image = cleanHamper.image?.trim() || "";
@@ -2335,20 +2359,41 @@ export default function AdminDashboard() {
                   label="Teaware Artisan Image"
                 />
 
-                <div className="form-grid-2">
+                <div className="form-grid-3">
                   <div className="form-group">
                     <label>Stock Status</label>
                     <select
-                      value={currentTeaware.inStock !== false ? "in-stock" : "out-of-stock"}
-                      onChange={e => setCurrentTeaware({
-                        ...currentTeaware,
-                        inStock: e.target.value === "in-stock",
-                        stock: e.target.value === "in-stock" ? (currentTeaware.stock || 10) : 0,
-                      })}
+                      value={currentTeaware.inStock !== false && (currentTeaware.stock ?? 10) > 0 ? "in-stock" : "out-of-stock"}
+                      onChange={e => {
+                        const isIn = e.target.value === "in-stock";
+                        setCurrentTeaware({
+                          ...currentTeaware,
+                          inStock: isIn,
+                          stock: isIn ? (currentTeaware.stock && currentTeaware.stock > 0 ? currentTeaware.stock : 10) : 0,
+                        });
+                      }}
                     >
-                      <option value="in-stock">In Stock</option>
-                      <option value="out-of-stock">Out of Stock</option>
+                      <option value="in-stock">In Stock (Purchasable)</option>
+                      <option value="out-of-stock">Coming Soon / Out of Stock</option>
                     </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Stock Units *</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={currentTeaware.stock ?? (currentTeaware.inStock === false ? 0 : 10)}
+                      onChange={e => {
+                        const val = parseInt(e.target.value, 10) || 0;
+                        setCurrentTeaware({
+                          ...currentTeaware,
+                          stock: val,
+                          inStock: val > 0,
+                        });
+                      }}
+                    />
                   </div>
 
                   <div className="form-group">
@@ -2646,20 +2691,41 @@ export default function AdminDashboard() {
                   label="Hamper Presentation Image"
                 />
 
-                <div className="form-grid-2">
+                <div className="form-grid-3">
                   <div className="form-group">
                     <label>Stock Status</label>
                     <select
-                      value={currentHamper.inStock !== false ? "in-stock" : "out-of-stock"}
-                      onChange={e => setCurrentHamper({
-                        ...currentHamper,
-                        inStock: e.target.value === "in-stock",
-                        stock: e.target.value === "in-stock" ? (currentHamper.stock || 10) : 0,
-                      })}
+                      value={currentHamper.inStock !== false && (currentHamper.stock ?? 10) > 0 ? "in-stock" : "out-of-stock"}
+                      onChange={e => {
+                        const isIn = e.target.value === "in-stock";
+                        setCurrentHamper({
+                          ...currentHamper,
+                          inStock: isIn,
+                          stock: isIn ? (currentHamper.stock && currentHamper.stock > 0 ? currentHamper.stock : 10) : 0,
+                        });
+                      }}
                     >
                       <option value="in-stock">In Stock</option>
                       <option value="out-of-stock">Out of Stock</option>
                     </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Stock Units *</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={currentHamper.stock ?? (currentHamper.inStock === false ? 0 : 10)}
+                      onChange={e => {
+                        const val = parseInt(e.target.value, 10) || 0;
+                        setCurrentHamper({
+                          ...currentHamper,
+                          stock: val,
+                          inStock: val > 0,
+                        });
+                      }}
+                    />
                   </div>
 
                   <div className="form-group">
@@ -3301,255 +3367,259 @@ export default function AdminDashboard() {
       {/* =========================================================
           MODAL 1: ORDER DETAILS
          ========================================================= */}
-      {selectedOrder && (
-        <div className="admin-modal-overlay" onClick={() => setSelectedOrder(null)}>
-          <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header-luxury">
-              <div>
-                <span className="modal-eyebrow">ORDER FULFILLMENT DOSSIER</span>
-                <h3 className="modal-title">{selectedOrder.id}</h3>
+      {selectedOrder &&
+        createPortal(
+          <div className="admin-modal-overlay" onClick={() => setSelectedOrder(null)}>
+            <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header-luxury">
+                <div>
+                  <span className="modal-eyebrow">ORDER FULFILLMENT DOSSIER</span>
+                  <h3 className="modal-title">{selectedOrder.id}</h3>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setSelectedOrder(null)}
+                  aria-label="Close modal"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setSelectedOrder(null)}
-                aria-label="Close modal"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="modal-body-scroll">
-              <div className="modal-grid-cards">
-                <div className="modal-info-card">
-                  <h4>Customer Information</h4>
-                  <div className="modal-info-line">
-                    <span>Name:</span>
-                    <strong>{selectedOrder.shippingAddress?.fullName || selectedOrder.customerName || "Patron"}</strong>
-                  </div>
-                  <div className="modal-info-line">
-                    <span>Email:</span>
-                    <strong>{selectedOrder.customerEmail || "Not Provided"}</strong>
-                  </div>
-                  <div className="modal-info-line">
-                    <span>Phone:</span>
-                    <strong>{selectedOrder.customerPhone || ((selectedOrder.shippingAddress as unknown) as Record<string, unknown>)?.phone as string || "Not Provided"}</strong>
-                  </div>
-                  <div className="modal-info-line">
-                    <span>Date:</span>
-                    <span>{new Date(selectedOrder.createdAt).toLocaleString()}</span>
-                  </div>
-                </div>
-
-                <div className="modal-info-card">
-                  <h4>Delivery Address</h4>
-                  <p className="modal-address-text">
-                    {selectedOrder.shippingAddress?.addressLine1 || "N/A"}
-                    {selectedOrder.shippingAddress?.addressLine2 && <br />}
-                    {selectedOrder.shippingAddress?.addressLine2}
-                    <br />
-                    {selectedOrder.shippingAddress?.city ? `${selectedOrder.shippingAddress.city}, ${selectedOrder.shippingAddress.state} ${selectedOrder.shippingAddress.postalCode}` : ""}
-                    <br />
-                    {selectedOrder.shippingAddress?.country || "India"}
-                  </p>
-                </div>
-
-                <div className="modal-info-card">
-                  <h4>Payment Breakdown</h4>
-                  <div className="modal-info-line">
-                    <span>Method:</span>
-                    <strong>{selectedOrder.paymentMethod || "Prepaid"}</strong>
-                  </div>
-                  {selectedOrder.paymentId && (
+              <div className="modal-body-scroll">
+                <div className="modal-grid-cards">
+                  <div className="modal-info-card">
+                    <h4>Customer Information</h4>
                     <div className="modal-info-line">
-                      <span>Payment ID:</span>
-                      <strong style={{ fontFamily: "monospace", fontSize: "11px" }}>{selectedOrder.paymentId}</strong>
+                      <span>Name:</span>
+                      <strong>{selectedOrder.shippingAddress?.fullName || selectedOrder.customerName || "Patron"}</strong>
                     </div>
-                  )}
-                  <div className="modal-info-line">
-                    <span>Payment Status:</span>
-                    <span className={`payment-pill ${selectedOrder.paymentStatus === "Paid" ? "prepaid" : "cod"}`}>
-                      {selectedOrder.paymentStatus || "Pending"}
-                    </span>
+                    <div className="modal-info-line">
+                      <span>Email:</span>
+                      <strong>{selectedOrder.customerEmail || "Not Provided"}</strong>
+                    </div>
+                    <div className="modal-info-line">
+                      <span>Phone:</span>
+                      <strong>{selectedOrder.customerPhone || ((selectedOrder.shippingAddress as unknown) as Record<string, unknown>)?.phone as string || "Not Provided"}</strong>
+                    </div>
+                    <div className="modal-info-line">
+                      <span>Date:</span>
+                      <span>{new Date(selectedOrder.createdAt).toLocaleString()}</span>
+                    </div>
                   </div>
-                  <div className="modal-info-line">
-                    <span>Subtotal:</span>
-                    <span>₹{selectedOrder.subtotal || 0}</span>
+
+                  <div className="modal-info-card">
+                    <h4>Delivery Address</h4>
+                    <p className="modal-address-text">
+                      {selectedOrder.shippingAddress?.addressLine1 || "N/A"}
+                      {selectedOrder.shippingAddress?.addressLine2 && <br />}
+                      {selectedOrder.shippingAddress?.addressLine2}
+                      <br />
+                      {selectedOrder.shippingAddress?.city ? `${selectedOrder.shippingAddress.city}, ${selectedOrder.shippingAddress.state} ${selectedOrder.shippingAddress.postalCode}` : ""}
+                      <br />
+                      {selectedOrder.shippingAddress?.country || "India"}
+                    </p>
                   </div>
-                  <div className="modal-info-line">
-                    <span>Discount:</span>
-                    <span>-₹{selectedOrder.discount || 0}</span>
+
+                  <div className="modal-info-card">
+                    <h4>Payment Breakdown</h4>
+                    <div className="modal-info-line">
+                      <span>Method:</span>
+                      <strong>{selectedOrder.paymentMethod || "Prepaid"}</strong>
+                    </div>
+                    {selectedOrder.paymentId && (
+                      <div className="modal-info-line">
+                        <span>Payment ID:</span>
+                        <strong style={{ fontFamily: "monospace", fontSize: "11px" }}>{selectedOrder.paymentId}</strong>
+                      </div>
+                    )}
+                    <div className="modal-info-line">
+                      <span>Payment Status:</span>
+                      <span className={`payment-pill ${selectedOrder.paymentStatus === "Paid" ? "prepaid" : "cod"}`}>
+                        {selectedOrder.paymentStatus || "Pending"}
+                      </span>
+                    </div>
+                    <div className="modal-info-line">
+                      <span>Subtotal:</span>
+                      <span>₹{selectedOrder.subtotal || 0}</span>
+                    </div>
+                    <div className="modal-info-line">
+                      <span>Discount:</span>
+                      <span>-₹{selectedOrder.discount || 0}</span>
+                    </div>
+                    <div className="modal-info-line">
+                      <span>Delivery:</span>
+                      <span>₹{selectedOrder.deliveryFee || 0}</span>
+                    </div>
+                    <div className="modal-info-line grand-total">
+                      <span>Total:</span>
+                      <strong className="gold-text">₹{selectedOrder.total || 0}</strong>
+                    </div>
                   </div>
-                  <div className="modal-info-line">
-                    <span>Delivery:</span>
-                    <span>₹{selectedOrder.deliveryFee || 0}</span>
-                  </div>
-                  <div className="modal-info-line grand-total">
-                    <span>Total:</span>
-                    <strong className="gold-text">₹{selectedOrder.total || 0}</strong>
+
+                  <div className="modal-info-card">
+                    <h4>Order Status & Action</h4>
+                    <div className="modal-status-selector">
+                      <select
+                        className={`status-dropdown ${(selectedOrder.orderStatus || selectedOrder.status || "pending").toLowerCase()}`}
+                        value={selectedOrder.orderStatus || selectedOrder.status || "Pending"}
+                        onChange={(e) => handleUpdateOrderStatus(selectedOrder.id, e.target.value)}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Confirmed">Confirmed</option>
+                        <option value="Processing">Processing</option>
+                        <option value="Shipped">Shipped</option>
+                        <option value="Out for Delivery">Out for Delivery</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+                    </div>
+                    <span className="modal-help-text">Updating status immediately syncs across customer tracking pages.</span>
                   </div>
                 </div>
 
-                <div className="modal-info-card">
-                  <h4>Order Status & Action</h4>
-                  <div className="modal-status-selector">
-                    <select
-                      className={`status-dropdown ${(selectedOrder.orderStatus || selectedOrder.status || "pending").toLowerCase()}`}
-                      value={selectedOrder.orderStatus || selectedOrder.status || "Pending"}
-                      onChange={(e) => handleUpdateOrderStatus(selectedOrder.id, e.target.value)}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Confirmed">Confirmed</option>
-                      <option value="Processing">Processing</option>
-                      <option value="Shipped">Shipped</option>
-                      <option value="Out for Delivery">Out for Delivery</option>
-                      <option value="Delivered">Delivered</option>
-                      <option value="Cancelled">Cancelled</option>
-                    </select>
-                  </div>
-                  <span className="modal-help-text">Updating status immediately syncs across customer tracking pages.</span>
-                </div>
-              </div>
-
-              <div className="modal-items-section">
-                <h4 className="modal-section-heading">Harvest Items Ordered ({(selectedOrder.items || []).length})</h4>
-                <div className="admin-table-container">
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>Variant</th>
-                        <th>Price</th>
-                        <th>Qty</th>
-                        <th>Subtotal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(selectedOrder.items || []).map((item, idx) => (
-                        <tr key={idx}>
-                          <td><strong>{item.name}</strong></td>
-                          <td><span className="category-pill">{item.variant || item.weight || "100g"}</span></td>
-                          <td>₹{item.price}</td>
-                          <td>{item.quantity}</td>
-                          <td><strong className="gold-text">₹{(item.price || 0) * (item.quantity || 1)}</strong></td>
+                <div className="modal-items-section">
+                  <h4 className="modal-section-heading">Harvest Items Ordered ({(selectedOrder.items || []).length})</h4>
+                  <div className="admin-table-container">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th>Variant</th>
+                          <th>Price</th>
+                          <th>Qty</th>
+                          <th>Subtotal</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {(selectedOrder.items || []).map((item, idx) => (
+                          <tr key={idx}>
+                            <td><strong>{item.name}</strong></td>
+                            <td><span className="category-pill">{item.variant || item.weight || "100g"}</span></td>
+                            <td>₹{item.price}</td>
+                            <td>{item.quantity}</td>
+                            <td><strong className="gold-text">₹{(item.price || 0) * (item.quantity || 1)}</strong></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="modal-footer-luxury">
-              <button
-                type="button"
-                className="admin-btn-secondary"
-                onClick={() => setSelectedOrder(null)}
-              >
-                Close Dossier
-              </button>
+              <div className="modal-footer-luxury">
+                <button
+                  type="button"
+                  className="admin-btn-secondary"
+                  onClick={() => setSelectedOrder(null)}
+                >
+                  Close Dossier
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {/* =========================================================
           MODAL 2: CUSTOMER ACCOUNT PROFILE
          ========================================================= */}
-      {selectedAccount && (
-        <div className="admin-modal-overlay" onClick={() => setSelectedAccount(null)}>
-          <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header-luxury">
-              <div>
-                <span className="modal-eyebrow">PATRON ACCOUNT PROFILE</span>
-                <h3 className="modal-title">{selectedAccount.name}</h3>
-              </div>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setSelectedAccount(null)}
-                aria-label="Close modal"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="modal-body-scroll">
-              <div className="modal-grid-cards">
-                <div className="modal-info-card">
-                  <h4>Profile Essentials</h4>
-                  <div className="modal-info-line">
-                    <span>Full Name:</span>
-                    <strong>{selectedAccount.name}</strong>
-                  </div>
-                  <div className="modal-info-line">
-                    <span>Email Address:</span>
-                    <strong className="gold-text">{selectedAccount.email}</strong>
-                  </div>
-                  <div className="modal-info-line">
-                    <span>Mobile Number:</span>
-                    <strong>{selectedAccount.phone || "Not Provided"}</strong>
-                  </div>
-                  <div className="modal-info-line">
-                    <span>Account Status:</span>
-                    <span className="status-pill delivered">{selectedAccount.status || "Active"}</span>
-                  </div>
+      {selectedAccount &&
+        createPortal(
+          <div className="admin-modal-overlay" onClick={() => setSelectedAccount(null)}>
+            <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header-luxury">
+                <div>
+                  <span className="modal-eyebrow">PATRON ACCOUNT PROFILE</span>
+                  <h3 className="modal-title">{selectedAccount.name}</h3>
                 </div>
-
-                <div className="modal-info-card">
-                  <h4>Security & Auth Metadata</h4>
-                  <div className="modal-info-line">
-                    <span>Provider:</span>
-                    <span className={`auth-badge ${selectedAccount.authProvider.toLowerCase().includes("google") ? "google" : "email"}`}>
-                      {selectedAccount.authProvider}
-                    </span>
-                  </div>
-                  <div className="modal-info-line">
-                    <span>Registered Date:</span>
-                    <span>{selectedAccount.createdAt ? new Date(selectedAccount.createdAt).toLocaleString() : "Recent"}</span>
-                  </div>
-                  <div className="modal-info-line">
-                    <span>Firestore UID:</span>
-                    <code className="account-uid-code">{selectedAccount.uid}</code>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setSelectedAccount(null)}
+                  aria-label="Close modal"
+                >
+                  ✕
+                </button>
               </div>
 
-              {(selectedAccount.favoriteTea || selectedAccount.preferences) && (
-                <div className="modal-items-section">
-                  <h4 className="modal-section-heading">Curated Palate & Taste Preferences</h4>
-                  {selectedAccount.favoriteTea && (
-                    <div className="preference-favorite-box">
-                      <span>Favorite Harvest:</span>
-                      <strong>{selectedAccount.favoriteTea}</strong>
+              <div className="modal-body-scroll">
+                <div className="modal-grid-cards">
+                  <div className="modal-info-card">
+                    <h4>Profile Essentials</h4>
+                    <div className="modal-info-line">
+                      <span>Full Name:</span>
+                      <strong>{selectedAccount.name}</strong>
                     </div>
-                  )}
-                  {selectedAccount.preferences && typeof selectedAccount.preferences === "object" && (
-                    <div className="preference-tags-grid">
-                      {Object.entries(selectedAccount.preferences).map(([key, val]) => (
-                        <div key={key} className="preference-tag-card">
-                          <small>{key}</small>
-                          <strong>{Array.isArray(val) ? val.join(", ") : String(val)}</strong>
-                        </div>
-                      ))}
+                    <div className="modal-info-line">
+                      <span>Email Address:</span>
+                      <strong className="gold-text">{selectedAccount.email}</strong>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+                    <div className="modal-info-line">
+                      <span>Mobile Number:</span>
+                      <strong>{selectedAccount.phone || "Not Provided"}</strong>
+                    </div>
+                    <div className="modal-info-line">
+                      <span>Account Status:</span>
+                      <span className="status-pill delivered">{selectedAccount.status || "Active"}</span>
+                    </div>
+                  </div>
 
-            <div className="modal-footer-luxury">
-              <button
-                type="button"
-                className="admin-btn-secondary"
-                onClick={() => setSelectedAccount(null)}
-              >
-                Close Profile
-              </button>
+                  <div className="modal-info-card">
+                    <h4>Security & Auth Metadata</h4>
+                    <div className="modal-info-line">
+                      <span>Provider:</span>
+                      <span className={`auth-badge ${selectedAccount.authProvider.toLowerCase().includes("google") ? "google" : "email"}`}>
+                        {selectedAccount.authProvider}
+                      </span>
+                    </div>
+                    <div className="modal-info-line">
+                      <span>Registered Date:</span>
+                      <span>{selectedAccount.createdAt ? new Date(selectedAccount.createdAt).toLocaleString() : "Recent"}</span>
+                    </div>
+                    <div className="modal-info-line">
+                      <span>Firestore UID:</span>
+                      <code className="account-uid-code">{selectedAccount.uid}</code>
+                    </div>
+                  </div>
+                </div>
+
+                {(selectedAccount.favoriteTea || selectedAccount.preferences) && (
+                  <div className="modal-items-section">
+                    <h4 className="modal-section-heading">Curated Palate & Taste Preferences</h4>
+                    {selectedAccount.favoriteTea && (
+                      <div className="preference-favorite-box">
+                        <span>Favorite Harvest:</span>
+                        <strong>{selectedAccount.favoriteTea}</strong>
+                      </div>
+                    )}
+                    {selectedAccount.preferences && typeof selectedAccount.preferences === "object" && (
+                      <div className="preference-tags-grid">
+                        {Object.entries(selectedAccount.preferences).map(([key, val]) => (
+                          <div key={key} className="preference-tag-card">
+                            <small>{key}</small>
+                            <strong>{Array.isArray(val) ? val.join(", ") : String(val)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer-luxury">
+                <button
+                  type="button"
+                  className="admin-btn-secondary"
+                  onClick={() => setSelectedAccount(null)}
+                >
+                  Close Profile
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
