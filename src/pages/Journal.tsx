@@ -1,5 +1,5 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
@@ -182,11 +182,18 @@ export default function Journal() {
       return;
     }
 
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     const timer = window.setTimeout(() => {
       setLoading(false);
-    }, 3600);
+      document.body.style.overflow = originalOverflow;
+    }, 2450);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      document.body.style.overflow = originalOverflow;
+    };
   }, [storyFromSlug]);
 
   useEffect(() => {
@@ -263,88 +270,90 @@ export default function Journal() {
           Water -> Falling Leaf -> Ripple -> Book Appears -> Book Opens
           ===================================================== */}
 
-      {loading && (
-        <div className="journal-loader" aria-label="Opening the Leafly journal">
-          {/* Phase 1, 2 & 3: Water Surface, Falling Botanical Tea Leaf & Expanding Ripples */}
-          <div className="journal-water-scene" aria-hidden="true">
-            {/* Ambient calm water sheen */}
-            <div className="journal-water-sheen" />
+      {loading &&
+        createPortal(
+          <div className="journal-loader" aria-label="Opening the Leafly journal" role="status">
+            {/* Phase 1, 2 & 3: Water Surface, Falling Botanical Tea Leaf & Expanding Ripples */}
+            <div className="journal-water-scene" aria-hidden="true">
+              {/* Ambient calm water sheen */}
+              <div className="journal-water-sheen" />
 
-            {/* Phase 2: Delicate Falling Botanical Tea Leaf */}
-            <div className="journal-falling-leaf-wrap">
-              <svg
-                className="journal-falling-leaf-svg"
-                viewBox="0 0 32 48"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <defs>
-                  <linearGradient id="tm-journal-leaf-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#5d8b50" />
-                    <stop offset="50%" stopColor="#365832" />
-                    <stop offset="100%" stopColor="#142618" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M16 2 C26 12 30 26 22 40 C18 46 16 48 16 48 C16 48 14 46 10 40 C2 26 6 12 16 2 Z"
-                  fill="url(#tm-journal-leaf-grad)"
-                />
-                <path
-                  d="M16 8 L16 44"
-                  stroke="#c9a24b"
-                  strokeWidth="0.8"
-                  strokeLinecap="round"
-                  opacity="0.8"
-                />
-                <path d="M16 16 Q20 14 23 12" stroke="#c9a24b" strokeWidth="0.6" opacity="0.65" />
-                <path d="M16 22 Q11 20 8 18" stroke="#c9a24b" strokeWidth="0.6" opacity="0.65" />
-                <path d="M16 28 Q21 26 24 24" stroke="#c9a24b" strokeWidth="0.6" opacity="0.65" />
-                <path d="M16 34 Q12 32 9 30" stroke="#c9a24b" strokeWidth="0.6" opacity="0.65" />
-              </svg>
+              {/* Phase 2: Delicate Falling Botanical Tea Leaf */}
+              <div className="journal-falling-leaf-wrap">
+                <svg
+                  className="journal-falling-leaf-svg"
+                  viewBox="0 0 32 48"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <defs>
+                    <linearGradient id="tm-journal-leaf-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#5d8b50" />
+                      <stop offset="50%" stopColor="#365832" />
+                      <stop offset="100%" stopColor="#142618" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M16 2 C26 12 30 26 22 40 C18 46 16 48 16 48 C16 48 14 46 10 40 C2 26 6 12 16 2 Z"
+                    fill="url(#tm-journal-leaf-grad)"
+                  />
+                  <path
+                    d="M16 8 L16 44"
+                    stroke="#c9a24b"
+                    strokeWidth="0.8"
+                    strokeLinecap="round"
+                    opacity="0.8"
+                  />
+                  <path d="M16 16 Q20 14 23 12" stroke="#c9a24b" strokeWidth="0.6" opacity="0.65" />
+                  <path d="M16 22 Q11 20 8 18" stroke="#c9a24b" strokeWidth="0.6" opacity="0.65" />
+                  <path d="M16 28 Q21 26 24 24" stroke="#c9a24b" strokeWidth="0.6" opacity="0.65" />
+                  <path d="M16 34 Q12 32 9 30" stroke="#c9a24b" strokeWidth="0.6" opacity="0.65" />
+                </svg>
+              </div>
+
+              {/* Phase 3: Concentric Ripples at Leaf Impact Point */}
+              <div className="journal-impact-ripples">
+                <span className="ripple r-1" />
+                <span className="ripple r-2" />
+                <span className="ripple r-3" />
+              </div>
             </div>
 
-            {/* Phase 3: Concentric Ripples at Leaf Impact Point */}
-            <div className="journal-impact-ripples">
-              <span className="ripple r-1" />
-              <span className="ripple r-2" />
-              <span className="ripple r-3" />
-            </div>
-          </div>
+            {/* Phase 4 & 5: Journal Book Appears & Opens */}
+            <div className="journal-loader-content">
+              <div className="journal-book">
+                <div className="journal-book-shadow" />
 
-          {/* Phase 4 & 5: Journal Book Appears & Opens */}
-          <div className="journal-loader-content">
-            <div className="journal-book">
-              <div className="journal-book-shadow" />
-
-              <div className="journal-page-left">
-                <div className="journal-cover-crest">
-                  <span className="crest-line" />
-                  <span className="crest-text">LEAFLY</span>
-                  <span className="crest-line" />
+                <div className="journal-page-left">
+                  <div className="journal-cover-crest">
+                    <span className="crest-line" />
+                    <span className="crest-text">LEAFLY</span>
+                    <span className="crest-line" />
+                  </div>
                 </div>
+
+                <div className="journal-page-right">
+                  <span className="journal-inner-ornament">✦</span>
+                  <strong>THE</strong>
+                  <em>Leafly</em>
+                  <small>JOURNAL</small>
+                  <span className="journal-inner-tagline">Stories from the tea table</span>
+                </div>
+
+                <div className="journal-book-spine" />
               </div>
 
-              <div className="journal-page-right">
-                <span className="journal-inner-ornament">✦</span>
-                <strong>THE</strong>
-                <em>Leafly</em>
-                <small>JOURNAL</small>
-                <span className="journal-inner-tagline">Stories from the tea table</span>
+              <p className="journal-loader-label">
+                OPENING THE LEAFLY JOURNAL
+              </p>
+
+              <div className="journal-loader-line">
+                <span />
               </div>
-
-              <div className="journal-book-spine" />
             </div>
-
-            <p className="journal-loader-label">
-              OPENING THE LEAFLY JOURNAL
-            </p>
-
-            <div className="journal-loader-line">
-              <span />
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {/* =====================================================
           HEADER

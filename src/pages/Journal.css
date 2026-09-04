@@ -908,13 +908,14 @@
 .journal-loader {
   position: fixed;
   inset: 0;
-  z-index: 20000;
+  z-index: 99998;
   display: flex;
   align-items: center;
   justify-content: center;
   background: radial-gradient(ellipse at center, #0e3727 0%, #071f16 70%, #04140e 100%);
-  animation: journal-loader-out 400ms ease 3.5s forwards;
+  animation: journal-loader-out 350ms ease 2.1s forwards;
   overflow: hidden;
+  pointer-events: all;
 }
 
 @keyframes journal-loader-out {
@@ -958,7 +959,7 @@
   margin-top: -24px;
   margin-left: -16px;
   z-index: 3;
-  animation: journal-leaf-fall-drift 1.8s cubic-bezier(0.25, 1, 0.4, 1) 0.5s both;
+  animation: journal-leaf-fall-drift 1.15s cubic-bezier(0.25, 0.9, 0.4, 1) 0.05s both;
   filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
 }
 
@@ -1020,15 +1021,15 @@
 }
 
 .journal-impact-ripples .ripple.r-1 {
-  animation: journal-ripple-expand 1.4s cubic-bezier(0.1, 0.8, 0.3, 1) 1.55s both;
+  animation: journal-ripple-expand 1.2s cubic-bezier(0.1, 0.8, 0.3, 1) 1.05s both;
 }
 
 .journal-impact-ripples .ripple.r-2 {
-  animation: journal-ripple-expand 1.4s cubic-bezier(0.1, 0.8, 0.3, 1) 1.72s both;
+  animation: journal-ripple-expand 1.2s cubic-bezier(0.1, 0.8, 0.3, 1) 1.2s both;
 }
 
 .journal-impact-ripples .ripple.r-3 {
-  animation: journal-ripple-expand 1.4s cubic-bezier(0.1, 0.8, 0.3, 1) 1.9s both;
+  animation: journal-ripple-expand 1.2s cubic-bezier(0.1, 0.8, 0.3, 1) 1.35s both;
 }
 
 @keyframes journal-ripple-expand {
@@ -1055,7 +1056,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  animation: journal-content-rise 1.2s cubic-bezier(0.22, 1, 0.36, 1) 2.1s both;
+  animation: journal-content-rise 0.85s cubic-bezier(0.22, 1, 0.36, 1) 1.25s both;
 }
 
 @keyframes journal-content-rise {
@@ -1106,7 +1107,7 @@
   border-radius: 8px 0 0 8px;
   border: 1px solid rgba(201, 162, 75, 0.35);
   transform-origin: right center;
-  animation: journal-cover-open 1.1s cubic-bezier(0.35, 0, 0.25, 1) 2.7s forwards;
+  animation: journal-cover-open 0.8s cubic-bezier(0.35, 0, 0.25, 1) 1.55s forwards;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1230,7 +1231,7 @@
   width: 50%;
   height: 100%;
   background: linear-gradient(90deg, transparent, #c9a24b, transparent);
-  animation: journal-loader-progress 2.2s cubic-bezier(0.4, 0, 0.2, 1) 1.2s forwards;
+  animation: journal-loader-progress 1.5s cubic-bezier(0.4, 0, 0.2, 1) 0.6s forwards;
 }
 
 @keyframes journal-loader-progress {
@@ -1239,6 +1240,13 @@
   }
   to {
     transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journal-loader {
+    animation: none !important;
+    display: none !important;
   }
 }
 

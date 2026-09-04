@@ -1829,15 +1829,16 @@
   position: fixed;
   inset: 0;
   z-index: 100000;
-  background: rgba(6, 29, 20, 0.78);
+  background: rgba(6, 29, 20, 0.82);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 24px;
+  padding: 36px 20px 24px;
   animation: adminFadeIn 200ms ease;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   box-sizing: border-box;
 }
 
@@ -1853,19 +1854,19 @@
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
   width: 100%;
   max-width: 860px;
-  max-height: min(90vh, 780px);
+  max-height: calc(100vh - 72px);
   height: auto;
   display: flex;
   flex-direction: column;
   animation: adminModalScale 260ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
   position: relative;
-  margin: auto;
+  margin: 0 auto;
   box-sizing: border-box;
 }
 
 .modal-footer-luxury {
-  padding: 16px 26px;
+  padding: 16px 24px;
   background: #faf7f0;
   border-top: 1px solid var(--admin-border-subtle);
   display: flex;
@@ -1875,7 +1876,8 @@
   flex-shrink: 0;
   position: sticky;
   bottom: 0;
-  z-index: 10;
+  z-index: 30;
+  box-sizing: border-box;
 }
 
 .admin-logout-modal-dialog {
@@ -1891,7 +1893,7 @@
   flex-direction: column;
   gap: 14px;
   position: relative;
-  margin: auto;
+  margin: 40px auto;
   animation: adminModalScale 240ms cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
 }
@@ -1902,7 +1904,7 @@
 }
 
 .modal-header-luxury {
-  padding: 20px 26px;
+  padding: 18px 24px;
   background: #faf7f0;
   border-bottom: 1px solid var(--admin-border-subtle);
   display: flex;
@@ -1912,7 +1914,8 @@
   flex-shrink: 0;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 30;
+  box-sizing: border-box;
 }
 
 .modal-eyebrow {
@@ -1933,15 +1936,15 @@
 
 .modal-close-btn {
   background: rgba(11, 43, 30, 0.08);
-  border: 1px solid rgba(11, 43, 30, 0.14);
+  border: 1.5px solid rgba(11, 43, 30, 0.22);
   color: var(--admin-forest);
   width: 36px;
   height: 36px;
   min-width: 36px;
   min-height: 36px;
   border-radius: 50%;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1949,6 +1952,7 @@
   flex-shrink: 0;
   line-height: 1;
   padding: 0;
+  z-index: 35;
   transition: all 180ms ease;
 }
 
@@ -1959,15 +1963,17 @@
 }
 
 .modal-body-scroll {
-  padding: 24px 26px;
+  padding: 22px 24px;
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 20px;
   scrollbar-width: thin;
   scrollbar-color: rgba(201, 162, 75, 0.4) transparent;
+  box-sizing: border-box;
 }
 
 .modal-body-scroll::-webkit-scrollbar {

@@ -23,6 +23,9 @@ export default function PageTransition({ children }: PageTransitionProps) {
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (prefersReducedMotion) {
         setDisplayLocation(location);
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
         return;
       }
 
@@ -30,6 +33,9 @@ export default function PageTransition({ children }: PageTransitionProps) {
 
       const timer = setTimeout(() => {
         setDisplayLocation(location);
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
         setTransitionStage("fadeIn");
       }, 120);
 

@@ -134,25 +134,21 @@ export default function WishlistDrawer() {
           event.stopPropagation()
         }
         aria-label="Your wishlist"
+        ref={(el) => {
+          if (el) el.scrollTop = 0;
+        }}
       >
         {/* HEADER */}
 
         <div className="leafly-wishlist-header">
           <div>
             <p className="leafly-wishlist-eyebrow">
-              YOUR LEAFLY
+              SAVED RITUALS
             </p>
 
             <h2>
-              My Wishlist
+              Your Wishlist
             </h2>
-
-            <span>
-              {items.length}{" "}
-              {items.length === 1
-                ? "item"
-                : "items"}
-            </span>
           </div>
 
           <button
@@ -161,13 +157,18 @@ export default function WishlistDrawer() {
             onClick={closeWishlist}
             aria-label="Close wishlist"
           >
-            ×
+            ✕
           </button>
         </div>
 
         {/* CONTENT */}
 
-        <div className="leafly-wishlist-content">
+        <div
+          className="leafly-wishlist-content"
+          ref={(el) => {
+            if (el) el.scrollTop = 0;
+          }}
+        >
           {items.length === 0 ? (
             <div className="leafly-wishlist-empty">
               <div className="leafly-wishlist-empty-heart">
@@ -191,7 +192,12 @@ export default function WishlistDrawer() {
             </div>
           ) : (
             <>
-              <div className="leafly-wishlist-items">
+              <div
+                className="leafly-wishlist-items"
+                ref={(el) => {
+                  if (el) el.scrollTop = 0;
+                }}
+              >
                 {items.map(
                   ({ product }) => {
                     const isAdding =

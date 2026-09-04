@@ -74,6 +74,12 @@ export function formatAuthError(error: unknown): string {
   ) {
     return "Please allow pop-ups to continue with Google.";
   }
+  if (
+    message.includes("unauthorized-domain") ||
+    message.includes("auth/unauthorized-domain")
+  ) {
+    return "Domain unauthorized: 'leaflytea.in' must be added to Authorized Domains in Firebase Console > Authentication > Settings.";
+  }
   if (message.includes("popup-closed-by-user") || message.includes("auth/popup-closed-by-user")) {
     return "Sign in popup was closed before completing.";
   }

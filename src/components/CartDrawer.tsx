@@ -57,6 +57,9 @@ export default function CartDrawer() {
         className="leafly-cart-drawer"
         onClick={(event) => event.stopPropagation()}
         aria-label="Shopping cart"
+        ref={(el) => {
+          if (el) el.scrollTop = 0;
+        }}
       >
         {/* HEADER */}
 
@@ -84,13 +87,18 @@ export default function CartDrawer() {
             onClick={closeCart}
             aria-label="Close cart"
           >
-            ×
+            ✕
           </button>
         </div>
 
         {/* CART CONTENT */}
 
-        <div className="leafly-cart-content">
+        <div
+          className="leafly-cart-content"
+          ref={(el) => {
+            if (el) el.scrollTop = 0;
+          }}
+        >
           {items.length === 0 ? (
             <div className="leafly-cart-empty">
               <div className="leafly-cart-empty-leaf">
@@ -115,7 +123,12 @@ export default function CartDrawer() {
             </div>
           ) : (
             <>
-              <div className="leafly-cart-items">
+              <div
+                className="leafly-cart-items"
+                ref={(el) => {
+                  if (el) el.scrollTop = 0;
+                }}
+              >
                 {items.map((item) => {
                   const isItemUnavailable = item.product.inStock === false || (typeof item.product.stock === "number" && item.product.stock <= 0);
                   return (

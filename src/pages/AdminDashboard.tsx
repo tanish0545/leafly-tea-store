@@ -3443,7 +3443,13 @@ export default function AdminDashboard() {
          ========================================================= */}
       {selectedOrder &&
         createPortal(
-          <div className="admin-modal-overlay" onClick={handleCloseOrderDetails}>
+          <div
+            className="admin-modal-overlay"
+            onClick={handleCloseOrderDetails}
+            ref={(el) => {
+              if (el) el.scrollTop = 0;
+            }}
+          >
             <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header-luxury">
                 <div>
@@ -3605,7 +3611,13 @@ export default function AdminDashboard() {
          ========================================================= */}
       {selectedAccount &&
         createPortal(
-          <div className="admin-modal-overlay" onClick={handleCloseAccountDetails}>
+          <div
+            className="admin-modal-overlay"
+            onClick={handleCloseAccountDetails}
+            ref={(el) => {
+              if (el) el.scrollTop = 0;
+            }}
+          >
             <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header-luxury">
                 <div>
@@ -3710,7 +3722,13 @@ export default function AdminDashboard() {
          ========================================================= */}
       {showAdminLogoutConfirm &&
         createPortal(
-          <div className="admin-modal-overlay" onClick={handleCloseAdminLogoutConfirm}>
+          <div
+            className="admin-modal-overlay"
+            onClick={handleCloseAdminLogoutConfirm}
+            ref={(el) => {
+              if (el) el.scrollTop = 0;
+            }}
+          >
             <div
               className="admin-logout-modal-dialog"
               onClick={(e) => e.stopPropagation()}
