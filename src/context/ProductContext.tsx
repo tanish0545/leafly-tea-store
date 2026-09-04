@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { products as initialProducts, type Product } from "../data/products";
-import { db } from "../lib/firebase";
+import { db, auth } from "../lib/firebase";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch } from "firebase/firestore";
 
 type ProductContextType = {
@@ -41,8 +41,12 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const productsRef = collection(db, "products");
 
-    // Initialize data if empty (runs in background)
+    // Initialize data if empty (runs only if an authorized admin is authenticated)
     const initializeData = async () => {
+      const currentUserEmail = auth.currentUser?.email?.toLowerCase();
+      if (!currentUserEmail || (currentUserEmail !== "leaflydatabase@gmail.com" && currentUserEmail !== "admin@leafly.com")) {
+        return;
+      }
       try {
         const snapshot = await getDocs(productsRef);
         if (snapshot.empty) {

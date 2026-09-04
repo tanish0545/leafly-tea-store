@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { type TeawareCategory, type TeawareItem } from "../data/teaware";
 import { useTeaware } from "../context/TeawareContext";
 import { useWishlist } from "../context/WishlistContext";
-import { useCart } from "../context/CartContext";
 import { getProductSlug } from "../data/products";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
@@ -22,42 +21,11 @@ export default function Teaware() {
   const navigate = useNavigate();
   const { teaware } = useTeaware();
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
-  const { addToCart } = useCart();
 
   const [category, setCategory] = useState<"All Teaware" | TeawareCategory>("All Teaware");
   const [sortBy, setSortBy] = useState("Featured Collection");
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [selectedItem, setSelectedItem] = useState<TeawareItem | null>(null);
-  const [addedId, setAddedId] = useState<string | number | null>(null);
-
-  const handleAddToCart = (item: TeawareItem) => {
-    const stock = typeof item.stock === "number" ? item.stock : 0;
-    if (stock <= 0 || item.inStock === false) return;
-
-    addToCart(
-      {
-        id: item.id,
-        name: item.name,
-        category: item.category,
-        origin: item.material || "Artisan Craft",
-        caffeine: "Teaware",
-        weight: item.capacity || "1 Unit",
-        price: Number(item.price) || 0,
-        oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
-        badge: item.badge || "Artisan",
-        image: item.image,
-        stock,
-        inStock: true,
-      },
-      1,
-      "100g",
-      Number(item.price) || 0,
-      item.oldPrice ? Number(item.oldPrice) : undefined
-    );
-
-    setAddedId(item.id);
-    window.setTimeout(() => setAddedId(null), 1500);
-  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -244,8 +212,8 @@ export default function Teaware() {
                     {...(index < 2 ? { fetchPriority: "high" as const } : {})}
                   />
 
-                  <span className={`teaware-badge ${isAvailable ? "in-stock" : "coming-soon"}`}>
-                    {isAvailable ? item.badge || "IN STOCK" : "COMING SOON"}
+                  <span className="teaware-badge coming-soon">
+                    {item.badge ? `${item.badge} · COMING SOON` : "COMING SOON"}
                   </span>
 
                   <button
@@ -268,8 +236,8 @@ export default function Teaware() {
                     <p className="teaware-meta">
                       {item.material} · {item.category}
                     </p>
-                    <span className={`teaware-stock-pill ${isAvailable ? "in-stock" : "out-of-stock"}`}>
-                      {isAvailable ? ((item.stock ?? 0) <= 3 ? `Only ${item.stock} left` : "In Stock") : "Coming Soon"}
+                    <span className="teaware-stock-pill out-of-stock">
+                      Coming Soon
                     </span>
                   </div>
 
@@ -308,12 +276,11 @@ export default function Teaware() {
 
                     <button
                       type="button"
-                      className={`teaware-add-btn ${!isAvailable ? "disabled coming-soon" : addedId === item.id ? "added" : ""}`}
-                      disabled={!isAvailable}
-                      onClick={() => isAvailable && handleAddToCart(item)}
-                      aria-label={!isAvailable ? `${item.name} is coming soon` : `Add ${item.name} to cart`}
+                      className="teaware-add-btn disabled coming-soon"
+                      disabled={true}
+                      aria-label={`${item.name} is coming soon`}
                     >
-                      {!isAvailable ? "COMING SOON" : addedId === item.id ? "ADDED ✓" : "ADD TO CART"}
+                      COMING SOON
                     </button>
                   </div>
                 </div>
@@ -326,96 +293,88 @@ export default function Teaware() {
       {/* =====================================================
           PRODUCT DETAIL MODAL (Quick View Option)
           ===================================================== */}
-      {selectedItem && (
-        <div
-          className="teaware-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={selectedItem.name}
-          onClick={() => setSelectedItem(null)}
-        >
+      {selectedItem && (() => {
+        const liveSelectedItem = teaware.find((t) => String(t.id) === String(selectedItem.id)) || selectedItem;
+
+        return (
           <div
-            className="teaware-modal"
-            onClick={(e) => e.stopPropagation()}
+            className="teaware-modal-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label={liveSelectedItem.name}
+            onClick={() => setSelectedItem(null)}
           >
-            <button
-              type="button"
-              className="teaware-modal-close"
-              onClick={() => setSelectedItem(null)}
-              aria-label="Close modal"
+            <div
+              className="teaware-modal"
+              onClick={(e) => e.stopPropagation()}
             >
-              ✕
-            </button>
+              <button
+                type="button"
+                className="teaware-modal-close"
+                onClick={() => setSelectedItem(null)}
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
 
-            <div className="teaware-modal-image-wrap">
-              <img
-                src={selectedItem.image}
-                alt={selectedItem.name}
-                className="teaware-modal-image"
-              />
-            </div>
+              <div className="teaware-modal-image-wrap">
+                <img
+                  src={liveSelectedItem.image}
+                  alt={liveSelectedItem.name}
+                  className="teaware-modal-image"
+                />
+              </div>
 
-            <div className="teaware-modal-info">
-              {(() => {
-                const isModalItemAvailable =
-                  selectedItem.inStock !== false &&
-                  typeof selectedItem.stock === "number" &&
-                  selectedItem.stock > 0;
+              <div className="teaware-modal-info">
+                <span className="teaware-badge coming-soon">
+                  COMING SOON
+                </span>
 
-                return (
-                  <>
-                    <span className={`teaware-badge ${isModalItemAvailable ? "in-stock" : "coming-soon"}`}>
-                      {isModalItemAvailable ? selectedItem.badge || "IN STOCK" : "COMING SOON"}
-                    </span>
+                <p className="teaware-meta">
+                  {liveSelectedItem.material} · {liveSelectedItem.category}
+                </p>
 
-                    <p className="teaware-meta">
-                      {selectedItem.material} · {selectedItem.category}
-                    </p>
+                <h2>{liveSelectedItem.name}</h2>
 
-                    <h2>{selectedItem.name}</h2>
+                <div className="teaware-modal-price-row">
+                  <span className="teaware-modal-price">₹{Number(liveSelectedItem.price).toLocaleString("en-IN")}</span>
+                  {liveSelectedItem.oldPrice && liveSelectedItem.oldPrice > liveSelectedItem.price && (
+                    <span className="teaware-modal-old-price">₹{Number(liveSelectedItem.oldPrice).toLocaleString("en-IN")}</span>
+                  )}
+                  <span className="teaware-stock-pill coming-soon">
+                    Coming Soon
+                  </span>
+                </div>
 
-                    <div className="teaware-modal-price-row">
-                      <span className="teaware-modal-price">₹{Number(selectedItem.price).toLocaleString("en-IN")}</span>
-                      {selectedItem.oldPrice && selectedItem.oldPrice > selectedItem.price && (
-                        <span className="teaware-modal-old-price">₹{Number(selectedItem.oldPrice).toLocaleString("en-IN")}</span>
-                      )}
-                      <span className={`teaware-stock-pill ${isModalItemAvailable ? "in-stock" : "out-of-stock"}`}>
-                        {isModalItemAvailable ? ((selectedItem.stock ?? 0) <= 3 ? `Only ${selectedItem.stock} left` : "In Stock") : "Coming Soon"}
-                      </span>
-                    </div>
+                <p className="teaware-modal-desc">{liveSelectedItem.description}</p>
 
-                    <p className="teaware-modal-desc">{selectedItem.description}</p>
+                <div className="teaware-features-list">
+                  <h4>ARTISAN SPECIFICATIONS</h4>
+                  <ul>
+                    {liveSelectedItem.features.map((feat, idx) => (
+                      <li key={idx}>
+                        <span className="teaware-feature-dot">✦</span>
+                        <span>{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
 
-                    <div className="teaware-features-list">
-                      <h4>ARTISAN SPECIFICATIONS</h4>
-                      <ul>
-                        {selectedItem.features.map((feat, idx) => (
-                          <li key={idx}>
-                            <span className="teaware-feature-dot">✦</span>
-                            <span>{feat}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="teaware-modal-actions">
-                      <button
-                        type="button"
-                        className={`teaware-modal-add-btn ${!isModalItemAvailable ? "disabled coming-soon" : addedId === selectedItem.id ? "added" : ""}`}
-                        disabled={!isModalItemAvailable}
-                        onClick={() => isModalItemAvailable && handleAddToCart(selectedItem)}
-                        aria-label={!isModalItemAvailable ? `${selectedItem.name} is coming soon` : `Add ${selectedItem.name} to cart`}
-                      >
-                        {!isModalItemAvailable ? "COMING SOON" : addedId === selectedItem.id ? "ADDED ✓" : "ADD TO CART"}
-                      </button>
-                    </div>
-                  </>
-                );
-              })()}
+                <div className="teaware-modal-actions">
+                  <button
+                    type="button"
+                    className="teaware-modal-add-btn disabled coming-soon"
+                    disabled={true}
+                    aria-label={`${liveSelectedItem.name} is coming soon`}
+                  >
+                    COMING SOON
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* =====================================================
           BACK TO TOP

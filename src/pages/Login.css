@@ -327,6 +327,12 @@
   transform: translateY(-1px);
 }
 
+.leafly-auth-google-button:active:not(:disabled) {
+  background: #f4f4f0;
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(11, 43, 30, 0.08);
+}
+
 .leafly-auth-google-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;

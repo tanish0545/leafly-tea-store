@@ -56,6 +56,11 @@ export default defineConfig(({ mode }) => {
   if (env.ADMIN_EMAIL && !process.env.ADMIN_EMAIL) process.env.ADMIN_EMAIL = env.ADMIN_EMAIL;
 
   return {
+    server: {
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      },
+    },
     plugins: [
       react(),
       tailwindcss(),

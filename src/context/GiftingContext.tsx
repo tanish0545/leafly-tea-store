@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { giftHampers as initialHampers, type GiftHamper } from "../data/gifting";
-import { db } from "../lib/firebase";
+import { db, auth } from "../lib/firebase";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch } from "firebase/firestore";
 
 type GiftingContextType = {
@@ -43,8 +43,12 @@ export function GiftingProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const hampersRef = collection(db, "hampers");
 
-    // Initialize data if empty (runs in background)
+    // Initialize data if empty (runs only if an authorized admin is authenticated)
     const initializeData = async () => {
+      const currentUserEmail = auth.currentUser?.email?.toLowerCase();
+      if (!currentUserEmail || (currentUserEmail !== "leaflydatabase@gmail.com" && currentUserEmail !== "admin@leafly.com")) {
+        return;
+      }
       try {
         const snapshot = await getDocs(hampersRef);
         if (snapshot.empty) {

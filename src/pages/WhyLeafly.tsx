@@ -16,9 +16,14 @@ const TYPEWRITER_STEPS = [
   "W",
   "WH",
   "WHY",
+  "WHY ",
   "WHY L",
   "WHY LE",
+  "WHY LEA",
+  "WHY LEAF",
+  "WHY LEAFL",
   "WHY LEAFLY",
+  "WHY LEAFLY ",
 ];
 
 export default function WhyLeafly() {
@@ -43,8 +48,11 @@ export default function WhyLeafly() {
       return;
     }
 
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     let stepIndex = 0;
-    // Step interval: 140ms * 6 steps = ~840ms typing
+    // Step interval: 110ms * 11 steps = ~1.21s typing
     const typingInterval = setInterval(() => {
       if (stepIndex < TYPEWRITER_STEPS.length) {
         setTypedText(TYPEWRITER_STEPS[stepIndex]);
@@ -54,19 +62,23 @@ export default function WhyLeafly() {
         // Reveal enlarged gold question mark
         setShowQuestionMark(true);
 
-        // Elegant short pause ~280ms then begin smooth fade out (~400ms)
+        // Elegant short pause ~350ms then begin smooth fade out (~550ms)
         setTimeout(() => {
           setLoaderFadeOut(true);
-        }, 280);
+          document.body.style.overflow = prevOverflow;
+        }, 350);
 
-        // Total intro: ~840ms typing + 280ms pause + 400ms fade = ~1.52s
+        // Total intro: ~1.21s typing + 350ms pause + 550ms fade = ~2.11s
         setTimeout(() => {
           setLoading(false);
-        }, 680);
+        }, 900);
       }
-    }, 140);
+    }, 110);
 
-    return () => clearInterval(typingInterval);
+    return () => {
+      clearInterval(typingInterval);
+      document.body.style.overflow = prevOverflow;
+    };
   }, []);
 
   return (
@@ -98,7 +110,7 @@ export default function WhyLeafly() {
             <div className="typewriter-content">
               <span className="typewriter-brand-eyebrow">A MINDFUL RITUAL</span>
               <h1 className="typewriter-heading">
-                <span className="typewriter-text">{typedText}</span>
+                <span className={`typewriter-text ${showQuestionMark ? "done" : ""}`}>{typedText}</span>
                 {showQuestionMark && (
                   <span className="typewriter-qmark" aria-hidden="true">
                     {" "}?

@@ -95,6 +95,7 @@ function App() {
                             <Route path="/product/:id" element={<ProductDetail />} />
                             <Route path="/cart" element={<CartRedirect />} />
                             <Route path="/gifting" element={<GiftingPage />} />
+                            <Route path="/gifting/:slug" element={<ProductDetail />} />
                             <Route path="/checkout" element={<Checkout />} />
                             <Route path="/order-success" element={<OrderSuccess />} />
                             <Route path="/orders" element={<Orders />} />

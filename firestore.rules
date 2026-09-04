@@ -13,10 +13,20 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        (request.auth.token.email != null && request.auth.token.email.lower() == 'leaflydatabase@gmail.com') ||
+        (request.auth.token.email != null && (
+          request.auth.token.email == 'leaflydatabase@gmail.com' ||
+          request.auth.token.email.lower() == 'leaflydatabase@gmail.com' ||
+          request.auth.token.email == 'admin@leafly.com' ||
+          request.auth.token.email.lower() == 'admin@leafly.com' ||
+          request.auth.token.email == 'admin@leaflytea.com' ||
+          request.auth.token.email.lower() == 'admin@leaflytea.com'
+        )) ||
         request.auth.token.get('admin', false) == true ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == true)
+        request.auth.token.get('isAdmin', false) == true ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == true ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin'
+        ))
       );
     }
 

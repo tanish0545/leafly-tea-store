@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useMemo, useState, useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useOrderContext } from "../context/OrderContext";
 import { useAuth, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
@@ -466,13 +467,41 @@ export default function Profile() {
     navigate("/shop");
   };
 
+  const handleOpenLogoutConfirm = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const handleCancelLogout = () => {
+    setShowLogoutConfirm(false);
+  };
+
+  useEffect(() => {
+    if (!showLogoutConfirm) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowLogoutConfirm(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showLogoutConfirm]);
+
   const handleLogout = async () => {
+    document.body.style.overflow = "";
     setShowLogoutConfirm(false);
     try {
       await logout();
       navigate("/login", { replace: true });
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     } catch {
       navigate("/login", { replace: true });
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     }
   };
 
@@ -559,7 +588,7 @@ export default function Profile() {
           <button
             type="button"
             className="profile-sidebar-logout"
-            onClick={() => setShowLogoutConfirm(true)}
+            onClick={handleOpenLogoutConfirm}
             aria-label="Log out from account"
           >
             <span className="profile-sidebar-icon">
@@ -1022,22 +1051,52 @@ export default function Profile() {
         </section>
       </div>
 
-      {showLogoutConfirm && (
-        <div className="profile-logout-overlay" role="dialog" aria-modal="true" aria-label="Log out confirmation">
-          <div className="profile-logout-modal">
-            <p className="profile-card-kicker">ACCOUNT</p>
-            <h3>Are you sure you want to log out?</h3>
-            <div className="profile-logout-actions">
-              <button type="button" className="profile-secondary-button" onClick={() => setShowLogoutConfirm(false)}>
-                CANCEL
+      {showLogoutConfirm &&
+        createPortal(
+          <div
+            className="profile-logout-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Log out confirmation"
+            onClick={handleCancelLogout}
+          >
+            <div
+              className="profile-logout-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="profile-modal-close-btn"
+                onClick={handleCancelLogout}
+                aria-label="Close dialog"
+              >
+                ✕
               </button>
-              <button type="button" className="profile-primary-button" onClick={handleLogout}>
-                LOG OUT
-              </button>
+              <p className="profile-card-kicker">ACCOUNT SECURITY</p>
+              <h3>Are you sure you want to log out?</h3>
+              <p style={{ margin: 0, fontSize: "14px", color: "rgba(11,43,30,0.65)" }}>
+                You can always log back in to review your tea journal, orders, and rewards.
+              </p>
+              <div className="profile-logout-actions">
+                <button
+                  type="button"
+                  className="profile-secondary-button"
+                  onClick={handleCancelLogout}
+                >
+                  CANCEL
+                </button>
+                <button
+                  type="button"
+                  className="profile-primary-button"
+                  onClick={handleLogout}
+                >
+                  LOG OUT
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       <button type="button" className="profile-back-to-top" onClick={handleBackToTop} aria-label="Back to top">
         ↑

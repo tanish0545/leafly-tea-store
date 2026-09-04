@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { useProducts } from "../context/ProductContext";
@@ -106,10 +106,37 @@ export default function AdminDashboard() {
   const [accountSearchQuery, setAccountSearchQuery] = useState("");
   const [accountFilterProvider, setAccountFilterProvider] = useState("all");
   const [selectedAccount, setSelectedAccount] = useState<AccountUser | null>(null);
+  const [showAdminLogoutConfirm, setShowAdminLogoutConfirm] = useState(false);
+  const savedModalScrollPosRef = useRef<number>(0);
 
-  // Lock background body scroll and listen for Escape key when any admin modal is open
+  const handleOpenOrderDetails = (order: Order) => {
+    setSelectedOrder(order);
+  };
+
+  const handleCloseOrderDetails = () => {
+    setSelectedOrder(null);
+  };
+
+  const handleOpenAccountDetails = (acc: AccountUser) => {
+    setSelectedAccount(acc);
+  };
+
+  const handleCloseAccountDetails = () => {
+    setSelectedAccount(null);
+  };
+
+  const handleOpenAdminLogoutConfirm = () => {
+    setShowAdminLogoutConfirm(true);
+  };
+
+  const handleCloseAdminLogoutConfirm = () => {
+    setShowAdminLogoutConfirm(false);
+  };
+
+  // Lock background body scroll and listen for Escape key when any true modal is open
   useEffect(() => {
-    if (selectedOrder || selectedAccount) {
+    const isModalOpen = Boolean(selectedOrder || selectedAccount || showAdminLogoutConfirm);
+    if (isModalOpen) {
       const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = "hidden";
 
@@ -117,6 +144,7 @@ export default function AdminDashboard() {
         if (e.key === "Escape") {
           setSelectedOrder(null);
           setSelectedAccount(null);
+          setShowAdminLogoutConfirm(false);
         }
       };
 
@@ -126,7 +154,7 @@ export default function AdminDashboard() {
         window.removeEventListener("keydown", handleKeyDown);
       };
     }
-  }, [selectedOrder, selectedAccount]);
+  }, [selectedOrder, selectedAccount, showAdminLogoutConfirm]);
 
   // Real-time Firestore orders synchronization
   useEffect(() => {
@@ -283,6 +311,8 @@ export default function AdminDashboard() {
       inStock,
       variants: variants as unknown as Product["variants"],
     });
+    savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditing(true);
   };
 
@@ -304,6 +334,8 @@ export default function AdminDashboard() {
         "250g": { weight: "250g", price: 0 }
       }
     });
+    savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditing(true);
   };
 
@@ -411,6 +443,8 @@ export default function AdminDashboard() {
   // Teaware Actions
   const handleEditTeawareClick = (item: TeawareItem) => {
     setCurrentTeaware(item);
+    savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditingTeaware(true);
   };
 
@@ -430,6 +464,8 @@ export default function AdminDashboard() {
       inStock: true,
       stock: 10,
     });
+    savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditingTeaware(true);
   };
 
@@ -481,6 +517,8 @@ export default function AdminDashboard() {
   // Hamper Actions
   const handleEditHamperClick = (hamper: GiftHamper) => {
     setCurrentHamper(hamper);
+    savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditingHamper(true);
   };
 
@@ -497,6 +535,8 @@ export default function AdminDashboard() {
       inStock: true,
       stock: 10,
     });
+    savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditingHamper(true);
   };
 
@@ -517,6 +557,7 @@ export default function AdminDashboard() {
     if (res.success) {
       showToast("success", `Hamper "${cleanHamper.name}" saved successfully.`);
       setIsEditingHamper(false);
+      window.scrollTo({ top: savedModalScrollPosRef.current, left: 0, behavior: "instant" });
     } else {
       showToast("error", `Failed to save hamper: ${res.error || "Database error"}`);
     }
@@ -583,6 +624,8 @@ export default function AdminDashboard() {
   // Coupon Actions
   const handleEditCoupon = (coupon: UserCoupon) => {
     setCurrentCoupon(coupon);
+    savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditingCoupon(true);
   };
 
@@ -597,6 +640,8 @@ export default function AdminDashboard() {
       applicableCondition: "",
       expiryDate: "",
     });
+    savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditingCoupon(true);
   };
 
@@ -608,12 +653,33 @@ export default function AdminDashboard() {
       await createGlobalCoupon(currentCoupon as UserCoupon);
     }
     setIsEditingCoupon(false);
+    window.scrollTo({ top: savedModalScrollPosRef.current, left: 0, behavior: "instant" });
   };
 
   const handleDeleteCoupon = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this coupon?")) {
       await deleteGlobalCoupon(id);
     }
+  };
+
+  const handleCancelProductEdit = () => {
+    setIsEditing(false);
+    window.scrollTo({ top: savedModalScrollPosRef.current, left: 0, behavior: "instant" });
+  };
+
+  const handleCancelTeawareEdit = () => {
+    setIsEditingTeaware(false);
+    window.scrollTo({ top: savedModalScrollPosRef.current, left: 0, behavior: "instant" });
+  };
+
+  const handleCancelHamperEdit = () => {
+    setIsEditingHamper(false);
+    window.scrollTo({ top: savedModalScrollPosRef.current, left: 0, behavior: "instant" });
+  };
+
+  const handleCancelCouponEdit = () => {
+    setIsEditingCoupon(false);
+    window.scrollTo({ top: savedModalScrollPosRef.current, left: 0, behavior: "instant" });
   };
 
   // Review Actions
@@ -642,8 +708,11 @@ export default function AdminDashboard() {
   };
 
   const handleLogout = async () => {
+    document.body.style.overflow = "";
+    setShowAdminLogoutConfirm(false);
     await signOut();
     navigate("/admin/login");
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   };
 
   // Analytics Computation from Real Data
@@ -999,7 +1068,7 @@ export default function AdminDashboard() {
             </Link>
             <button
               type="button"
-              onClick={handleLogout}
+              onClick={handleOpenAdminLogoutConfirm}
               className="admin-logout-btn"
               title="Sign Out"
             >
@@ -1255,7 +1324,7 @@ export default function AdminDashboard() {
                                     <button
                                       type="button"
                                       className="admin-btn-action"
-                                      onClick={() => setSelectedOrder(order)}
+                                      onClick={() => handleOpenOrderDetails(order)}
                                     >
                                       View
                                     </button>
@@ -1303,7 +1372,7 @@ export default function AdminDashboard() {
                                 <button
                                   type="button"
                                   className="admin-btn-primary full-width"
-                                  onClick={() => setSelectedOrder(order)}
+                                  onClick={() => handleOpenOrderDetails(order)}
                                 >
                                   View Details
                                 </button>
@@ -1475,7 +1544,7 @@ export default function AdminDashboard() {
                                   <button
                                     type="button"
                                     className="admin-btn-action"
-                                    onClick={() => setSelectedOrder(order)}
+                                    onClick={() => handleOpenOrderDetails(order)}
                                   >
                                     Details
                                   </button>
@@ -1566,7 +1635,7 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               className="admin-btn-primary flex-1"
-                              onClick={() => setSelectedOrder(order)}
+                              onClick={() => handleOpenOrderDetails(order)}
                             >
                               View Dossier
                             </button>
@@ -1801,7 +1870,7 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   className="admin-btn-secondary"
-                  onClick={() => setIsEditing(false)}
+                  onClick={handleCancelProductEdit}
                 >
                   ← Back to Catalog
                 </button>
@@ -2067,7 +2136,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="form-actions-footer">
-                  <button type="button" className="admin-btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button>
+                  <button type="button" className="admin-btn-secondary" onClick={handleCancelProductEdit}>Cancel</button>
                   <button type="submit" className="admin-btn-gold">Save Product</button>
                 </div>
               </form>
@@ -2082,15 +2151,20 @@ export default function AdminDashboard() {
               <div className="admin-section-header">
                 <div>
                   <h2 className="section-title">Teaware Collection</h2>
-                  <p className="section-subtitle">Teapots, brewing glassware, infusers, ceramic cups & ceremonial trays</p>
+                  <p className="section-subtitle">Teapots, brewing glassware, infusers, ceramic cups & ceremonial trays · <strong style={{ color: "var(--admin-gold)" }}>Showcase Only (Coming Soon)</strong></p>
                 </div>
-                <button
-                  type="button"
-                  className="admin-btn-gold"
-                  onClick={handleAddNewTeawareClick}
-                >
-                  <span>+ Add New Teaware</span>
-                </button>
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                  <span className="admin-stat-badge" style={{ background: "rgba(201, 162, 75, 0.14)", color: "#b98428", border: "1px solid rgba(201, 162, 75, 0.3)" }}>
+                    ✦ PRE-LAUNCH SHOWCASE
+                  </span>
+                  <button
+                    type="button"
+                    className="admin-btn-gold"
+                    onClick={handleAddNewTeawareClick}
+                  >
+                    <span>+ Add New Teaware</span>
+                  </button>
+                </div>
               </div>
 
               {/* SEARCH & FILTERS */}
@@ -2278,7 +2352,7 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   className="admin-btn-secondary"
-                  onClick={() => setIsEditingTeaware(false)}
+                  onClick={handleCancelTeawareEdit}
                 >
                   ← Back to Teaware
                 </button>
@@ -2418,7 +2492,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="form-actions-footer">
-                  <button type="button" className="admin-btn-secondary" onClick={() => setIsEditingTeaware(false)}>Cancel</button>
+                  <button type="button" className="admin-btn-secondary" onClick={handleCancelTeawareEdit}>Cancel</button>
                   <button type="submit" className="admin-btn-gold">Save Teaware</button>
                 </div>
               </form>
@@ -2625,7 +2699,7 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   className="admin-btn-secondary"
-                  onClick={() => setIsEditingHamper(false)}
+                  onClick={handleCancelHamperEdit}
                 >
                   ← Back to Hampers
                 </button>
@@ -2761,7 +2835,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="form-actions-footer">
-                  <button type="button" className="admin-btn-secondary" onClick={() => setIsEditingHamper(false)}>Cancel</button>
+                  <button type="button" className="admin-btn-secondary" onClick={handleCancelHamperEdit}>Cancel</button>
                   <button type="submit" className="admin-btn-gold">Save Hamper</button>
                 </div>
               </form>
@@ -2877,7 +2951,7 @@ export default function AdminDashboard() {
                                 <button
                                   type="button"
                                   className="admin-btn-action"
-                                  onClick={() => setSelectedAccount(acc)}
+                                  onClick={() => handleOpenAccountDetails(acc)}
                                 >
                                   Profile
                                 </button>
@@ -2922,7 +2996,7 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               className="admin-btn-primary full-width"
-                              onClick={() => setSelectedAccount(acc)}
+                              onClick={() => handleOpenAccountDetails(acc)}
                             >
                               View Full Profile
                             </button>
@@ -3098,7 +3172,7 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   className="admin-btn-secondary"
-                  onClick={() => setIsEditingCoupon(false)}
+                  onClick={handleCancelCouponEdit}
                 >
                   ← Back to Coupons
                 </button>
@@ -3175,7 +3249,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="form-actions-footer">
-                  <button type="button" className="admin-btn-secondary" onClick={() => setIsEditingCoupon(false)}>Cancel</button>
+                  <button type="button" className="admin-btn-secondary" onClick={handleCancelCouponEdit}>Cancel</button>
                   <button type="submit" className="admin-btn-gold">Save Coupon</button>
                 </div>
               </form>
@@ -3369,7 +3443,7 @@ export default function AdminDashboard() {
          ========================================================= */}
       {selectedOrder &&
         createPortal(
-          <div className="admin-modal-overlay" onClick={() => setSelectedOrder(null)}>
+          <div className="admin-modal-overlay" onClick={handleCloseOrderDetails}>
             <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header-luxury">
                 <div>
@@ -3379,14 +3453,19 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   className="modal-close-btn"
-                  onClick={() => setSelectedOrder(null)}
+                  onClick={handleCloseOrderDetails}
                   aria-label="Close modal"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="modal-body-scroll">
+              <div
+                className="modal-body-scroll"
+                ref={(el) => {
+                  if (el) el.scrollTop = 0;
+                }}
+              >
                 <div className="modal-grid-cards">
                   <div className="modal-info-card">
                     <h4>Customer Information</h4>
@@ -3511,7 +3590,7 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   className="admin-btn-secondary"
-                  onClick={() => setSelectedOrder(null)}
+                  onClick={handleCloseOrderDetails}
                 >
                   Close Dossier
                 </button>
@@ -3526,7 +3605,7 @@ export default function AdminDashboard() {
          ========================================================= */}
       {selectedAccount &&
         createPortal(
-          <div className="admin-modal-overlay" onClick={() => setSelectedAccount(null)}>
+          <div className="admin-modal-overlay" onClick={handleCloseAccountDetails}>
             <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header-luxury">
                 <div>
@@ -3536,14 +3615,19 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   className="modal-close-btn"
-                  onClick={() => setSelectedAccount(null)}
+                  onClick={handleCloseAccountDetails}
                   aria-label="Close modal"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="modal-body-scroll">
+              <div
+                className="modal-body-scroll"
+                ref={(el) => {
+                  if (el) el.scrollTop = 0;
+                }}
+              >
                 <div className="modal-grid-cards">
                   <div className="modal-info-card">
                     <h4>Profile Essentials</h4>
@@ -3611,9 +3695,47 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   className="admin-btn-secondary"
-                  onClick={() => setSelectedAccount(null)}
+                  onClick={handleCloseAccountDetails}
                 >
                   Close Profile
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* =========================================================
+          MODAL 3: LOGOUT CONFIRMATION MODAL
+         ========================================================= */}
+      {showAdminLogoutConfirm &&
+        createPortal(
+          <div className="admin-modal-overlay" onClick={handleCloseAdminLogoutConfirm}>
+            <div
+              className="admin-logout-modal-dialog"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span className="modal-eyebrow">ADMINISTRATIVE SECURITY</span>
+              <h3 className="modal-title" style={{ fontSize: "20px" }}>Confirm Sign Out</h3>
+              <p style={{ margin: "4px 0 14px", fontSize: "14px", color: "var(--admin-muted)" }}>
+                Are you sure you want to end your administrative session?
+              </p>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  className="admin-btn-secondary"
+                  style={{ flex: 1 }}
+                  onClick={handleCloseAdminLogoutConfirm}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="admin-btn-danger"
+                  style={{ flex: 1, padding: "11px 18px", fontSize: "13px" }}
+                  onClick={handleLogout}
+                >
+                  Sign Out
                 </button>
               </div>
             </div>

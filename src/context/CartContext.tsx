@@ -99,6 +99,28 @@ export function isTeawareItem(
   );
 }
 
+export function isHamperItem(
+  product?: CartProduct | null,
+  hampersList: GiftHamper[] = []
+): boolean {
+  if (!product) return false;
+  const pCat = (product.category || "").toLowerCase();
+  const pId = String(product.id);
+
+  if (
+    pCat === "luxury gift sets" ||
+    pCat === "gift hamper" ||
+    pCat.includes("hamper") ||
+    pCat.includes("gift")
+  ) {
+    return true;
+  }
+
+  return hampersList.some(
+    (h) => String(h.id) === pId || h.name.toLowerCase() === (product.name || "").toLowerCase()
+  );
+}
+
 export function resolveLiveCatalogProduct(
   itemProduct: CartProduct,
   products: Product[],
@@ -106,11 +128,11 @@ export function resolveLiveCatalogProduct(
   hampers: GiftHamper[]
 ): { price: number; oldPrice?: number; stock: number; inStock: boolean; image: string; name: string } | null {
   const pId = String(itemProduct.id);
-  const pCat = itemProduct.category || "";
+  const pNameLower = (itemProduct.name || "").toLowerCase();
 
-  // 1. Check Gifting Hampers
-  if (pCat === "Luxury Gift Sets" || pCat === "Gift Hamper" || pCat.toLowerCase().includes("hamper") || pCat.toLowerCase().includes("gift")) {
-    const match = hampers.find(h => String(h.id) === pId || h.name === itemProduct.name);
+  // 1. Check Gifting Hampers if category or item indicates hamper
+  if (isHamperItem(itemProduct, hampers)) {
+    const match = hampers.find(h => String(h.id) === pId || h.name.toLowerCase() === pNameLower);
     if (match) {
       const stock = typeof match.stock === "number" ? match.stock : 10;
       return {
@@ -124,17 +146,9 @@ export function resolveLiveCatalogProduct(
     }
   }
 
-  // 2. Check Teaware
-  if (
-    pCat === "Teaware" ||
-    pCat.toLowerCase().includes("teaware") ||
-    pCat === "Teapots" ||
-    pCat === "Tea Cups" ||
-    pCat === "Serving & Trays" ||
-    pCat === "Storage & Accessories" ||
-    itemProduct.caffeine === "Teaware"
-  ) {
-    const match = teaware.find(t => String(t.id) === pId || t.name === itemProduct.name);
+  // 2. Check Teaware if category or item indicates teaware
+  if (isTeawareItem(itemProduct, teaware)) {
+    const match = teaware.find(t => String(t.id) === pId || t.name.toLowerCase() === pNameLower);
     if (match) {
       const stock = typeof match.stock === "number" ? match.stock : 10;
       return {
@@ -149,7 +163,7 @@ export function resolveLiveCatalogProduct(
   }
 
   // 3. Check Tea Products
-  const teaMatch = products.find(p => String(p.id) === pId || p.name === itemProduct.name);
+  const teaMatch = products.find(p => String(p.id) === pId || p.name.toLowerCase() === pNameLower);
   if (teaMatch) {
     const stock = typeof teaMatch.stock === "number" ? teaMatch.stock : 10;
     return {
@@ -162,8 +176,8 @@ export function resolveLiveCatalogProduct(
     };
   }
 
-  // 4. Fallback search across teaware then hampers if category wasn't explicit
-  const twFallback = teaware.find(t => String(t.id) === pId && t.name === itemProduct.name);
+  // 4. Fallback search across teaware, then hampers if category wasn't explicit
+  const twFallback = teaware.find(t => String(t.id) === pId);
   if (twFallback) {
     const stock = typeof twFallback.stock === "number" ? twFallback.stock : 10;
     return {
@@ -176,7 +190,7 @@ export function resolveLiveCatalogProduct(
     };
   }
 
-  const hFallback = hampers.find(h => String(h.id) === pId && h.name === itemProduct.name);
+  const hFallback = hampers.find(h => String(h.id) === pId);
   if (hFallback) {
     const stock = typeof hFallback.stock === "number" ? hFallback.stock : 10;
     return {
@@ -244,49 +258,54 @@ export function CartProvider({
     useState(false);
 
   // Synchronize cart items with live catalog data dynamically whenever products, teaware, or hampers update
-  // Filter out any Teaware items that are out of stock / Coming Soon (stock <= 0)
+  // Filter out any items that are out of stock / Coming Soon (stock <= 0)
   const items = useMemo<CartItem[]>(() => {
     return rawItems
       .filter((item) => {
-        if (isTeawareItem(item.product, teaware)) {
-          const live = resolveLiveCatalogProduct(item.product, products, teaware, hampers);
-          if (!live || live.inStock === false || (typeof live.stock === "number" && live.stock <= 0)) {
-            return false;
-          }
+        const live = resolveLiveCatalogProduct(item.product, products, teaware, hampers);
+        if (!live) return true;
+        // Showcase pre-launch enforcement: Teaware is showcase only
+        if (isTeawareItem(item.product, teaware) || item.product.category === "Teaware" || String(item.id).startsWith("tw-")) {
+          return false;
+        }
+        // Live stock validation: if stock <= 0 or inStock is false, filter out immediately
+        if (live.inStock === false || (typeof live.stock === "number" && live.stock <= 0)) {
+          return false;
         }
         return true;
       })
       .map((item) => {
-      const live = resolveLiveCatalogProduct(item.product, products, teaware, hampers);
-      if (!live) return item;
+        const live = resolveLiveCatalogProduct(item.product, products, teaware, hampers);
+        if (!live) return item;
 
-      // Resolve variant pricing if tea product has customized variants
-      let effectivePrice = live.price;
-      let effectiveOldPrice = live.oldPrice;
+        // Resolve variant pricing if tea product has customized variants
+        let effectivePrice = live.price;
+        let effectiveOldPrice = live.oldPrice;
 
-      const tea = products.find((p) => String(p.id) === String(item.product.id) || p.name === item.product.name);
-      if (tea && item.variant && tea.variants?.[item.variant]) {
-        const varData = tea.variants[item.variant];
-        if (varData?.price) {
-          effectivePrice = Number(varData.price);
-          effectiveOldPrice = varData.oldPrice ? Number(varData.oldPrice) : undefined;
+        const tea = products.find((p) => String(p.id) === String(item.product.id) || p.name.toLowerCase() === (item.product.name || "").toLowerCase());
+        if (tea && item.variant && tea.variants?.[item.variant]) {
+          const varData = tea.variants[item.variant];
+          if (varData?.price) {
+            effectivePrice = Number(varData.price);
+            effectiveOldPrice = varData.oldPrice ? Number(varData.oldPrice) : undefined;
+          }
         }
-      }
 
-      return {
-        ...item,
-        price: effectivePrice,
-        oldPrice: effectiveOldPrice,
-        product: {
-          ...item.product,
+        return {
+          ...item,
           price: effectivePrice,
           oldPrice: effectiveOldPrice,
-          stock: live.stock,
-          inStock: live.inStock,
-          image: live.image,
-        },
-      };
-    });
+          product: {
+            ...item.product,
+            price: effectivePrice,
+            oldPrice: effectiveOldPrice,
+            stock: live.stock,
+            inStock: live.inStock,
+            image: live.image,
+            name: live.name,
+          },
+        };
+      });
   }, [rawItems, products, teaware, hampers]);
 
   useEffect(() => {
@@ -301,11 +320,9 @@ export function CartProvider({
   }, [items]);
 
   const triggerAddedAnimation = (product: CartProduct) => {
-    if (isTeawareItem(product, teaware)) {
-      const live = resolveLiveCatalogProduct(product, products, teaware, hampers);
-      const stock = live ? live.stock : typeof product.stock === "number" ? product.stock : 0;
-      if (stock <= 0) return;
-    }
+    const live = resolveLiveCatalogProduct(product, products, teaware, hampers);
+    const stock = live ? live.stock : typeof product.stock === "number" ? product.stock : 10;
+    if (stock <= 0) return;
     setAnimatingProduct(product);
   };
 
@@ -320,29 +337,27 @@ export function CartProvider({
     customPrice?: number,
     customOldPrice?: number
   ) => {
-    // Teaware availability check: block if stock <= 0 (Coming Soon)
-    if (isTeawareItem(product, teaware)) {
-      const live = resolveLiveCatalogProduct(product, products, teaware, hampers);
-      const stock = live ? live.stock : typeof product.stock === "number" ? product.stock : 0;
-      const inStock = live ? live.inStock : product.inStock !== false;
-      if (!inStock || stock <= 0) {
-        console.warn("Teaware items with zero stock are in Coming Soon status.");
-        return;
-      }
-    }
-
-    if (product && (product.inStock === false || (typeof product.stock === "number" && product.stock <= 0))) {
+    const isTw = isTeawareItem(product, teaware);
+    if (isTw || product.category === "Teaware" || String(product.id).startsWith("tw-")) {
+      console.warn("Teaware items are currently in showcase pre-launch mode and cannot be added to cart.");
       return;
     }
+    const isGh = isHamperItem(product, hampers);
+    const pfx = isGh ? "gh" : "tea";
+    const cartItemId = `${pfx}-${product.id}-${variant}`;
 
+    // Live availability check: block if stock <= 0
     const live = resolveLiveCatalogProduct(product, products, teaware, hampers);
-    if (live && (live.inStock === false || (typeof live.stock === "number" && live.stock <= 0))) {
+    const stock = live ? live.stock : typeof product.stock === "number" ? product.stock : 10;
+    const inStock = live ? live.inStock : product.inStock !== false && stock > 0;
+
+    if (!inStock || stock <= 0) {
+      console.warn("Product is currently unavailable / out of stock.");
       return;
     }
 
-    const itemPrice = typeof customPrice === "number" ? customPrice : product.price;
-    const itemOldPrice = customOldPrice ?? product.oldPrice;
-    const cartItemId = `${product.id}-${variant}`;
+    const itemPrice = live ? live.price : typeof customPrice === "number" ? customPrice : product.price;
+    const itemOldPrice = live ? live.oldPrice : (customOldPrice ?? product.oldPrice);
 
     // Trigger Fly-To-Cart visual animation
     if (typeof window !== "undefined") {
@@ -368,7 +383,9 @@ export function CartProvider({
       const existingIndex = current.findIndex(
         (item) =>
           item.id === cartItemId ||
-          (item.product.id === product.id && item.variant === variant)
+          (String(item.product.id) === String(product.id) &&
+            item.variant === variant &&
+            item.id.startsWith(pfx))
       );
 
       if (existingIndex > -1) {
@@ -376,6 +393,8 @@ export function CartProvider({
           index === existingIndex
             ? {
                 ...item,
+                price: itemPrice,
+                oldPrice: itemOldPrice,
                 quantity: item.quantity + quantity,
               }
             : item
@@ -391,6 +410,8 @@ export function CartProvider({
             weight: variant,
             price: itemPrice,
             oldPrice: itemOldPrice,
+            stock,
+            inStock,
           },
           variant,
           weight: variant,

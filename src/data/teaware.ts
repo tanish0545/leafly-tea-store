@@ -56,7 +56,9 @@ export const teawareProducts: TeawareItem[] = [
       "100% opaque UV-barrier prevents light degradation",
       "Food-safe, odor-neutral stainless steel interior",
       "Matte forest finish with subtle gold Leafly emblem"
-    ]
+    ],
+    stock: 10,
+    inStock: true
   },
   {
     id: 102,
@@ -76,7 +78,9 @@ export const teawareProducts: TeawareItem[] = [
       "Treated with food-safe water-resistant natural plant oil",
       "Smooth rounded edges and non-slip silicone base feet",
       "Accommodates teapot, aroma pitcher, and 4 tasting cups"
-    ]
+    ],
+    stock: 10,
+    inStock: true
   },
   {
     id: 103,
@@ -96,7 +100,9 @@ export const teawareProducts: TeawareItem[] = [
       "Precision non-drip pour spout with stainless leaf filter",
       "Crystal-clear optical transparency showcases liquor hue",
       "Stovetop safe on low flame and induction warmers"
-    ]
+    ],
+    stock: 10,
+    inStock: true
   },
   {
     id: 104,
@@ -116,7 +122,9 @@ export const teawareProducts: TeawareItem[] = [
       "Weighted ergonomic handle for stable, balanced grip",
       "Thick ceramic walls maintain optimal sipping temperature",
       "Microwave and dishwasher safe"
-    ]
+    ],
+    stock: 10,
+    inStock: true
   },
   {
     id: 105,
@@ -136,7 +144,9 @@ export const teawareProducts: TeawareItem[] = [
       "Integrated micro-slotted glass lid filter",
       "Lightweight yet structurally reinforced borosilicate",
       "Heat-resistant glass handle stays cool during pouring"
-    ]
+    ],
+    stock: 10,
+    inStock: true
   },
   {
     id: 106,
@@ -156,7 +166,9 @@ export const teawareProducts: TeawareItem[] = [
       "Smooth contoured sipping rim for a velvet mouthfeel",
       "Optical floating effect displays rich tea liquor colors",
       "Lead-free, BPA-free laboratory-grade glass"
-    ]
+    ],
+    stock: 10,
+    inStock: true
   },
   {
     id: 107,
@@ -176,7 +188,9 @@ export const teawareProducts: TeawareItem[] = [
       "Built-in multi-hole ceramic filter inside the spout base",
       "Hand-applied unique marble veining on every single piece",
       "Includes bamboo resting coaster"
-    ]
+    ],
+    stock: 10,
+    inStock: true
   },
   {
     id: 108,
@@ -196,6 +210,8 @@ export const teawareProducts: TeawareItem[] = [
       "Precision curved goose-style spout for drip-free pouring",
       "Wide flat base ensures stability on desks and tea trays",
       "Lid locks snugly in place even during full 90-degree tilts"
-    ]
+    ],
+    stock: 10,
+    inStock: true
   }
 ];

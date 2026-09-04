@@ -1,38 +1,26 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import Footer from "../components/Footer";
 import { useCart } from "../context/CartContext";
+import { useWishlist } from "../context/WishlistContext";
 import PhoneInput from "../components/PhoneInput";
 import SEO from "../components/SEO";
 import { generateBreadcrumbSchema } from "../lib/seoData";
 import { ApiService } from "../lib/apiClient";
+import { getProductSlug } from "../data/products";
 import "./GiftingPage.css";
 
 import { useGifting } from "../context/GiftingContext";
 import type { GiftHamper } from "../data/gifting";
 
-const GIFTING_TYPEWRITER_STEPS = [
-  "L",
-  "LE",
-  "LEA",
-  "LEAF",
-  "LEAFL",
-  "LEAFLY",
-  "LEAFLY ",
-  "LEAFLY G",
-  "LEAFLY GI",
-  "LEAFLY GIF",
-  "LEAFLY GIFT",
-  "LEAFLY GIFTI",
-  "LEAFLY GIFTIN",
-  "LEAFLY GIFTING",
-];
-
 export default function GiftingPage() {
+  const navigate = useNavigate();
   const { hampers } = useGifting();
-  const { addToCart } = useCart();
+  const { addToCart, items, increaseQuantity, decreaseQuantity } = useCart();
+  const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
+
   const [loading, setLoading] = useState(true);
-  const [typedText, setTypedText] = useState("");
   const [loaderFadeOut, setLoaderFadeOut] = useState(false);
   const [addedHamperId, setAddedHamperId] = useState<number | null>(null);
 
@@ -49,28 +37,23 @@ export default function GiftingPage() {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    let stepIndex = 0;
-    const interval = setInterval(() => {
-      if (stepIndex < GIFTING_TYPEWRITER_STEPS.length) {
-        setTypedText(GIFTING_TYPEWRITER_STEPS[stepIndex]);
-        stepIndex++;
-      } else {
-        clearInterval(interval);
-        setTimeout(() => {
-          setLoaderFadeOut(true);
-          document.body.style.overflow = prevOverflow;
-        }, 280);
-        setTimeout(() => {
-          setLoading(false);
-        }, 700);
-      }
-    }, 65);
+    // 1.55s reveal + 500ms smooth fade = ~2.05s total
+    const timer = setTimeout(() => {
+      setLoaderFadeOut(true);
+      document.body.style.overflow = prevOverflow;
+    }, 1550);
+
+    const endTimer = setTimeout(() => {
+      setLoading(false);
+    }, 2050);
 
     return () => {
-      clearInterval(interval);
+      clearTimeout(timer);
+      clearTimeout(endTimer);
       document.body.style.overflow = prevOverflow;
     };
   }, []);
+
   const [enquirySent, setEnquirySent] = useState(false);
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -82,6 +65,27 @@ export default function GiftingPage() {
     quantity: "25-50",
     message: "",
   });
+
+  const toggleWishlist = (hamper: GiftHamper) => {
+    if (isInWishlist(hamper.id)) {
+      removeFromWishlist(hamper.id);
+    } else {
+      addToWishlist({
+        id: hamper.id,
+        name: hamper.name,
+        category: "Gifting",
+        origin: "Curated Estate Blend",
+        caffeine: "Varied",
+        weight: "Gift Box",
+        price: Number(hamper.price) || 0,
+        oldPrice: hamper.oldPrice ? Number(hamper.oldPrice) : undefined,
+        badge: hamper.badge || "GIFT",
+        image: hamper.image,
+        inStock: hamper.inStock !== false && (typeof hamper.stock !== "number" || hamper.stock > 0),
+        stock: typeof hamper.stock === "number" ? hamper.stock : 10,
+      });
+    }
+  };
 
   const handleAddHamper = (hamper: GiftHamper) => {
     const stock = typeof hamper.stock === "number" ? hamper.stock : 10;
@@ -109,7 +113,7 @@ export default function GiftingPage() {
       hamper.oldPrice ? Number(hamper.oldPrice) : undefined
     );
     setAddedHamperId(Number(hamper.id));
-    window.setTimeout(() => setAddedHamperId(null), 2000);
+    window.setTimeout(() => setAddedHamperId(null), 1500);
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -166,24 +170,38 @@ export default function GiftingPage() {
         ])}
       />
 
-      {/* 1. TYPEWRITER LOADING INTRO (PORTALED TO BODY FOR PROPER VIEWPORT STACKING) */}
+      {/* 1. LUXURY GIFTING LOADING INTRO (PORTALED TO BODY) */}
       {loading &&
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className={`gifting-page-typewriter-loader ${loaderFadeOut ? "fade-out" : ""}`}
+            className={`gifting-luxury-loader ${loaderFadeOut ? "fade-out" : ""}`}
             aria-live="polite"
             role="status"
           >
-            <div className="gifting-typewriter-content">
-              <span className="gifting-typewriter-eyebrow">BESPOKE CURATIONS</span>
-              <h1 className="gifting-typewriter-heading">
-                <span className="gifting-typewriter-text">{typedText}</span>
-              </h1>
-              <div className="gifting-typewriter-accent">
-                <span className="gifting-typewriter-line" />
-                <span className="gifting-typewriter-spark">✦</span>
-                <span className="gifting-typewriter-line" />
+            <div className="gifting-loader-ambient-glow" />
+            <div className="gifting-loader-content">
+              {/* Botanical Gold Gift Box Motif */}
+              <div className="gifting-loader-box-icon" aria-hidden="true">
+                <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" className="gifting-box-svg">
+                  <path d="M12 28H68V38H12V28Z" stroke="#DFC07B" strokeWidth="2" strokeLinejoin="round" fill="rgba(223, 192, 123, 0.08)" />
+                  <path d="M16 38H64V68C64 69.1 63.1 70 62 70H18C16.9 70 16 69.1 16 68V38Z" stroke="#DFC07B" strokeWidth="2" strokeLinejoin="round" fill="rgba(223, 192, 123, 0.04)" />
+                  <line x1="40" y1="28" x2="40" y2="70" stroke="#DFC07B" strokeWidth="2" strokeDasharray="3 2" />
+                  {/* Luxury Ribbon Bow Knot */}
+                  <path d="M40 28 C34 18, 20 16, 24 24 C28 32, 38 28, 40 28 Z" stroke="#C9A24B" strokeWidth="2" fill="rgba(201, 162, 75, 0.25)" />
+                  <path d="M40 28 C46 18, 60 16, 56 24 C52 32, 42 28, 40 28 Z" stroke="#C9A24B" strokeWidth="2" fill="rgba(201, 162, 75, 0.25)" />
+                  <circle cx="40" cy="28" r="3.5" fill="#DFC07B" />
+                </svg>
+              </div>
+
+              <span className="gifting-loader-eyebrow">BESPOKE CURATIONS · LEAFLY</span>
+              <h1 className="gifting-loader-heading">LEAFLY GIFTING</h1>
+              <p className="gifting-loader-subtext">GIFT SOMETHING MEANINGFUL</p>
+
+              <div className="gifting-loader-accent">
+                <span className="gifting-loader-line" />
+                <span className="gifting-loader-spark">✦</span>
+                <span className="gifting-loader-line" />
               </div>
             </div>
           </div>,
@@ -224,61 +242,139 @@ export default function GiftingPage() {
           </div>
 
           <div className="gifting-hampers-grid">
-            {hampers.map((hamper) => (
-              <article key={hamper.id} className="gifting-hamper-card">
-                <div className="gifting-hamper-image-wrap">
-                  <img src={hamper.image} alt={hamper.name} loading="lazy" />
-                  {hamper.badge && (
-                    <span className="gifting-hamper-badge">{hamper.badge}</span>
-                  )}
-                </div>
+            {hampers.map((hamper, index) => {
+              const isWishlisted = isInWishlist(hamper.id);
+              const isAvailable = hamper.inStock !== false && (typeof hamper.stock !== "number" || hamper.stock > 0);
 
-                <div className="gifting-hamper-content">
-                  <h3 className="gifting-hamper-title">{hamper.name}</h3>
-                  <p className="gifting-hamper-subtitle">{hamper.subtitle}</p>
+              const cartItem = items.find(
+                (cItem) =>
+                  cItem.id === `gh-${hamper.id}-100g` ||
+                  cItem.id === `${hamper.id}-100g` ||
+                  String(cItem.product.id) === String(hamper.id)
+              );
+              const currentQty = cartItem?.quantity || 0;
 
-                  <div className="gifting-hamper-includes">
-                    <span className="gifting-includes-label">WHAT&apos;S INSIDE:</span>
-                    <ul>
-                      {hamper.includes.map((item, idx) => (
-                        <li key={idx}>◈ {item}</li>
-                      ))}
-                    </ul>
+              return (
+                <article key={hamper.id} className="gifting-hamper-card">
+                  <div
+                    className="gifting-hamper-image-wrap"
+                    onClick={() => navigate(`/gifting/${getProductSlug(hamper)}`)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <img
+                      src={hamper.image}
+                      alt={hamper.name}
+                      loading={index < 3 ? "eager" : "lazy"}
+                      decoding="async"
+                      {...(index === 0 ? { fetchPriority: "high" as const } : {})}
+                    />
+                    {hamper.badge && (
+                      <span className="gifting-hamper-badge">{hamper.badge}</span>
+                    )}
+
+                    <button
+                      type="button"
+                      className={isWishlisted ? "gifting-wishlist-btn active" : "gifting-wishlist-btn"}
+                      aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                      aria-pressed={isWishlisted}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleWishlist(hamper);
+                      }}
+                    >
+                      {isWishlisted ? "♥" : "♡"}
+                    </button>
                   </div>
 
-                  <div className="gifting-hamper-footer">
-                    <div className="gifting-hamper-price">
-                      <span>PRICE</span>
-                      <strong>₹{Number(hamper.price).toLocaleString("en-IN")}</strong>
-                      {hamper.oldPrice && hamper.oldPrice > hamper.price && (
-                        <del style={{ fontSize: "0.85rem", color: "rgba(11,43,30,0.45)", marginLeft: "6px" }}>
-                          ₹{Number(hamper.oldPrice).toLocaleString("en-IN")}
-                        </del>
-                      )}
+                  <div className="gifting-hamper-content">
+                    <h3
+                      className="gifting-hamper-title"
+                      onClick={() => navigate(`/gifting/${getProductSlug(hamper)}`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {hamper.name}
+                    </h3>
+                    <p className="gifting-hamper-subtitle">{hamper.subtitle}</p>
+
+                    <div className="gifting-hamper-includes">
+                      <span className="gifting-includes-label">WHAT&apos;S INSIDE:</span>
+                      <ul>
+                        {hamper.includes.map((item, idx) => (
+                          <li key={idx}>◈ {item}</li>
+                        ))}
+                      </ul>
                     </div>
 
-                    {hamper.inStock === false || (typeof hamper.stock === "number" && hamper.stock <= 0) ? (
-                      <button
-                        type="button"
-                        className="gifting-add-button disabled out-of-stock"
-                        disabled
-                        aria-label={`${hamper.name} is currently out of stock`}
-                      >
-                        OUT OF STOCK
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className={`gifting-add-button ${addedHamperId === hamper.id ? "added" : ""}`}
-                        onClick={() => handleAddHamper(hamper)}
-                      >
-                        {addedHamperId === hamper.id ? "ADDED TO CART ✓" : "ADD TO CART"}
-                      </button>
-                    )}
+                    <div className="gifting-hamper-footer">
+                      <div className="gifting-hamper-price">
+                        <span>PRICE</span>
+                        <strong>₹{Number(hamper.price).toLocaleString("en-IN")}</strong>
+                        {hamper.oldPrice && hamper.oldPrice > hamper.price && (
+                          <del style={{ fontSize: "0.85rem", color: "rgba(11,43,30,0.45)", marginLeft: "6px" }}>
+                            ₹{Number(hamper.oldPrice).toLocaleString("en-IN")}
+                          </del>
+                        )}
+                      </div>
+
+                      <div className="gifting-hamper-actions">
+                        <button
+                          type="button"
+                          className="gifting-details-button"
+                          onClick={() => navigate(`/gifting/${getProductSlug(hamper)}`)}
+                        >
+                          DETAILS +
+                        </button>
+
+                        {!isAvailable ? (
+                          <button
+                            type="button"
+                            className="gifting-add-button disabled out-of-stock"
+                            disabled
+                            aria-label={`${hamper.name} is currently out of stock`}
+                          >
+                            OUT OF STOCK
+                          </button>
+                        ) : currentQty > 0 ? (
+                          <div className="gifting-qty-stepper" aria-label={`Quantity in cart: ${currentQty}`}>
+                            <button
+                              type="button"
+                              className="gifting-qty-btn gifting-qty-dec"
+                              aria-label="Decrease quantity"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (cartItem) decreaseQuantity(cartItem.id);
+                              }}
+                            >
+                              −
+                            </button>
+                            <span className="gifting-qty-value">{currentQty}</span>
+                            <button
+                              type="button"
+                              className="gifting-qty-btn gifting-qty-inc"
+                              aria-label="Increase quantity"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (cartItem) increaseQuantity(cartItem.id);
+                              }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className={`gifting-add-button ${addedHamperId === hamper.id ? "added" : ""}`}
+                            onClick={() => handleAddHamper(hamper)}
+                          >
+                            {addedHamperId === hamper.id ? "ADDED TO CART ✓" : "ADD TO CART"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         </section>
 

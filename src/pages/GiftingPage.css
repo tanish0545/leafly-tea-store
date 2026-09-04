@@ -11,84 +11,120 @@
   overflow-x: hidden;
 }
 
-/* 1. LEAFLY GIFTING TYPEWRITER LOADING INTRO */
-.gifting-page-typewriter-loader {
+/* 1. LEAFLY LUXURY GIFTING LOADING INTRO */
+.gifting-luxury-loader {
   position: fixed;
   inset: 0;
   z-index: 999999;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 45%, #0d3625 0%, #061912 65%, #011111 100%);
-  transition: opacity 0.4s ease, visibility 0.4s ease;
+  background: radial-gradient(ellipse at 50% 45%, #0e3d29 0%, #0b2b1e 55%, #051610 100%);
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.5s ease;
+  overflow: hidden;
 }
 
-.gifting-page-typewriter-loader.fade-out {
+.gifting-luxury-loader.fade-out {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
 }
 
-.gifting-typewriter-content {
+.gifting-loader-ambient-glow {
+  position: absolute;
+  width: 580px;
+  height: 580px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(223, 192, 123, 0.2) 0%, rgba(14, 61, 41, 0.35) 45%, transparent 70%);
+  pointer-events: none;
+  filter: blur(40px);
+  -webkit-filter: blur(40px);
+  animation: giftingGlowPulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes giftingGlowPulse {
+  0% { transform: scale(0.92); opacity: 0.7; }
+  100% { transform: scale(1.08); opacity: 1; }
+}
+
+.gifting-loader-content {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 24px;
+  padding: 32px 24px;
 }
 
-.gifting-typewriter-eyebrow {
+.gifting-loader-box-icon {
+  width: 76px;
+  height: 76px;
+  margin-bottom: 20px;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.45));
+  animation: giftingBoxFloat 1.8s ease-in-out infinite alternate;
+}
+
+.gifting-box-svg {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes giftingBoxFloat {
+  0% { transform: translateY(0) rotate(-1deg); }
+  100% { transform: translateY(-6px) rotate(1deg); }
+}
+
+.gifting-loader-eyebrow {
   font-size: 11px;
   letter-spacing: 0.28em;
-  color: #c9a24b;
+  color: #dfc07b;
   font-weight: 700;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
-.gifting-typewriter-heading {
+.gifting-loader-heading {
   font-family: "Playfair Display", Georgia, serif;
-  font-size: clamp(28px, 4.8vw, 54px);
+  font-size: clamp(32px, 5.2vw, 56px);
   color: #f7f3ec;
   letter-spacing: 0.12em;
   font-weight: 600;
-  margin: 0 0 16px;
-  display: inline-flex;
-  align-items: baseline;
-  justify-content: center;
+  margin: 0 0 10px;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
 }
 
-.gifting-typewriter-text {
-  border-right: 2px solid #c9a24b;
-  padding-right: 4px;
-  animation: typewriterCaret 0.75s step-end infinite;
+.gifting-loader-subtext {
+  font-size: 12.5px;
+  letter-spacing: 0.22em;
+  color: #c9a24b;
+  font-weight: 600;
+  margin: 0 0 18px;
+  text-transform: uppercase;
 }
 
-.gifting-typewriter-accent {
+.gifting-loader-accent {
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: 140px;
-  margin-top: 10px;
+  gap: 14px;
+  width: 160px;
+  margin-top: 6px;
 }
 
-.gifting-typewriter-line {
+.gifting-loader-line {
   flex: 1;
   height: 1px;
   background: linear-gradient(90deg, transparent, #c9a24b);
 }
 
-.gifting-typewriter-line:last-child {
+.gifting-loader-line:last-child {
   background: linear-gradient(90deg, #c9a24b, transparent);
 }
 
-.gifting-typewriter-spark {
-  color: #c9a24b;
-  font-size: 12px;
-}
-
-@keyframes typewriterCaret {
-  from, to { border-color: transparent; }
-  50% { border-color: #c9a24b; }
+.gifting-loader-spark {
+  color: #dfc07b;
+  font-size: 13px;
 }
 
 /* HERO */
@@ -292,9 +328,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem;
   padding-top: 0.85rem;
   border-top: 1px solid rgba(11, 43, 30, 0.08);
+  flex-wrap: wrap;
 }
 
 .gifting-hamper-price span {
@@ -311,6 +348,60 @@
   font-weight: 400;
 }
 
+.gifting-wishlist-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(11, 43, 30, 0.12);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: #0b2b1e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 3;
+}
+
+.gifting-wishlist-btn:hover {
+  transform: scale(1.08);
+  color: #c9a24b;
+}
+
+.gifting-wishlist-btn.active {
+  color: #e53e3e;
+}
+
+.gifting-hamper-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gifting-details-button {
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
+  background: transparent;
+  color: #0b2b1e;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 1.5px solid rgba(11, 43, 30, 0.25);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.gifting-details-button:hover {
+  border-color: #0b2b1e;
+  background: rgba(11, 43, 30, 0.05);
+}
+
 .gifting-add-button {
   padding: 0.65rem 1.1rem;
   border-radius: 10px;
@@ -322,6 +413,7 @@
   border: none;
   cursor: pointer;
   transition: background 0.25s ease, transform 0.25s ease;
+  white-space: nowrap;
 }
 
 .gifting-add-button:hover {
@@ -340,6 +432,49 @@
   pointer-events: none;
   box-shadow: none;
   transform: none;
+}
+
+.gifting-qty-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border: 1.5px solid #c9a24b;
+  border-radius: 10px;
+  height: 38px;
+  padding: 0 4px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(11, 43, 30, 0.08);
+}
+
+.gifting-qty-btn {
+  background: transparent;
+  border: none;
+  color: #0b2b1e;
+  font-size: 16px;
+  font-weight: 700;
+  width: 28px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 150ms ease;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.gifting-qty-btn:hover {
+  background: rgba(201, 162, 75, 0.15);
+  color: #c9a24b;
+}
+
+.gifting-qty-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0b2b1e;
+  min-width: 20px;
+  text-align: center;
 }
 
 /* CORPORATE & WEDDING SECTION */

@@ -26,6 +26,8 @@ export const giftHampers: GiftHamper[] = [
     image: image3,
     includes: ["1x Darjeeling First Flush (50g)", "1x Nilgiri White Needle (50g)", "Handmade Brass Scoop", "Artisan Keepsake Box"],
     badge: "MOST POPULAR",
+    stock: 10,
+    inStock: true,
   },
   {
     id: 102,
@@ -35,6 +37,8 @@ export const giftHampers: GiftHamper[] = [
     image: image2,
     includes: ["1x Assam Orthodox Reserve (100g)", "Wild Forest Blossom Honey (150g)", "Hand-thrown Terracotta Tumbler", "Tasting Journal Booklet"],
     badge: "BEST FOR MORNINGS",
+    stock: 10,
+    inStock: true,
   },
   {
     id: 103,
@@ -44,5 +48,7 @@ export const giftHampers: GiftHamper[] = [
     image: image5,
     includes: ["4x Single-Estate Harvests (50g each)", "Double-Walled Glass Steeper", "Pure Sandalwood Scented Coaster", "Personalized Wax-Sealed Gift Card"],
     badge: "LUXURY EDITION",
+    stock: 10,
+    inStock: true,
   },
 ];

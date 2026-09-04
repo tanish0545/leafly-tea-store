@@ -66,13 +66,30 @@ export default function ImageUploadControl({
         }
       },
       (uploadError) => {
-        console.error("Firebase Storage upload notice:", uploadError);
-        setIsUploading(false);
-        setErrorMessage(
-          "Direct cloud upload failed: " +
-            (uploadError.message || "Please check connection, or switch to 'Enter URL' mode.")
-        );
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        console.warn("Firebase Storage direct upload error, using local file reader fallback:", uploadError);
+        try {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            onImageChange(dataUrl);
+            setIsUploading(false);
+            setUploadProgress(100);
+            setErrorMessage(null);
+          };
+          reader.onerror = () => {
+            setIsUploading(false);
+            setErrorMessage("Failed to read image file from disk.");
+            if (fileInputRef.current) fileInputRef.current.value = "";
+          };
+          reader.readAsDataURL(file);
+        } catch {
+          setIsUploading(false);
+          setErrorMessage(
+            "Upload failed: " +
+              (uploadError.message || "Please check connection or use image URL mode.")
+          );
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }
       },
       async () => {
         try {

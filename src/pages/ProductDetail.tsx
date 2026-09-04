@@ -27,6 +27,8 @@ export default function ProductDetail() {
   const [addedToCart, setAddedToCart] = useState(false);
 
   const identifier = (slug || id || "").toLowerCase().trim();
+  const isTeawareRoute = window.location.pathname.startsWith("/teaware");
+  const isGiftingRoute = window.location.pathname.startsWith("/gifting");
 
   const teawareItem = teaware.find(
     (t) => getProductSlug(t) === identifier || String(t.id) === identifier
@@ -37,10 +39,7 @@ export default function ProductDetail() {
   );
 
   const product: Product | undefined =
-    products.find(
-      (p) => getProductSlug(p) === identifier || String(p.id) === identifier
-    ) ||
-    (teawareItem
+    (isTeawareRoute && teawareItem
       ? {
           id: teawareItem.id,
           name: teawareItem.name,
@@ -50,7 +49,7 @@ export default function ProductDetail() {
           weight: teawareItem.capacity || "1 Unit",
           price: Number(teawareItem.price) || 0,
           oldPrice: teawareItem.oldPrice ? Number(teawareItem.oldPrice) : undefined,
-          badge: teawareItem.badge || "Ceremonial",
+          badge: teawareItem.badge || "Artisan",
           image: teawareItem.image,
           variants: {
             "100g": {
@@ -70,7 +69,7 @@ export default function ProductDetail() {
           stock: typeof teawareItem.stock === "number" ? teawareItem.stock : 10,
           inStock: teawareItem.inStock !== false && (typeof teawareItem.stock !== "number" || teawareItem.stock > 0),
         }
-      : hamperItem
+      : isGiftingRoute && hamperItem
       ? {
           id: hamperItem.id,
           name: hamperItem.name,
@@ -98,7 +97,68 @@ export default function ProductDetail() {
           stock: typeof hamperItem.stock === "number" ? hamperItem.stock : 10,
           inStock: hamperItem.inStock !== false && (typeof hamperItem.stock !== "number" || hamperItem.stock > 0),
         }
-      : undefined);
+      : products.find(
+          (p) => getProductSlug(p) === identifier || String(p.id) === identifier
+        ) ||
+        (teawareItem
+          ? {
+              id: teawareItem.id,
+              name: teawareItem.name,
+              category: "Teaware" as unknown as Product["category"],
+              origin: teawareItem.material || "Artisan Craft",
+              caffeine: "Teaware" as unknown as Product["caffeine"],
+              weight: teawareItem.capacity || "1 Unit",
+              price: Number(teawareItem.price) || 0,
+              oldPrice: teawareItem.oldPrice ? Number(teawareItem.oldPrice) : undefined,
+              badge: teawareItem.badge || "Artisan",
+              image: teawareItem.image,
+              variants: {
+                "100g": {
+                  weight: teawareItem.capacity || "Standard",
+                  price: Number(teawareItem.price) || 0,
+                  oldPrice: teawareItem.oldPrice ? Number(teawareItem.oldPrice) : undefined,
+                },
+                "250g": {
+                  weight: teawareItem.capacity || "Standard",
+                  price: Number(teawareItem.price) || 0,
+                  oldPrice: teawareItem.oldPrice ? Number(teawareItem.oldPrice) : undefined,
+                },
+              },
+              rating: teawareItem.rating,
+              reviewCount: teawareItem.reviewCount,
+              description: teawareItem.description,
+              stock: typeof teawareItem.stock === "number" ? teawareItem.stock : 10,
+              inStock: teawareItem.inStock !== false && (typeof teawareItem.stock !== "number" || teawareItem.stock > 0),
+            }
+          : hamperItem
+          ? {
+              id: hamperItem.id,
+              name: hamperItem.name,
+              category: "Gifting" as unknown as Product["category"],
+              origin: "Curated Estate Blend",
+              caffeine: "Varied" as unknown as Product["caffeine"],
+              weight: "Gift Box",
+              price: Number(hamperItem.price) || 0,
+              oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
+              badge: hamperItem.badge || "Luxury Gift Set",
+              image: hamperItem.image,
+              variants: {
+                "100g": {
+                  weight: "Gift Box",
+                  price: Number(hamperItem.price) || 0,
+                  oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
+                },
+                "250g": {
+                  weight: "Gift Box",
+                  price: Number(hamperItem.price) || 0,
+                  oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
+                },
+              },
+              description: hamperItem.description || hamperItem.subtitle,
+              stock: typeof hamperItem.stock === "number" ? hamperItem.stock : 10,
+              inStock: hamperItem.inStock !== false && (typeof hamperItem.stock !== "number" || hamperItem.stock > 0),
+            }
+          : undefined));
 
   /* --- product not found ----------------------------------- */
 
@@ -149,7 +209,7 @@ export default function ProductDetail() {
   const wishlisted = isInWishlist(product.id);
 
   const handleAddToCart = () => {
-    if (addingToCart || !inStock) return;
+    if (addingToCart || !inStock || isTeaware) return;
     setAddingToCart(true);
 
     addToCart(
@@ -166,7 +226,7 @@ export default function ProductDetail() {
   };
 
   const handleBuyNow = () => {
-    if (!inStock) return;
+    if (!inStock || isTeaware) return;
     addToCart(
       product,
       quantity,
@@ -192,24 +252,37 @@ export default function ProductDetail() {
   /* --- render ---------------------------------------------- */
 
   const isTeaware = Boolean(teawareItem);
+  const isHamper = Boolean(hamperItem);
   const canonicalPath = isTeaware
     ? `/teaware/${getProductSlug(product)}`
+    : isHamper
+    ? `/gifting/${getProductSlug(product)}`
     : `/shop/${getProductSlug(product)}`;
 
   const pageTitle = isTeaware
     ? `${product.name} | Artisan Teaware | Leafly`
+    : isHamper
+    ? `${product.name} | Luxury Gift Sets | Leafly`
     : `${product.name} | Premium ${product.category} Tea | Leafly`;
 
   const pageDescription = product.description
     ? product.description
     : isTeaware
     ? `Discover ${product.name}, a handcrafted teaware piece from Leafly. Crafted from ${teawareItem?.material || "artisanal materials"} for mindful tea rituals.`
+    : isHamper
+    ? `Discover ${product.name}, an exquisite curated gift hamper from Leafly. Handcrafted for unforgettable gifting moments.`
     : `Discover ${product.name}, a premium single-origin ${product.category} tea from ${product.origin} by Leafly. Hand-harvested whole leaves crafted for mindful brewing moments. Available in 100g and 250g tins.`;
 
   const breadcrumbs = isTeaware
     ? [
         { name: "Home", url: "/" },
         { name: "Teaware", url: "/teaware" },
+        { name: product.name, url: canonicalPath },
+      ]
+    : isHamper
+    ? [
+        { name: "Home", url: "/" },
+        { name: "Gifting", url: "/gifting" },
         { name: product.name, url: canonicalPath },
       ]
     : [
@@ -244,17 +317,17 @@ export default function ProductDetail() {
         <button
           type="button"
           className="pdp-back"
-          onClick={() => navigate(isTeaware ? "/teaware" : "/shop")}
+          onClick={() => navigate(isTeaware ? "/teaware" : isHamper ? "/gifting" : "/shop")}
           aria-label="Back to collection"
         >
-          ← BACK TO {isTeaware ? "TEAWARE" : "SHOP"}
+          ← BACK TO {isTeaware ? "TEAWARE" : isHamper ? "GIFTING" : "SHOP"}
         </button>
 
         <div className="pdp-breadcrumb" aria-label="Breadcrumb">
           <Link to="/">Home</Link>
           <span>/</span>
-          <Link to={isTeaware ? "/teaware" : "/shop"}>
-            {isTeaware ? "Teaware" : "Shop"}
+          <Link to={isTeaware ? "/teaware" : isHamper ? "/gifting" : "/shop"}>
+            {isTeaware ? "Teaware" : isHamper ? "Gifting" : "Shop"}
           </Link>
           <span>/</span>
           <strong>{product.name}</strong>
@@ -269,21 +342,28 @@ export default function ProductDetail() {
         <div className="pdp-image-wrap">
           <img
             src={product.image}
-            alt={`Leafly ${product.name} - ${isTeaware ? teawareItem?.material : `${product.origin} ${product.category} Tea`}`}
+            alt={`Leafly ${product.name} - ${isTeaware ? teawareItem?.material : isHamper ? "Curated Gift Box" : `${product.origin} ${product.category} Tea`}`}
             className="pdp-image"
             loading="eager"
             fetchPriority="high"
             decoding="async"
           />
           {!inStock ? (
-            <span className="pdp-badge out-of-stock" style={{ background: "#c53030", color: "#ffffff" }}>
-              Out of Stock
+            <span
+              className="pdp-badge out-of-stock"
+              style={{
+                background: isTeaware ? "#0b2b1e" : "#c53030",
+                color: isTeaware ? "#c9a24b" : "#ffffff",
+                border: isTeaware ? "1px solid rgba(201,162,75,0.4)" : "none",
+              }}
+            >
+              {isTeaware ? "Coming Soon" : "Out of Stock"}
             </span>
           ) : (
             <span
-              className={`pdp-badge ${isTeaware ? "coming-soon" : product.badge ? product.badge.toLowerCase() : ""}`}
+              className={`pdp-badge ${product.badge ? product.badge.toLowerCase() : "in-stock"}`}
             >
-              {isTeaware ? "Coming Soon" : product.badge}
+              {product.badge || "In Stock"}
             </span>
           )}
         </div>
@@ -295,6 +375,8 @@ export default function ProductDetail() {
             <span aria-hidden="true">✦</span>
             {isTeaware
               ? `${teawareItem?.material} · ${teawareItem?.category}`
+              : isHamper
+              ? "Luxury Gift Sets · Estate Curations"
               : `${product.origin} · ${product.category} Tea`}
           </p>
 
@@ -321,13 +403,20 @@ export default function ProductDetail() {
             {product.description ||
               (isTeaware
                 ? teawareItem?.description
+                : isHamper
+                ? hamperItem?.description || hamperItem?.subtitle
                 : `A carefully selected ${product.category.toLowerCase()} tea from ${product.origin}, chosen for character, freshness and a memorable tea-drinking ritual.`)}
           </p>
 
-          {inStock ? (
+          {isTeaware ? (
+            <div className="pdp-stock-status" style={{ color: "#c9a24b" }}>
+              <span className="pdp-stock-dot" style={{ color: "#c9a24b" }}>●</span>
+              <span>Coming Soon · Artisan Vessel Showcase</span>
+            </div>
+          ) : inStock ? (
             <div className="pdp-stock-status">
               <span className="pdp-stock-dot">●</span>
-              <span>In Stock · Handcrafted & Freshly Packed</span>
+              <span>In Stock · {isHamper ? "Artisan Gift Chest & Fast Dispatch" : "Handcrafted & Freshly Packed"}</span>
             </div>
           ) : (
             <div className="pdp-stock-status out" style={{ color: "#c53030" }}>
@@ -343,7 +432,7 @@ export default function ProductDetail() {
           </div>
 
           {/* QUANTITY / WEIGHT VARIANT SELECTOR (TEA ONLY) */}
-          {!isTeaware && (
+          {!isTeaware && !isHamper && (
             <div className="pdp-variant-section">
               <span className="pdp-variant-title">SELECT WEIGHT / VARIANT</span>
               <div
@@ -373,6 +462,21 @@ export default function ProductDetail() {
             </div>
           )}
 
+          {/* HAMPER INCLUDES BOX */}
+          {isHamper && hamperItem?.includes && (
+            <div style={{ margin: "16px 0", padding: "16px", background: "#ffffff", borderRadius: "12px", border: "1px solid rgba(11,43,30,0.08)" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "1px", color: "#b98528", display: "block", marginBottom: "8px" }}>WHAT&apos;S INSIDE THIS CHEST:</span>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
+                {hamperItem.includes.map((inc, i) => (
+                  <li key={i} style={{ fontSize: "13px", color: "#0b2b1e", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ color: "#c9a24b" }}>◈</span>
+                    <span>{inc}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* SPECS */}
           <div className="pdp-specs">
             {isTeaware ? (
@@ -391,8 +495,29 @@ export default function ProductDetail() {
                 </div>
                 <div className="pdp-spec">
                   <span>STATUS</span>
-                  <strong style={{ color: inStock ? "#1e824c" : "#b98428" }}>
-                    {inStock ? "In Stock" : isTeaware ? "Coming Soon" : "Out of Stock"}
+                  <strong style={{ color: "#b98428" }}>
+                    Coming Soon
+                  </strong>
+                </div>
+              </>
+            ) : isHamper ? (
+              <>
+                <div className="pdp-spec">
+                  <span>CURATION</span>
+                  <strong>{hamperItem?.category || "Luxury Gift Sets"}</strong>
+                </div>
+                <div className="pdp-spec">
+                  <span>PACKAGING</span>
+                  <strong>Keepsake Chest</strong>
+                </div>
+                <div className="pdp-spec">
+                  <span>ITEMS INCLUDED</span>
+                  <strong>{hamperItem?.includes?.length || 4} Pieces</strong>
+                </div>
+                <div className="pdp-spec">
+                  <span>STATUS</span>
+                  <strong style={{ color: inStock ? "#1e824c" : "#c53030" }}>
+                    {inStock ? "In Stock" : "Out of Stock"}
                   </strong>
                 </div>
               </>
@@ -438,52 +563,45 @@ export default function ProductDetail() {
           </div>
 
           {/* QUANTITY COUNTER */}
-          <div className="pdp-qty-row">
-            <span className="pdp-qty-label">QUANTITY</span>
-            <div className="pdp-qty-selector">
-              <button
-                type="button"
-                className="pdp-qty-btn"
-                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                disabled={quantity <= 1 || !inStock}
-                aria-label="Decrease quantity"
-              >
-                −
-              </button>
-              <span className="pdp-qty-val">{quantity}</span>
-              <button
-                type="button"
-                className="pdp-qty-btn"
-                onClick={() => setQuantity((q) => Math.min(10, q + 1))}
-                disabled={quantity >= 10 || !inStock}
-                aria-label="Increase quantity"
-              >
-                +
-              </button>
+          {!isTeaware && (
+            <div className="pdp-qty-row">
+              <span className="pdp-qty-label">QUANTITY</span>
+              <div className="pdp-qty-selector">
+                <button
+                  type="button"
+                  className="pdp-qty-btn"
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  disabled={quantity <= 1 || !inStock}
+                  aria-label="Decrease quantity"
+                >
+                  −
+                </button>
+                <span className="pdp-qty-val">{quantity}</span>
+                <button
+                  type="button"
+                  className="pdp-qty-btn"
+                  onClick={() => setQuantity((q) => Math.min(10, q + 1))}
+                  disabled={quantity >= 10 || !inStock}
+                  aria-label="Increase quantity"
+                >
+                  +
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* ACTIONS */}
           <div className="pdp-actions">
-            {isTeaware && !inStock ? (
-              <>
-                <button
-                  type="button"
-                  className="pdp-cart-button disabled out-of-stock"
-                  disabled={true}
-                  aria-label={`${product.name} is coming soon`}
-                >
-                  COMING SOON
-                </button>
-                <button
-                  type="button"
-                  className="pdp-buy-now-button disabled"
-                  disabled={true}
-                  aria-label={`${product.name} is coming soon`}
-                >
-                  UNAVAILABLE
-                </button>
-              </>
+            {isTeaware ? (
+              <button
+                type="button"
+                className="pdp-cart-button disabled coming-soon full-width"
+                disabled={true}
+                aria-label={`${product.name} is coming soon`}
+                style={{ opacity: 0.85, cursor: "not-allowed", width: "100%" }}
+              >
+                COMING SOON
+              </button>
             ) : (
               <>
                 <button

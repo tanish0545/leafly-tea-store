@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import "./styles/leafly.css";
+import { sanitizeAuthUrl } from "./utils/urlSanitizer";
+
+// Immediately sanitize address bar from sensitive auth redirect parameters
+sanitizeAuthUrl();
 
 // Silent, loop-guarded chunk recovery for newly deployed Vite assets
 window.addEventListener('vite:preloadError', (event) => {

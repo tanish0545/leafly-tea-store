@@ -5,7 +5,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
-  signInWithRedirect,
+  signInWithCredential,
+  GoogleAuthProvider,
   getRedirectResult,
   signOut as firebaseSignOut,
   sendPasswordResetEmail,
@@ -19,6 +20,7 @@ import type { AuthUser, SignupProfileData } from "../types/contracts";
 
 import { isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../lib/validation";
 import { ApiService } from "../lib/apiClient";
+import { sanitizeAuthUrl } from "../utils/urlSanitizer";
 
 export type { AuthUser, SignupProfileData };
 export { isValidGmailAddress, GMAIL_ERROR_MESSAGE };
@@ -65,6 +67,13 @@ export function formatAuthError(error: unknown): string {
   if (message.includes("network-request-failed") || message.includes("auth/network-request-failed")) {
     return "Network connection error. Please check your internet connection.";
   }
+  if (
+    message.includes("popup-blocked") ||
+    message.includes("auth/popup-blocked") ||
+    message.includes("popup_blocked_by_browser")
+  ) {
+    return "Please allow pop-ups to continue with Google.";
+  }
   if (message.includes("popup-closed-by-user") || message.includes("auth/popup-closed-by-user")) {
     return "Sign in popup was closed before completing.";
   }
@@ -81,6 +90,7 @@ export type AuthContextType = {
   login: (email: string, pass: string) => Promise<void>;
   signup: (email: string, pass: string, profileData?: SignupProfileData | string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  loginWithGoogleCredential?: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
@@ -155,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Process redirect result if customer was redirected from Google Auth
     getRedirectResult(auth)
-      .then(async (result) => {
+      .then(async (result: UserCredential | null) => {
         if (result?.user) {
           const currentFbUser = result.user;
           const displayName = currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer";
@@ -166,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName,
             fullName: displayName,
             name: displayName,
-            photoURL: currentFbUser.photoURL || currentFbUser.providerData?.find((p) => p.photoURL)?.photoURL || null,
+            photoURL: currentFbUser.photoURL || currentFbUser.providerData?.find((p: { photoURL?: string | null }) => p.photoURL)?.photoURL || null,
             authProvider: "Google",
             status: "Active",
             isAdmin: isUserAdmin,
@@ -178,8 +188,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setFirebaseUser(currentFbUser);
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error("Redirect auth error:", err);
+      })
+      .finally(() => {
+        // Sanitize any residual OAuth/Firebase redirect parameters from address bar
+        sanitizeAuthUrl();
       });
 
     let unsubscribeDoc: (() => void) | null = null;
@@ -335,8 +349,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userCred = await signInWithPopup(auth, googleProvider);
       } catch (popupError: unknown) {
         const msg = popupError instanceof Error ? popupError.message : String(popupError);
-        if (msg.includes("popup-blocked") || msg.includes("auth/popup-blocked")) {
-          await signInWithRedirect(auth, googleProvider);
+        if (
+          msg.includes("popup-blocked") ||
+          msg.includes("auth/popup-blocked") ||
+          msg.includes("popup_blocked_by_browser")
+        ) {
+          throw new Error("Please allow pop-ups to continue with Google.");
+        } else if (
+          msg.includes("popup-closed-by-user") ||
+          msg.includes("auth/popup-closed-by-user")
+        ) {
           return;
         } else {
           throw popupError;
@@ -365,6 +387,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setFirebaseUser(currentFbUser);
       }
     } finally {
+      sanitizeAuthUrl();
+      setLoading(false);
+    }
+  };
+
+  const loginWithGoogleCredential = async (idToken: string) => {
+    setLoading(true);
+    try {
+      const credential = GoogleAuthProvider.credential(idToken);
+      const userCred = await signInWithCredential(auth, credential);
+      if (userCred.user) {
+        const currentFbUser = userCred.user;
+        const displayName = currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer";
+        const isUserAdmin = currentFbUser.email?.toLowerCase() === adminEmail.toLowerCase();
+        const googleProfile: Record<string, unknown> = {
+          uid: currentFbUser.uid,
+          email: currentFbUser.email,
+          displayName,
+          fullName: displayName,
+          name: displayName,
+          photoURL: currentFbUser.photoURL || null,
+          authProvider: "Google",
+          status: "Active",
+          isAdmin: isUserAdmin,
+          updatedAt: new Date().toISOString(),
+        };
+        await setDoc(doc(db, "users", currentFbUser.uid), googleProfile, { merge: true }).catch((e) => {
+          console.warn("Google profile save notice:", e);
+        });
+        setFirebaseUser(currentFbUser);
+      }
+    } finally {
+      sanitizeAuthUrl();
       setLoading(false);
     }
   };
@@ -447,6 +502,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     signup,
     loginWithGoogle,
+    loginWithGoogleCredential,
     logout,
     signOut: logout,
     sendPasswordReset,

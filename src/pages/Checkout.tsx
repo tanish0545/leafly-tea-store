@@ -380,6 +380,27 @@ export default function Checkout() {
       nextErrors.phone = phoneRes.error || "Please enter a valid phone number.";
     }
 
+    // Live stock validation across all cart items (Teas, Teaware, Gift Hampers)
+    const unavailableCartItems = items.filter(
+      (item) => item.product.inStock === false || (typeof item.product.stock === "number" && item.product.stock <= 0)
+    );
+    if (unavailableCartItems.length > 0) {
+      const names = unavailableCartItems.map((i) => i.product.name).join(", ");
+      nextErrors.submit = `The following item(s) are currently out of stock or unavailable: ${names}. Please remove them from your cart to complete order.`;
+      setErrors(nextErrors);
+      return false;
+    }
+
+    // Showcase pre-launch validation: Teaware cannot be ordered
+    const teawareCartItems = items.filter(
+      (item) => item.product.category === "Teaware" || String(item.product.id).startsWith("tw-")
+    );
+    if (teawareCartItems.length > 0) {
+      nextErrors.submit = "Teaware items are currently in showcase pre-launch mode and cannot be ordered.";
+      setErrors(nextErrors);
+      return false;
+    }
+
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };

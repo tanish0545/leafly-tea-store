@@ -106,6 +106,12 @@
   animation: typewriterCaret 0.75s step-end infinite;
 }
 
+.typewriter-text.done {
+  border-right: none;
+  padding-right: 0;
+  animation: none;
+}
+
 .typewriter-qmark {
   color: #dfc07b;
   font-size: 1.3em;
