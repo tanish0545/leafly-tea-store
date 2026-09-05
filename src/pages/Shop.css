@@ -846,6 +846,7 @@
 
 .card-variant-selector {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   margin: 6px 0 4px;
@@ -1466,8 +1467,16 @@
 
 .product-detail-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: 100dvh;
   z-index: 10000;
+  overscroll-behavior: contain;
 
   display: flex;
   align-items: center;
@@ -2481,10 +2490,9 @@
   .product-detail-modal {
     width: 100%;
 
-    max-height:
-      calc(
-        100vh - 20px
-      );
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+    overscroll-behavior: contain;
 
     display: grid;
 

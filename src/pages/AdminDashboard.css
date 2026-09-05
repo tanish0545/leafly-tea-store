@@ -38,9 +38,6 @@
   color: var(--admin-text-main);
   font-family: var(--font-body, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
   position: relative;
-  /* Do NOT set overflow-x: hidden here — it creates a new stacking context
-     (via backdrop-filter on .admin-header) that can confine position:fixed
-     modal children and clip the right edge of the Actions column. */
 }
 
 .admin-layout *,
@@ -57,10 +54,11 @@
   width: 260px;
   min-width: 260px;
   height: 100vh;
+  height: 100dvh;
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 100;
+  z-index: 1000;
   background-color: var(--admin-forest-dark);
   background-image: 
     radial-gradient(circle at 50% 0%, rgba(201, 162, 75, 0.12) 0%, transparent 50%),
@@ -224,6 +222,7 @@
   flex-direction: column;
   gap: 12px;
   background: rgba(0, 0, 0, 0.15);
+  margin-top: auto;
 }
 
 .admin-user-card {
@@ -474,7 +473,17 @@
 
 .admin-main {
   flex: 1;
-  padding: 32px 36px 60px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 36px 32px;
+}
+
+.admin-dashboard-view,
+.admin-section-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 /* =========================================================
@@ -610,6 +619,8 @@
   grid-template-columns: 1.05fr 0.95fr;
   gap: 24px;
   align-items: stretch;
+  flex: 1;
+  min-height: 0;
 }
 
 .admin-surface-card {
@@ -620,6 +631,7 @@
   box-shadow: var(--admin-shadow-sm);
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 
 .card-header-row {
@@ -850,17 +862,26 @@
   border: 1px solid var(--admin-border-subtle);
   border-radius: var(--admin-radius-md);
   box-shadow: var(--admin-shadow-sm);
-  /* Use overflow-x: auto so wide tables scroll internally rather than
-     clipping the rightmost columns (e.g. Actions / close buttons).
-     overflow-y stays hidden to preserve the rounded border-radius visually. */
+  /* Horizontal scroll so wide tables don't clip the Actions column.
+     overflow-y must NOT be hidden — it would create a clipping context
+     that hides the sticky table header and can clip row content. */
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
+  /* Ensure the container can shrink inside flex/grid parents */
+  min-width: 0;
+  flex: 1;
 }
 
 .admin-table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
+}
+
+/* Orders table needs a minimum width so columns never collapse;
+   horizontal scroll on the container handles narrower viewports. */
+.orders-table-scroll .admin-table {
+  min-width: 900px;
 }
 
 .admin-table th {
@@ -1320,6 +1341,7 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
+  flex: 1;
 }
 
 .empty-icon {
@@ -1833,7 +1855,14 @@
 
 .admin-modal-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: 100dvh;
   z-index: 100000;
   background: rgba(6, 29, 20, 0.82);
   backdrop-filter: blur(10px);
@@ -1844,6 +1873,7 @@
   padding: 36px 20px 24px;
   animation: adminFadeIn 200ms ease;
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   box-sizing: border-box;
 }
@@ -1866,7 +1896,14 @@
   display: flex;
   flex-direction: column;
   animation: adminModalScale 260ms cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
+  /* ROOT CAUSE FIX: overflow:hidden on the dialog clips position:sticky children
+     (modal-header-luxury, modal-footer-luxury) and can hide the X button.
+     Use overflow:clip instead — it clips at the element's padding-box boundary
+     (same visual result) but does NOT create a scroll container, so sticky
+     children inside .modal-body-scroll still work correctly.
+     Browsers that don't support overflow:clip fall back gracefully because
+     the header/footer use position:sticky which keeps them visible. */
+  overflow: clip;
   position: relative;
   margin: 0 auto;
   box-sizing: border-box;
@@ -2107,10 +2144,14 @@
 @media (max-width: 768px) {
   .admin-modal-overlay {
     padding: 12px;
+    overscroll-behavior: contain;
   }
   .admin-modal-dialog {
+    max-width: calc(100vw - 24px);
     max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
     border-radius: 12px;
+    margin: 0 auto;
   }
   .modal-header-luxury {
     padding: 16px 18px;
@@ -2172,6 +2213,12 @@
 /* Tablet (max-width: 1024px) */
 @media (max-width: 1024px) {
   .admin-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 1000;
     transform: translateX(-100%);
   }
 
@@ -2181,11 +2228,20 @@
 
   .admin-sidebar-overlay {
     position: fixed;
-    inset: 0;
-    z-index: 90;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    width: 100dvw;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 999;
     background: rgba(4, 20, 14, 0.7);
     backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     animation: adminFadeIn 200ms ease;
+    overscroll-behavior: contain;
   }
 
   .admin-mobile-close {
@@ -2205,7 +2261,7 @@
   }
 
   .admin-main {
-    padding: 24px 20px 48px;
+    padding: 24px 20px 28px;
   }
 
   .admin-dashboard-split {
@@ -2248,7 +2304,7 @@
   }
 
   .admin-main {
-    padding: 18px 14px 40px;
+    padding: 18px 14px 24px;
   }
 
   .admin-stats-grid {
@@ -2325,6 +2381,92 @@
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* =========================================================
+   ORDER PAGINATION
+   ========================================================= */
+
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 0 2px;
+  flex-wrap: wrap;
+}
+
+.pagination-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-border-subtle);
+  background: #ffffff;
+  color: var(--admin-forest);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 160ms ease;
+  user-select: none;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--admin-forest);
+  color: #ffffff;
+  border-color: var(--admin-forest);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.36;
+  cursor: default;
+  pointer-events: none;
+}
+
+.pagination-btn.active {
+  background: linear-gradient(135deg, var(--admin-gold-light) 0%, var(--admin-gold) 100%);
+  color: var(--admin-forest-dark);
+  border-color: var(--admin-gold);
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(201, 162, 75, 0.35);
+  pointer-events: none;
+}
+
+.pagination-prev,
+.pagination-next {
+  font-size: 18px;
+  font-weight: 400;
+  min-width: 36px;
+}
+
+.pagination-ellipsis {
+  min-width: 28px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--admin-text-muted);
+  font-size: 14px;
+  user-select: none;
+}
+
+.orders-page-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding-bottom: 0;
+}
+
+.orders-page-info {
+  font-size: 12px;
+  color: var(--admin-text-muted);
+  font-weight: 500;
 }
 
 /* =========================================================

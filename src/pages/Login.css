@@ -602,7 +602,14 @@
 
 .leafly-auth-modal-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: 100dvh;
   background: rgba(11, 43, 30, 0.62);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -611,6 +618,8 @@
   justify-content: center;
   padding: 20px;
   z-index: 1000;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   animation: leafly-fade-in 200ms ease;
 }
 

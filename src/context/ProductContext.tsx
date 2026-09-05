@@ -87,6 +87,13 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           const parsedId = !isNaN(Number(rawId)) ? Number(rawId) : rawId;
           const stock = typeof data.stock === "number" ? data.stock : 10;
           const inStock = data.inStock !== false && stock > 0;
+          const fallbackInitial = initialProducts.find(
+            (p) => String(p.id) === String(parsedId) || p.name.toLowerCase() === (data.name || "").toLowerCase()
+          );
+          const images =
+            Array.isArray(data.images) && data.images.length > 0
+              ? data.images
+              : fallbackInitial?.images || (data.image ? [data.image] : []);
 
           fetchedProducts.push({
             ...data,
@@ -95,6 +102,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
             oldPrice: data.oldPrice ? Number(data.oldPrice) : undefined,
             stock,
             inStock,
+            images,
           });
         });
 

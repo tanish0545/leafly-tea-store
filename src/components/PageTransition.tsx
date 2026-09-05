@@ -43,6 +43,10 @@ export default function PageTransition({ children }: PageTransitionProps) {
     }
   }, [location, displayLocation]);
 
+  if (location.pathname.startsWith("/admin")) {
+    return <div className="admin-page-transition-root">{children}</div>;
+  }
+
   return (
     <div className={`leafly-page-transition-wrap ${transitionStage}`}>
       {children}

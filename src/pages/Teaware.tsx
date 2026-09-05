@@ -45,6 +45,19 @@ export default function Teaware() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    if (selectedItem) {
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+      };
+    }
+  }, [selectedItem]);
+
   const filteredProducts = useMemo(() => {
     return teaware
       .filter((item) => {
@@ -303,6 +316,9 @@ export default function Teaware() {
             aria-modal="true"
             aria-label={liveSelectedItem.name}
             onClick={() => setSelectedItem(null)}
+            ref={(el) => {
+              if (el) el.scrollTop = 0;
+            }}
           >
             <div
               className="teaware-modal"

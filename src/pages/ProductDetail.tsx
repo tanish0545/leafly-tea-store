@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
-import { type Product, type ProductVariantKey, getProductSlug, isProductInStock } from "../data/products";
+import { type Product, type ProductVariantKey, getProductSlug, isProductInStock, getProductImages, getProductAvailableVariants } from "../data/products";
 import { useTeaware } from "../context/TeawareContext";
 import { useGifting } from "../context/GiftingContext";
 import { useProducts } from "../context/ProductContext";
+import ProductGallery from "../components/ProductGallery";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import { generateProductSchema, generateTeawareSchema, generateBreadcrumbSchema } from "../lib/seoData";
@@ -188,19 +189,16 @@ export default function ProductDetail() {
 
   const inStock = isProductInStock(product);
 
-  const currentVariantData = product.variants
-    ? product.variants[selectedVariant]
-    : {
-        weight: selectedVariant,
-        price:
-          selectedVariant === "250g"
-            ? Math.round(product.price * 2.2)
-            : product.price,
-        oldPrice:
-          selectedVariant === "250g" && product.oldPrice
-            ? Math.round(product.oldPrice * 2.2)
-            : product.oldPrice,
-      };
+  const availableVariants = getProductAvailableVariants(product);
+  const activeVariant = availableVariants.some((v) => v.key === selectedVariant)
+    ? selectedVariant
+    : (availableVariants[0]?.key ?? "100g");
+
+  const currentVariantData = availableVariants.find((v) => v.key === activeVariant) ?? {
+    weight: activeVariant,
+    price: product.price,
+    oldPrice: product.oldPrice,
+  };
 
   const currentPrice = currentVariantData.price;
   const currentOldPrice = currentVariantData.oldPrice;
@@ -215,7 +213,7 @@ export default function ProductDetail() {
     addToCart(
       product,
       quantity,
-      selectedVariant,
+      activeVariant,
       currentPrice,
       currentOldPrice
     );
@@ -230,7 +228,7 @@ export default function ProductDetail() {
     addToCart(
       product,
       quantity,
-      selectedVariant,
+      activeVariant,
       currentPrice,
       currentOldPrice
     );
@@ -337,35 +335,32 @@ export default function ProductDetail() {
       {/* MAIN CONTENT GRID */}
 
       <div className="pdp-layout">
-        {/* IMAGE */}
-
-        <div className="pdp-image-wrap">
-          <img
-            src={product.image}
-            alt={`Leafly ${product.name} - ${isTeaware ? teawareItem?.material : isHamper ? "Curated Gift Box" : `${product.origin} ${product.category} Tea`}`}
-            className="pdp-image"
-            loading="eager"
-            fetchPriority="high"
-            decoding="async"
+        {/* PRODUCT GALLERY */}
+        <div className="pdp-gallery-column">
+          <ProductGallery
+            images={getProductImages(product)}
+            productName={product.name}
+            badgeText={
+              !inStock
+                ? null
+                : product.customTag?.text || product.badge || "In Stock"
+            }
+            badgeStyle={{
+              background:
+                product.customTag?.color ||
+                (product.badge === "Bestseller"
+                  ? "#0b2b1e"
+                  : product.badge === "Popular"
+                  ? "#134e38"
+                  : "#c9a24b"),
+              color:
+                product.badge === "Premium" && !product.customTag?.color
+                  ? "#0b2b1e"
+                  : "#ffffff",
+            }}
+            inStock={inStock}
+            isTeaware={isTeaware}
           />
-          {!inStock ? (
-            <span
-              className="pdp-badge out-of-stock"
-              style={{
-                background: isTeaware ? "#0b2b1e" : "#c53030",
-                color: isTeaware ? "#c9a24b" : "#ffffff",
-                border: isTeaware ? "1px solid rgba(201,162,75,0.4)" : "none",
-              }}
-            >
-              {isTeaware ? "Coming Soon" : "Out of Stock"}
-            </span>
-          ) : (
-            <span
-              className={`pdp-badge ${product.badge ? product.badge.toLowerCase() : "in-stock"}`}
-            >
-              {product.badge || "In Stock"}
-            </span>
-          )}
         </div>
 
         {/* PRODUCT INFO */}
@@ -432,7 +427,7 @@ export default function ProductDetail() {
           </div>
 
           {/* QUANTITY / WEIGHT VARIANT SELECTOR (TEA ONLY) */}
-          {!isTeaware && !isHamper && (
+          {!isTeaware && !isHamper && availableVariants.length > 0 && (
             <div className="pdp-variant-section">
               <span className="pdp-variant-title">SELECT WEIGHT / VARIANT</span>
               <div
@@ -440,24 +435,18 @@ export default function ProductDetail() {
                 role="radiogroup"
                 aria-label="Quantity options"
               >
-                <button
-                  type="button"
-                  className={`pdp-variant-btn ${selectedVariant === "100g" ? "active" : ""}`}
-                  onClick={() => setSelectedVariant("100g")}
-                  role="radio"
-                  aria-checked={selectedVariant === "100g"}
-                >
-                  100g
-                </button>
-                <button
-                  type="button"
-                  className={`pdp-variant-btn ${selectedVariant === "250g" ? "active" : ""}`}
-                  onClick={() => setSelectedVariant("250g")}
-                  role="radio"
-                  aria-checked={selectedVariant === "250g"}
-                >
-                  250g
-                </button>
+                {availableVariants.map((v) => (
+                  <button
+                    key={v.key}
+                    type="button"
+                    className={`pdp-variant-btn ${activeVariant === v.key ? "active" : ""}`}
+                    onClick={() => setSelectedVariant(v.key)}
+                    role="radio"
+                    aria-checked={activeVariant === v.key}
+                  >
+                    {v.weight}
+                  </button>
+                ))}
               </div>
             </div>
           )}

@@ -92,9 +92,10 @@ export function generateProductSchema(
   const offersList: Record<string, unknown>[] = [];
 
   if (product.variants) {
-    const variantKeys = Object.keys(product.variants) as ProductVariantKey[];
+    const variants = product.variants;
+    const variantKeys = Object.keys(variants) as ProductVariantKey[];
     variantKeys.forEach((key) => {
-      const vData = product.variants[key];
+      const vData = variants[key];
       if (vData && typeof vData.price === "number") {
         offersList.push({
           "@type": "Offer",

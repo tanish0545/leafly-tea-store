@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ProductVariantKey, Product } from "../data/products";
+import { type ProductVariantKey, type Product, SUPPORTED_WEIGHT_KEYS } from "../data/products";
 import type { TeawareItem } from "../data/teaware";
 import type { GiftHamper } from "../data/gifting";
 import { useProducts } from "./ProductContext";
@@ -27,6 +27,7 @@ export type CartProduct = {
   image: string;
   stock?: number;
   inStock?: boolean;
+  variants?: Product["variants"];
 };
 
 export type CartItem = {
@@ -126,7 +127,7 @@ export function resolveLiveCatalogProduct(
   products: Product[],
   teaware: TeawareItem[],
   hampers: GiftHamper[]
-): { price: number; oldPrice?: number; stock: number; inStock: boolean; image: string; name: string } | null {
+): { price: number; oldPrice?: number; stock: number; inStock: boolean; image: string; name: string; variants?: Product["variants"] } | null {
   const pId = String(itemProduct.id);
   const pNameLower = (itemProduct.name || "").toLowerCase();
 
@@ -173,6 +174,7 @@ export function resolveLiveCatalogProduct(
       inStock: teaMatch.inStock !== false && stock > 0,
       image: teaMatch.image,
       name: teaMatch.name,
+      variants: teaMatch.variants,
     };
   }
 
@@ -234,7 +236,9 @@ export function CartProvider({
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return parsed.map((item: any) => {
-        const variant: ProductVariantKey = item.variant === "250g" ? "250g" : "100g";
+        const variant: ProductVariantKey = (item.variant && (SUPPORTED_WEIGHT_KEYS as readonly string[]).includes(item.variant))
+          ? (item.variant as ProductVariantKey)
+          : (item.variant === "250g" ? "250g" : "100g");
         const compositeId = item.id && typeof item.id === "string" && item.id.includes("-")
           ? item.id
           : `${item.product?.id || item.id || 1}-${variant}`;
@@ -356,8 +360,16 @@ export function CartProvider({
       return;
     }
 
-    const itemPrice = live ? live.price : typeof customPrice === "number" ? customPrice : product.price;
-    const itemOldPrice = live ? live.oldPrice : (customOldPrice ?? product.oldPrice);
+    let itemPrice = typeof customPrice === "number" ? customPrice : (live ? live.price : product.price);
+    let itemOldPrice = customOldPrice !== undefined ? customOldPrice : (live ? live.oldPrice : product.oldPrice);
+
+    if (live && live.variants?.[variant]?.price) {
+      itemPrice = Number(live.variants[variant]!.price);
+      itemOldPrice = live.variants[variant]!.oldPrice ? Number(live.variants[variant]!.oldPrice) : undefined;
+    } else if (product.variants?.[variant]?.price) {
+      itemPrice = Number(product.variants[variant]!.price);
+      itemOldPrice = product.variants[variant]!.oldPrice ? Number(product.variants[variant]!.oldPrice) : undefined;
+    }
 
     // Trigger Fly-To-Cart visual animation (product image arcs toward cart icon)
     if (typeof window !== "undefined") {

@@ -13,6 +13,7 @@ import {
   type ProductVariantKey,
   getProductSlug,
   isProductInStock,
+  getProductAvailableVariants,
 } from "../data/products";
 import { useProducts } from "../context/ProductContext";
 import Footer from "../components/Footer";
@@ -142,6 +143,22 @@ export default function Shop() {
   }, []);
 
   /*
+   * LOCK BODY & DOCUMENT SCROLL WHEN PRODUCT MODAL IS OPEN
+   */
+  useEffect(() => {
+    if (selectedProduct) {
+      const originalBodyOverflow = document.body.style.overflow;
+      const originalHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalBodyOverflow;
+        document.documentElement.style.overflow = originalHtmlOverflow;
+      };
+    }
+  }, [selectedProduct]);
+
+  /*
    * FILTERED PRODUCTS
    */
   const filteredProducts = useMemo(() => {
@@ -249,10 +266,13 @@ export default function Shop() {
       return;
     }
 
-    const currentVariant = cardVariants[product.id] ?? "100g";
-    const variantData = product.variants ? product.variants[currentVariant] : null;
-    const finalPrice = variantData ? variantData.price : (currentVariant === "250g" ? Math.round(product.price * 2.2) : product.price);
-    const finalOldPrice = variantData?.oldPrice ?? (currentVariant === "250g" && product.oldPrice ? Math.round(product.oldPrice * 2.2) : product.oldPrice);
+    const availableVariants = getProductAvailableVariants(product);
+    const currentVariant = (cardVariants[product.id] && availableVariants.some((v) => v.key === cardVariants[product.id]))
+      ? cardVariants[product.id]
+      : (availableVariants[0]?.key ?? "100g");
+    const activeVariantData = availableVariants.find((v) => v.key === currentVariant) ?? availableVariants[0];
+    const finalPrice = activeVariantData ? activeVariantData.price : product.price;
+    const finalOldPrice = activeVariantData ? activeVariantData.oldPrice : product.oldPrice;
 
     setAddingId(product.id);
 
@@ -538,6 +558,13 @@ export default function Shop() {
             const isAdding = addingId === product.id;
             const isAdded = addedId === product.id;
             const inStock = isProductInStock(product);
+            const availableVariants = getProductAvailableVariants(product);
+            const currentVariant = (cardVariants[product.id] && availableVariants.some((v) => v.key === cardVariants[product.id]))
+              ? cardVariants[product.id]
+              : (availableVariants[0]?.key ?? "100g");
+            const activeVariantData = availableVariants.find((v) => v.key === currentVariant) ?? availableVariants[0];
+            const displayPrice = activeVariantData ? activeVariantData.price : product.price;
+            const displayOldPrice = activeVariantData ? activeVariantData.oldPrice : product.oldPrice;
 
             return (
               <article
@@ -622,30 +649,23 @@ export default function Shop() {
 
                     {/* QUANTITY / WEIGHT VARIANT SELECTOR */}
                     <div className="card-variant-selector">
-                      <button
-                        type="button"
-                        className={`card-variant-btn ${(cardVariants[product.id] ?? "100g") === "100g" ? "active" : ""}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCardVariants((prev) => ({ ...prev, [product.id]: "100g" as ProductVariantKey }));
-                        }}
-                      >
-                        100g
-                      </button>
-                      <button
-                        type="button"
-                        className={`card-variant-btn ${cardVariants[product.id] === "250g" ? "active" : ""}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCardVariants((prev) => ({ ...prev, [product.id]: "250g" as ProductVariantKey }));
-                        }}
-                      >
-                        250g
-                      </button>
+                      {availableVariants.map((v) => (
+                        <button
+                          key={v.key}
+                          type="button"
+                          className={`card-variant-btn ${currentVariant === v.key ? "active" : ""}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCardVariants((prev) => ({ ...prev, [product.id]: v.key }));
+                          }}
+                        >
+                          {v.weight}
+                        </button>
+                      ))}
                     </div>
 
                     <p className="product-details">
-                      {cardVariants[product.id] ?? "100g"} ·{" "}
+                      {currentVariant} ·{" "}
                       {product.caffeine} Caffeine
                     </p>
 
@@ -668,26 +688,12 @@ export default function Shop() {
 
                     <div className="product-price">
                       <strong>
-                        ₹
-                        {(
-                          (cardVariants[product.id] ?? "100g") === "250g"
-                            ? product.variants?.["250g"]?.price ?? Math.round(product.price * 2.2)
-                            : product.variants?.["100g"]?.price ?? product.price
-                        ).toLocaleString("en-IN")}
+                        ₹{displayPrice.toLocaleString("en-IN")}
                       </strong>
 
-                      {(
-                        (cardVariants[product.id] ?? "100g") === "250g"
-                          ? product.variants?.["250g"]?.oldPrice ?? (product.oldPrice ? Math.round(product.oldPrice * 2.2) : undefined)
-                          : product.variants?.["100g"]?.oldPrice ?? product.oldPrice
-                      ) && (
+                      {displayOldPrice && (
                         <del>
-                          ₹
-                          {(
-                            (cardVariants[product.id] ?? "100g") === "250g"
-                              ? product.variants?.["250g"]?.oldPrice ?? (product.oldPrice ? Math.round(product.oldPrice * 2.2) : undefined)
-                              : product.variants?.["100g"]?.oldPrice ?? product.oldPrice
-                          )!.toLocaleString("en-IN")}
+                          ₹{displayOldPrice.toLocaleString("en-IN")}
                         </del>
                       )}
                     </div>
@@ -721,7 +727,6 @@ export default function Shop() {
                           );
                         }
 
-                        const currentVariant = cardVariants[product.id] ?? "100g";
                         const cartItem = items.find(
                           (item) =>
                             item.id === `${product.id}-${currentVariant}` ||
@@ -904,6 +909,9 @@ export default function Shop() {
             setSelectedProduct(null)
           }
           role="presentation"
+          ref={(el) => {
+            if (el) el.scrollTop = 0;
+          }}
         >
 
           <div
@@ -971,129 +979,85 @@ export default function Shop() {
 
 
               {/* QUANTITY / WEIGHT VARIANT SELECTOR */}
+              {(() => {
+                const modalAvailableVariants = getProductAvailableVariants(selectedProduct);
+                const activeModalVariant = modalAvailableVariants.some((v) => v.key === modalVariant)
+                  ? modalVariant
+                  : (modalAvailableVariants[0]?.key ?? "100g");
+                const activeModalVariantData = modalAvailableVariants.find((v) => v.key === activeModalVariant) ?? modalAvailableVariants[0];
+                const modalPrice = activeModalVariantData ? activeModalVariantData.price : selectedProduct.price;
+                const modalOldPrice = activeModalVariantData ? activeModalVariantData.oldPrice : selectedProduct.oldPrice;
 
-              <div className="product-detail-variants">
-                <span className="product-detail-variant-label">SELECT QUANTITY / WEIGHT</span>
-                <div className="product-detail-variant-buttons" role="radiogroup" aria-label="Quantity options">
-                  <button
-                    type="button"
-                    className={`product-variant-btn ${modalVariant === "100g" ? "active" : ""}`}
-                    onClick={() => setModalVariant("100g")}
-                    role="radio"
-                    aria-checked={modalVariant === "100g"}
-                  >
-                    100g
-                  </button>
-                  <button
-                    type="button"
-                    className={`product-variant-btn ${modalVariant === "250g" ? "active" : ""}`}
-                    onClick={() => setModalVariant("250g")}
-                    role="radio"
-                    aria-checked={modalVariant === "250g"}
-                  >
-                    250g
-                  </button>
-                </div>
-              </div>
+                return (
+                  <>
+                    <div className="product-detail-variants">
+                      <span className="product-detail-variant-label">SELECT QUANTITY / WEIGHT</span>
+                      <div className="product-detail-variant-buttons" role="radiogroup" aria-label="Quantity options">
+                        {modalAvailableVariants.map((v) => (
+                          <button
+                            key={v.key}
+                            type="button"
+                            className={`product-variant-btn ${activeModalVariant === v.key ? "active" : ""}`}
+                            onClick={() => setModalVariant(v.key)}
+                            role="radio"
+                            aria-checked={activeModalVariant === v.key}
+                          >
+                            {v.weight}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-              <div className="product-detail-specs">
+                    <div className="product-detail-specs">
+                      <div>
+                        <span>ORIGIN</span>
+                        <strong>{selectedProduct.origin}</strong>
+                      </div>
+                      <div>
+                        <span>TEA TYPE</span>
+                        <strong>{selectedProduct.category}</strong>
+                      </div>
+                      <div>
+                        <span>WEIGHT</span>
+                        <strong>{activeModalVariant}</strong>
+                      </div>
+                      <div>
+                        <span>CAFFEINE</span>
+                        <strong>{selectedProduct.caffeine}</strong>
+                      </div>
+                    </div>
 
-                <div>
-                  <span>ORIGIN</span>
-                  <strong>
-                    {selectedProduct.origin}
-                  </strong>
-                </div>
+                    <div className="product-detail-price">
+                      <strong>
+                        ₹{modalPrice.toLocaleString("en-IN")}
+                      </strong>
+                      {modalOldPrice && (
+                        <del>
+                          ₹{modalOldPrice.toLocaleString("en-IN")}
+                        </del>
+                      )}
+                    </div>
 
-                <div>
-                  <span>TEA TYPE</span>
-                  <strong>
-                    {selectedProduct.category}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>WEIGHT</span>
-                  <strong>
-                    {modalVariant}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>CAFFEINE</span>
-                  <strong>
-                    {selectedProduct.caffeine}
-                  </strong>
-                </div>
-
-              </div>
-
-
-              <div className="product-detail-price">
-
-                <strong>
-                  ₹
-                  {(
-                    selectedProduct.variants
-                      ? selectedProduct.variants[modalVariant].price
-                      : modalVariant === "250g"
-                        ? Math.round(selectedProduct.price * 2.2)
-                        : selectedProduct.price
-                  ).toLocaleString("en-IN")}
-                </strong>
-
-                {(selectedProduct.variants
-                  ? selectedProduct.variants[modalVariant].oldPrice
-                  : modalVariant === "250g" && selectedProduct.oldPrice
-                    ? Math.round(selectedProduct.oldPrice * 2.2)
-                    : selectedProduct.oldPrice) && (
-                  <del>
-                    ₹
-                    {(
-                      selectedProduct.variants
-                        ? selectedProduct.variants[modalVariant].oldPrice!
-                        : modalVariant === "250g" && selectedProduct.oldPrice
-                          ? Math.round(selectedProduct.oldPrice * 2.2)
-                          : selectedProduct.oldPrice!
-                    ).toLocaleString("en-IN")}
-                  </del>
-                )}
-
-              </div>
-
-
-              <button
-                type="button"
-                className="product-detail-cart"
-                onClick={() => {
-                  const variantData = selectedProduct.variants
-                    ? selectedProduct.variants[modalVariant]
-                    : {
-                        weight: modalVariant,
-                        price:
-                          modalVariant === "250g"
-                            ? Math.round(selectedProduct.price * 2.2)
-                            : selectedProduct.price,
-                        oldPrice:
-                          modalVariant === "250g" && selectedProduct.oldPrice
-                            ? Math.round(selectedProduct.oldPrice * 2.2)
-                            : selectedProduct.oldPrice,
-                      };
-
-                  addProductToCart(
-                    selectedProduct,
-                    1,
-                    modalVariant,
-                    variantData.price,
-                    variantData.oldPrice
-                  );
-
-                  setSelectedProduct(null);
-                }}
-              >
-                ADD TO CART
-                <span>🛒</span>
-              </button>
+                    <button
+                      type="button"
+                      className="product-detail-cart"
+                      onClick={() => {
+                        addProductToCart(
+                          selectedProduct,
+                          1,
+                          activeModalVariant,
+                          modalPrice,
+                          modalOldPrice
+                        );
+                        setSelectedProduct(null);
+                      }}
+                    >
+                      ADD TO CART
+                      <span>🛒</span>
+                    </button>
+                  </>
+                );
+              })()}
 
             </div>
 

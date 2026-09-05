@@ -14,6 +14,7 @@ import BrandLoader from "./components/BrandLoader";
 import PageTransition from "./components/PageTransition";
 import FloatingLeaves from "./components/FloatingLeaves";
 import FlyToCart from "./components/FlyToCart";
+import LeafCursor from "./components/LeafCursor";
 import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "./context/AuthContext";
 import { CartProvider, useCart } from "./context/CartContext";
@@ -82,6 +83,7 @@ function App() {
                       <BrandLoader />
                       <FloatingLeaves />
                       <FlyToCart />
+                      <LeafCursor />
                       <Navbar />
 
                       <PageTransition>

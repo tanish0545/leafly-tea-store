@@ -80,6 +80,10 @@ export default function AdminDashboard() {
   const [orderFilterStatus, setOrderFilterStatus] = useState("all");
   const [orderFilterPayment, setOrderFilterPayment] = useState("all");
 
+  // Pagination State (Orders)
+  const ORDERS_PER_PAGE = 10;
+  const [orderCurrentPage, setOrderCurrentPage] = useState(1);
+
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [productFilterCategory, setProductFilterCategory] = useState("all");
 
@@ -133,12 +137,14 @@ export default function AdminDashboard() {
     setShowAdminLogoutConfirm(false);
   };
 
-  // Lock background body scroll and listen for Escape key when any true modal is open
+  // Lock background body & document scroll and listen for Escape key when any true modal is open
   useEffect(() => {
     const isModalOpen = Boolean(selectedOrder || selectedAccount || showAdminLogoutConfirm);
     if (isModalOpen) {
-      const originalOverflow = document.body.style.overflow;
+      const originalBodyOverflow = document.body.style.overflow;
+      const originalHtmlOverflow = document.documentElement.style.overflow;
       document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
 
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape") {
@@ -150,7 +156,8 @@ export default function AdminDashboard() {
 
       window.addEventListener("keydown", handleKeyDown);
       return () => {
-        document.body.style.overflow = originalOverflow;
+        document.body.style.overflow = originalBodyOverflow;
+        document.documentElement.style.overflow = originalHtmlOverflow;
         window.removeEventListener("keydown", handleKeyDown);
       };
     }
@@ -270,12 +277,33 @@ export default function AdminDashboard() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Tab switcher with auto mobile drawer close
+  // Open mobile drawer and immediately scroll page to top context
+  const handleOpenMobileMenu = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    setIsMobileMenuOpen(true);
+  };
+
+  // Tab switcher: navigate directly to requested section and close mobile drawer
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
     setIsMobileMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setIsEditing(false);
+    setIsEditingTeaware(false);
+    setIsEditingHamper(false);
+    setIsEditingCoupon(false);
+    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   };
+
+  // Ensure edit/create views always start cleanly at the top of the viewport
+  useEffect(() => {
+    if (isEditing || isEditingTeaware || isEditingHamper || isEditingCoupon) {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }
+  }, [isEditing, isEditingTeaware, isEditingHamper, isEditingCoupon]);
 
   // Product Actions
   const handleEditClick = (product: Product) => {
@@ -296,10 +324,9 @@ export default function AdminDashboard() {
         }
       }
     }
-    if (!variants["100g"]) {
+    // If product had no variants defined at all, provide standard initial fallback
+    if (Object.keys(variants).length === 0) {
       variants["100g"] = { weight: "100g", price: rawPrice, oldPrice: rawOldPrice };
-    }
-    if (!variants["250g"]) {
       variants["250g"] = { weight: "250g", price: Math.round(rawPrice * 2.2), oldPrice: rawOldPrice ? Math.round(rawOldPrice * 2.2) : undefined };
     }
 
@@ -365,13 +392,13 @@ export default function AdminDashboard() {
       reviewCount: currentProduct.reviewCount ?? 120,
     } as Product;
 
-    // Preserve and synchronize variants
+    // Preserve and synchronize only selected variants
     const newVariants: Record<string, { weight: string; price: number; oldPrice?: number }> = {};
     if (currentProduct.variants && typeof currentProduct.variants === "object") {
       for (const [vKey, vData] of Object.entries(currentProduct.variants)) {
         if (vData && typeof vData === "object" && "price" in vData) {
-          const vPrice = vKey === "100g" ? basePrice : Number(vData.price) || (vKey === "250g" ? Math.round(basePrice * 2.2) : basePrice);
-          const vOldPrice = vKey === "100g" ? baseOldPrice : (vData.oldPrice ? Number(vData.oldPrice) : undefined);
+          const vPrice = Number(vData.price) || 0;
+          const vOldPrice = vData.oldPrice ? Number(vData.oldPrice) : undefined;
           newVariants[vKey] = {
             weight: vData.weight || vKey,
             price: vPrice,
@@ -380,18 +407,27 @@ export default function AdminDashboard() {
         }
       }
     }
-    // Ensure 100g is synchronized
-    newVariants["100g"] = {
-      weight: "100g",
-      price: basePrice,
-      oldPrice: baseOldPrice,
-    };
-    if (!newVariants["250g"]) {
-      newVariants["250g"] = {
-        weight: "250g",
-        price: Math.round(basePrice * 2.2),
-        oldPrice: baseOldPrice ? Math.round(baseOldPrice * 2.2) : undefined,
+    // If no variants were checked, fallback to 100g
+    if (Object.keys(newVariants).length === 0) {
+      newVariants["100g"] = {
+        weight: "100g",
+        price: basePrice,
+        oldPrice: baseOldPrice,
       };
+    }
+
+    // Synchronize base price with 100g or first enabled variant
+    if (newVariants["100g"]) {
+      cleanProduct.price = newVariants["100g"].price;
+      cleanProduct.oldPrice = newVariants["100g"].oldPrice;
+      cleanProduct.weight = "100g";
+    } else {
+      const firstKey = Object.keys(newVariants)[0];
+      if (firstKey) {
+        cleanProduct.price = newVariants[firstKey].price;
+        cleanProduct.oldPrice = newVariants[firstKey].oldPrice;
+        cleanProduct.weight = firstKey;
+      }
     }
 
     cleanProduct.variants = newVariants as unknown as Product["variants"];
@@ -799,6 +835,34 @@ export default function AdminDashboard() {
     });
   }, [orders, orderSearchQuery, orderFilterStatus, orderFilterPayment]);
 
+  // Reset to page 1 whenever filters/search change
+  useEffect(() => {
+    setOrderCurrentPage(1);
+  }, [orderSearchQuery, orderFilterStatus, orderFilterPayment]);
+
+  // Paginated slice of filtered orders
+  const totalOrderPages = Math.max(1, Math.ceil(filteredOrders.length / ORDERS_PER_PAGE));
+  const paginatedOrders = filteredOrders.slice(
+    (orderCurrentPage - 1) * ORDERS_PER_PAGE,
+    orderCurrentPage * ORDERS_PER_PAGE
+  );
+
+  // Helper: generate page numbers with ellipsis
+  const getOrderPageNumbers = (): (number | "...")[] => {
+    const total = totalOrderPages;
+    const current = orderCurrentPage;
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages: (number | "...")[] = [];
+    if (current <= 4) {
+      pages.push(1, 2, 3, 4, 5, "...", total);
+    } else if (current >= total - 3) {
+      pages.push(1, "...", total - 4, total - 3, total - 2, total - 1, total);
+    } else {
+      pages.push(1, "...", current - 1, current, current + 1, "...", total);
+    }
+    return pages;
+  };
+
   // Filtered Products
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
@@ -973,7 +1037,7 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "dashboard" ? "active" : ""}`}
             onClick={() => handleTabChange("dashboard")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /></svg>
             <span className="admin-nav-label">Dashboard</span>
           </button>
 
@@ -982,7 +1046,7 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "orders" ? "active" : ""}`}
             onClick={() => handleTabChange("orders")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
             <span className="admin-nav-label">Orders</span>
             {pendingOrdersCount > 0 && (
               <span className="admin-nav-badge warning">{pendingOrdersCount}</span>
@@ -994,7 +1058,7 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "products" ? "active" : ""}`}
             onClick={() => handleTabChange("products")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
             <span className="admin-nav-label">Tea Products</span>
             <span className="admin-nav-badge neutral">{products.length}</span>
           </button>
@@ -1004,7 +1068,7 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "teaware" ? "active" : ""}`}
             onClick={() => handleTabChange("teaware")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" /><line x1="6" y1="1" x2="6" y2="4" /><line x1="10" y1="1" x2="10" y2="4" /><line x1="14" y1="1" x2="14" y2="4" /></svg>
             <span className="admin-nav-label">Teaware</span>
             <span className="admin-nav-badge neutral">{teaware.length}</span>
           </button>
@@ -1014,7 +1078,7 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "hampers" ? "active" : ""}`}
             onClick={() => handleTabChange("hampers")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 12 20 22 4 22 4 12" /><rect x="2" y="7" width="20" height="5" /><line x1="12" y1="22" x2="12" y2="7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" /></svg>
             <span className="admin-nav-label">Gift Hampers</span>
             <span className="admin-nav-badge neutral">{hampers.length}</span>
           </button>
@@ -1024,7 +1088,7 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "accounts" ? "active" : ""}`}
             onClick={() => handleTabChange("accounts")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
             <span className="admin-nav-label">Accounts</span>
             <span className="admin-nav-badge live">{accounts.length}</span>
           </button>
@@ -1034,7 +1098,7 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "coupons" ? "active" : ""}`}
             onClick={() => handleTabChange("coupons")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><line x1="7" y1="7" x2="7.01" y2="7" /></svg>
             <span className="admin-nav-label">Coupons</span>
             <span className="admin-nav-badge neutral">{globalCoupons.length}</span>
           </button>
@@ -1044,7 +1108,7 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "reviews" ? "active" : ""}`}
             onClick={() => handleTabChange("reviews")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
             <span className="admin-nav-label">Reviews</span>
             <span className="admin-nav-badge neutral">{reviews.length}</span>
           </button>
@@ -1063,7 +1127,7 @@ export default function AdminDashboard() {
 
           <div className="admin-sidebar-actions">
             <Link to="/" className="admin-store-link" title="Open Storefront">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
               <span>Storefront</span>
             </Link>
             <button
@@ -1072,7 +1136,7 @@ export default function AdminDashboard() {
               className="admin-logout-btn"
               title="Sign Out"
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
               <span>Logout</span>
             </button>
           </div>
@@ -1087,7 +1151,7 @@ export default function AdminDashboard() {
             <button
               type="button"
               className="admin-hamburger"
-              onClick={() => setIsMobileMenuOpen(true)}
+              onClick={handleOpenMobileMenu}
               aria-label="Open Navigation Drawer"
             >
               <span />
@@ -1134,7 +1198,7 @@ export default function AdminDashboard() {
               <div className="admin-stats-grid">
                 <div className="admin-kpi-card gold-border">
                   <div className="kpi-icon-wrap gold">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
                   </div>
                   <div className="kpi-data">
                     <span className="kpi-label">Month Revenue</span>
@@ -1149,7 +1213,7 @@ export default function AdminDashboard() {
 
                 <div className="admin-kpi-card">
                   <div className="kpi-icon-wrap forest">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
                   </div>
                   <div className="kpi-data">
                     <span className="kpi-label">Month Orders</span>
@@ -1171,7 +1235,7 @@ export default function AdminDashboard() {
                   aria-label="View Pending Orders"
                 >
                   <div className="kpi-icon-wrap gold">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
                   </div>
                   <div className="kpi-data">
                     <span className="kpi-label">Pending Orders</span>
@@ -1186,7 +1250,7 @@ export default function AdminDashboard() {
 
                 <div className="admin-kpi-card">
                   <div className="kpi-icon-wrap emerald">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
                   </div>
                   <div className="kpi-data">
                     <span className="kpi-label">Live Customers</span>
@@ -1199,7 +1263,7 @@ export default function AdminDashboard() {
 
                 <div className="admin-kpi-card">
                   <div className="kpi-icon-wrap forest">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
                   </div>
                   <div className="kpi-data">
                     <span className="kpi-label">Total Catalog</span>
@@ -1212,7 +1276,7 @@ export default function AdminDashboard() {
 
                 <div className="admin-kpi-card">
                   <div className="kpi-icon-wrap red">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
                   </div>
                   <div className="kpi-data">
                     <span className="kpi-label">Low Stock Teas</span>
@@ -1406,7 +1470,7 @@ export default function AdminDashboard() {
               {/* SEARCH & FILTERS TOOLBAR */}
               <div className="admin-toolbar">
                 <div className="toolbar-search">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   <input
                     type="text"
                     placeholder="Search by Order ID, customer, city, email..."
@@ -1465,7 +1529,7 @@ export default function AdminDashboard() {
               ) : (
                 <>
                   {/* Desktop Table View */}
-                  <div className="admin-table-container desktop-only">
+                  <div className="admin-table-container orders-table-scroll desktop-only">
                     <table className="admin-table">
                       <thead>
                         <tr>
@@ -1480,7 +1544,7 @@ export default function AdminDashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredOrders.map((order) => {
+                        {paginatedOrders.map((order) => {
                           const isCOD = order.paymentMethod === "Pay on Delivery" || order.paymentMethod === "Cash on Delivery";
                           const status = order.orderStatus || order.status || "Processing";
                           const statusLower = status.toLowerCase();
@@ -1567,7 +1631,7 @@ export default function AdminDashboard() {
 
                   {/* Mobile Cards View */}
                   <div className="admin-mobile-card-list mobile-only">
-                    {filteredOrders.map((order) => {
+                    {paginatedOrders.map((order) => {
                       const isCOD = order.paymentMethod === "Pay on Delivery" || order.paymentMethod === "Cash on Delivery";
                       const status = order.orderStatus || order.status || "Processing";
                       const statusLower = status.toLowerCase();
@@ -1651,6 +1715,52 @@ export default function AdminDashboard() {
                       );
                     })}
                   </div>
+                  {/* ORDERS PAGE FOOTER: count + pagination */}
+                  <div className="orders-page-footer">
+                    <span className="orders-page-info">
+                      Showing {Math.min((orderCurrentPage - 1) * ORDERS_PER_PAGE + 1, filteredOrders.length)}–{Math.min(orderCurrentPage * ORDERS_PER_PAGE, filteredOrders.length)} of {filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""}
+                    </span>
+                    {totalOrderPages > 1 && (
+                      <div className="admin-pagination" aria-label="Order page navigation">
+                        <button
+                          type="button"
+                          className="pagination-btn pagination-prev"
+                          onClick={() => setOrderCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={orderCurrentPage === 1}
+                          aria-label="Previous page"
+                        >
+                          ‹
+                        </button>
+
+                        {getOrderPageNumbers().map((page, idx) =>
+                          page === "..." ? (
+                            <span key={`ellipsis-${idx}`} className="pagination-ellipsis">…</span>
+                          ) : (
+                            <button
+                              key={page}
+                              type="button"
+                              className={`pagination-btn pagination-page ${orderCurrentPage === page ? "active" : ""}`}
+                              onClick={() => setOrderCurrentPage(page as number)}
+                              aria-label={`Go to page ${page}`}
+                              aria-current={orderCurrentPage === page ? "page" : undefined}
+                            >
+                              {page}
+                            </button>
+                          )
+                        )}
+
+                        <button
+                          type="button"
+                          className="pagination-btn pagination-next"
+                          onClick={() => setOrderCurrentPage(p => Math.min(totalOrderPages, p + 1))}
+                          disabled={orderCurrentPage === totalOrderPages}
+                          aria-label="Next page"
+                        >
+                          ›
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -1678,7 +1788,7 @@ export default function AdminDashboard() {
               {/* SEARCH & FILTERS */}
               <div className="admin-toolbar">
                 <div className="toolbar-search">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   <input
                     type="text"
                     placeholder="Search by tea name or origin..."
@@ -2058,11 +2168,34 @@ export default function AdminDashboard() {
                   <p className="form-help-text">Select which package weights are offered and configure custom pricing per variant:</p>
 
                   <div className="variants-container">
-                    {(["100g", "250g", "500g", "1kg"] as const).map(vKey => {
+                    {(["50g", "100g", "250g", "500g", "1kg"] as const).map(vKey => {
                       const isSelected = !!currentProduct.variants?.[vKey];
+                      const calcDefaultPrice = (key: string, base: number) => {
+                        switch (key) {
+                          case "50g": return Math.round(base * 0.55);
+                          case "100g": return base;
+                          case "250g": return Math.round(base * 2.2);
+                          case "500g": return Math.round(base * 4);
+                          case "1kg": return Math.round(base * 7.5);
+                          default: return base;
+                        }
+                      };
+                      const calcDefaultOldPrice = (key: string, baseOld?: number) => {
+                        if (!baseOld) return undefined;
+                        switch (key) {
+                          case "50g": return Math.round(baseOld * 0.55);
+                          case "100g": return baseOld;
+                          case "250g": return Math.round(baseOld * 2.2);
+                          case "500g": return Math.round(baseOld * 4);
+                          case "1kg": return Math.round(baseOld * 7.5);
+                          default: return baseOld;
+                        }
+                      };
+
                       const variantData = currentProduct.variants?.[vKey] || {
                         weight: vKey,
-                        price: vKey === "100g" ? (currentProduct.price || 0) : Math.round((currentProduct.price || 0) * (vKey === "250g" ? 2.2 : vKey === "500g" ? 4 : 7.5)),
+                        price: calcDefaultPrice(vKey, currentProduct.price || 0),
+                        oldPrice: calcDefaultOldPrice(vKey, currentProduct.oldPrice),
                       };
                       return (
                         <div key={vKey} className={`variant-box ${isSelected ? "selected" : ""}`}>
@@ -2073,11 +2206,10 @@ export default function AdminDashboard() {
                               onChange={(e) => {
                                 const newVars = { ...currentProduct.variants };
                                 if (e.target.checked) {
-                                  const vPrice = vKey === "100g" ? (currentProduct.price || 0) : Math.round((currentProduct.price || 0) * (vKey === "250g" ? 2.2 : vKey === "500g" ? 4 : 7.5));
                                   newVars[vKey] = {
                                     weight: vKey,
-                                    price: vPrice,
-                                    oldPrice: currentProduct.oldPrice ? Math.round(currentProduct.oldPrice * (vKey === "250g" ? 2.2 : 1)) : undefined
+                                    price: variantData.price || calcDefaultPrice(vKey, currentProduct.price || 0),
+                                    oldPrice: variantData.oldPrice ?? calcDefaultOldPrice(vKey, currentProduct.oldPrice),
                                   };
                                 } else {
                                   delete newVars[vKey];
@@ -2170,7 +2302,7 @@ export default function AdminDashboard() {
               {/* SEARCH & FILTERS */}
               <div className="admin-toolbar">
                 <div className="toolbar-search">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   <input
                     type="text"
                     placeholder="Search by teaware name, material..."
@@ -2227,58 +2359,58 @@ export default function AdminDashboard() {
                           const twIsIn = item.inStock !== false && twStock > 0;
                           const twIsLow = twIsIn && twStock <= 3;
                           return (
-                          <tr key={item.id}>
-                            <td style={{ width: "70px" }}>
-                              <img src={item.image} alt={item.name} className="product-thumb" />
-                            </td>
-                            <td>
-                              <strong className="cell-main-text">{item.name}</strong>
-                              <span className="cell-subtext">{item.material}</span>
-                            </td>
-                            <td>
-                              <span className="category-pill">{item.category}</span>
-                            </td>
-                            <td>
-                              <span className="cell-subtext">{item.capacity || "—"}</span>
-                            </td>
-                            <td>
-                              <strong className="gold-text">₹{item.price.toLocaleString()}</strong>
-                              {item.oldPrice ? <span className="old-price-strike">₹{item.oldPrice}</span> : null}
-                            </td>
-                            <td>
-                              <span className={`stock-pill ${!twIsIn ? "out" : twIsLow ? "low" : "in"}`}>
-                                {!twIsIn ? "Out of Stock" : `Stock: ${twStock}`}
-                              </span>
-                            </td>
-                            <td>
-                              <button
-                                type="button"
-                                className={`admin-btn-stock-toggle ${twIsIn ? "in" : "out"}`}
-                                onClick={() => handleToggleTeawareStock(item)}
-                                title={twIsIn ? "Click to set Out of Stock" : "Click to Restock"}
-                              >
-                                {twIsIn ? "Set Out of Stock" : "Restock (+10)"}
-                              </button>
-                            </td>
-                            <td>
-                              <div className="table-actions-group">
+                            <tr key={item.id}>
+                              <td style={{ width: "70px" }}>
+                                <img src={item.image} alt={item.name} className="product-thumb" />
+                              </td>
+                              <td>
+                                <strong className="cell-main-text">{item.name}</strong>
+                                <span className="cell-subtext">{item.material}</span>
+                              </td>
+                              <td>
+                                <span className="category-pill">{item.category}</span>
+                              </td>
+                              <td>
+                                <span className="cell-subtext">{item.capacity || "—"}</span>
+                              </td>
+                              <td>
+                                <strong className="gold-text">₹{item.price.toLocaleString()}</strong>
+                                {item.oldPrice ? <span className="old-price-strike">₹{item.oldPrice}</span> : null}
+                              </td>
+                              <td>
+                                <span className={`stock-pill ${!twIsIn ? "out" : twIsLow ? "low" : "in"}`}>
+                                  {!twIsIn ? "Out of Stock" : `Stock: ${twStock}`}
+                                </span>
+                              </td>
+                              <td>
                                 <button
                                   type="button"
-                                  className="admin-btn-action"
-                                  onClick={() => handleEditTeawareClick(item)}
+                                  className={`admin-btn-stock-toggle ${twIsIn ? "in" : "out"}`}
+                                  onClick={() => handleToggleTeawareStock(item)}
+                                  title={twIsIn ? "Click to set Out of Stock" : "Click to Restock"}
                                 >
-                                  Edit
+                                  {twIsIn ? "Set Out of Stock" : "Restock (+10)"}
                                 </button>
-                                <button
-                                  type="button"
-                                  className="admin-btn-danger"
-                                  onClick={() => handleDeleteTeaware(item.id)}
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
+                              </td>
+                              <td>
+                                <div className="table-actions-group">
+                                  <button
+                                    type="button"
+                                    className="admin-btn-action"
+                                    onClick={() => handleEditTeawareClick(item)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-btn-danger"
+                                    onClick={() => handleDeleteTeaware(item.id)}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
                           );
                         })}
                       </tbody>
@@ -2292,47 +2424,47 @@ export default function AdminDashboard() {
                       const twIsIn = item.inStock !== false && twStock > 0;
                       const twIsLow = twIsIn && twStock <= 3;
                       return (
-                      <div className="admin-catalog-card" key={item.id}>
-                        <div className="catalog-card-media">
-                          <img src={item.image} alt={item.name} />
-                          <span className="category-pill float">{item.category}</span>
-                        </div>
-                        <div className="catalog-card-content">
-                          <h4>{item.name}</h4>
-                          <span className="cell-subtext">{item.material} · {item.capacity}</span>
-                          <div className="catalog-card-meta">
-                            <span className="gold-text large">₹{item.price.toLocaleString()}</span>
-                            <span className={`stock-pill ${!twIsIn ? "out" : twIsLow ? "low" : "in"}`}>
-                              {!twIsIn ? "Out of Stock" : `${twStock} left`}
-                            </span>
+                        <div className="admin-catalog-card" key={item.id}>
+                          <div className="catalog-card-media">
+                            <img src={item.image} alt={item.name} />
+                            <span className="category-pill float">{item.category}</span>
                           </div>
-                        </div>
-                        <div className="catalog-card-actions-row">
-                          <button
-                            type="button"
-                            className={`admin-btn-stock-toggle ${twIsIn ? "in" : "out"}`}
-                            onClick={() => handleToggleTeawareStock(item)}
-                          >
-                            {twIsIn ? "Mark Out of Stock" : "Restock (+10)"}
-                          </button>
-                          <div className="catalog-btn-split">
+                          <div className="catalog-card-content">
+                            <h4>{item.name}</h4>
+                            <span className="cell-subtext">{item.material} · {item.capacity}</span>
+                            <div className="catalog-card-meta">
+                              <span className="gold-text large">₹{item.price.toLocaleString()}</span>
+                              <span className={`stock-pill ${!twIsIn ? "out" : twIsLow ? "low" : "in"}`}>
+                                {!twIsIn ? "Out of Stock" : `${twStock} left`}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="catalog-card-actions-row">
                             <button
                               type="button"
-                              className="admin-btn-primary flex-1"
-                              onClick={() => handleEditTeawareClick(item)}
+                              className={`admin-btn-stock-toggle ${twIsIn ? "in" : "out"}`}
+                              onClick={() => handleToggleTeawareStock(item)}
                             >
-                              Edit
+                              {twIsIn ? "Mark Out of Stock" : "Restock (+10)"}
                             </button>
-                            <button
-                              type="button"
-                              className="admin-btn-danger"
-                              onClick={() => handleDeleteTeaware(item.id)}
-                            >
-                              ✕
-                            </button>
+                            <div className="catalog-btn-split">
+                              <button
+                                type="button"
+                                className="admin-btn-primary flex-1"
+                                onClick={() => handleEditTeawareClick(item)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="admin-btn-danger"
+                                onClick={() => handleDeleteTeaware(item.id)}
+                              >
+                                ✕
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
                       );
                     })}
                   </div>
@@ -2521,7 +2653,7 @@ export default function AdminDashboard() {
               {/* SEARCH & FILTERS */}
               <div className="admin-toolbar">
                 <div className="toolbar-search">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   <input
                     type="text"
                     placeholder="Search by hamper name, subtitle..."
@@ -2576,56 +2708,56 @@ export default function AdminDashboard() {
                           const hIsIn = hamper.inStock !== false && hStock > 0;
                           const hIsLow = hIsIn && hStock <= 3;
                           return (
-                          <tr key={hamper.id}>
-                            <td style={{ width: "70px" }}>
-                              <img src={hamper.image} alt={hamper.name} className="product-thumb" />
-                            </td>
-                            <td>
-                              <strong className="cell-main-text">{hamper.name}</strong>
-                              <span className="cell-subtext">{hamper.subtitle}</span>
-                              {hamper.badge && <span className="product-badge-pill gold">{hamper.badge}</span>}
-                            </td>
-                            <td>
-                              <span className="cell-subtext">{(hamper.includes || []).join(" · ")}</span>
-                            </td>
-                            <td>
-                              <strong className="gold-text">₹{hamper.price.toLocaleString()}</strong>
-                              {hamper.oldPrice ? <span className="old-price-strike">₹{hamper.oldPrice}</span> : null}
-                            </td>
-                            <td>
-                              <span className={`stock-pill ${!hIsIn ? "out" : hIsLow ? "low" : "in"}`}>
-                                {!hIsIn ? "Out of Stock" : `Stock: ${hStock}`}
-                              </span>
-                            </td>
-                            <td>
-                              <button
-                                type="button"
-                                className={`admin-btn-stock-toggle ${hIsIn ? "in" : "out"}`}
-                                onClick={() => handleToggleHamperStock(hamper)}
-                                title={hIsIn ? "Click to set Out of Stock" : "Click to Restock"}
-                              >
-                                {hIsIn ? "Set Out of Stock" : "Restock (+10)"}
-                              </button>
-                            </td>
-                            <td>
-                              <div className="table-actions-group">
+                            <tr key={hamper.id}>
+                              <td style={{ width: "70px" }}>
+                                <img src={hamper.image} alt={hamper.name} className="product-thumb" />
+                              </td>
+                              <td>
+                                <strong className="cell-main-text">{hamper.name}</strong>
+                                <span className="cell-subtext">{hamper.subtitle}</span>
+                                {hamper.badge && <span className="product-badge-pill gold">{hamper.badge}</span>}
+                              </td>
+                              <td>
+                                <span className="cell-subtext">{(hamper.includes || []).join(" · ")}</span>
+                              </td>
+                              <td>
+                                <strong className="gold-text">₹{hamper.price.toLocaleString()}</strong>
+                                {hamper.oldPrice ? <span className="old-price-strike">₹{hamper.oldPrice}</span> : null}
+                              </td>
+                              <td>
+                                <span className={`stock-pill ${!hIsIn ? "out" : hIsLow ? "low" : "in"}`}>
+                                  {!hIsIn ? "Out of Stock" : `Stock: ${hStock}`}
+                                </span>
+                              </td>
+                              <td>
                                 <button
                                   type="button"
-                                  className="admin-btn-action"
-                                  onClick={() => handleEditHamperClick(hamper)}
+                                  className={`admin-btn-stock-toggle ${hIsIn ? "in" : "out"}`}
+                                  onClick={() => handleToggleHamperStock(hamper)}
+                                  title={hIsIn ? "Click to set Out of Stock" : "Click to Restock"}
                                 >
-                                  Edit
+                                  {hIsIn ? "Set Out of Stock" : "Restock (+10)"}
                                 </button>
-                                <button
-                                  type="button"
-                                  className="admin-btn-danger"
-                                  onClick={() => handleDeleteHamper(hamper.id)}
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
+                              </td>
+                              <td>
+                                <div className="table-actions-group">
+                                  <button
+                                    type="button"
+                                    className="admin-btn-action"
+                                    onClick={() => handleEditHamperClick(hamper)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-btn-danger"
+                                    onClick={() => handleDeleteHamper(hamper.id)}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
                           );
                         })}
                       </tbody>
@@ -2639,47 +2771,47 @@ export default function AdminDashboard() {
                       const hIsIn = hamper.inStock !== false && hStock > 0;
                       const hIsLow = hIsIn && hStock <= 3;
                       return (
-                      <div className="admin-catalog-card" key={hamper.id}>
-                        <div className="catalog-card-media">
-                          <img src={hamper.image} alt={hamper.name} />
-                          {hamper.badge && <span className="product-badge-pill gold float">{hamper.badge}</span>}
-                        </div>
-                        <div className="catalog-card-content">
-                          <h4>{hamper.name}</h4>
-                          <span className="cell-subtext">{hamper.subtitle}</span>
-                          <div className="catalog-card-meta">
-                            <span className="gold-text large">₹{hamper.price.toLocaleString()}</span>
-                            <span className={`stock-pill ${!hIsIn ? "out" : hIsLow ? "low" : "in"}`}>
-                              {!hIsIn ? "Out of Stock" : `${hStock} left`}
-                            </span>
+                        <div className="admin-catalog-card" key={hamper.id}>
+                          <div className="catalog-card-media">
+                            <img src={hamper.image} alt={hamper.name} />
+                            {hamper.badge && <span className="product-badge-pill gold float">{hamper.badge}</span>}
                           </div>
-                        </div>
-                        <div className="catalog-card-actions-row">
-                          <button
-                            type="button"
-                            className={`admin-btn-stock-toggle ${hIsIn ? "in" : "out"}`}
-                            onClick={() => handleToggleHamperStock(hamper)}
-                          >
-                            {hIsIn ? "Mark Out of Stock" : "Restock (+10)"}
-                          </button>
-                          <div className="catalog-btn-split">
+                          <div className="catalog-card-content">
+                            <h4>{hamper.name}</h4>
+                            <span className="cell-subtext">{hamper.subtitle}</span>
+                            <div className="catalog-card-meta">
+                              <span className="gold-text large">₹{hamper.price.toLocaleString()}</span>
+                              <span className={`stock-pill ${!hIsIn ? "out" : hIsLow ? "low" : "in"}`}>
+                                {!hIsIn ? "Out of Stock" : `${hStock} left`}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="catalog-card-actions-row">
                             <button
                               type="button"
-                              className="admin-btn-primary flex-1"
-                              onClick={() => handleEditHamperClick(hamper)}
+                              className={`admin-btn-stock-toggle ${hIsIn ? "in" : "out"}`}
+                              onClick={() => handleToggleHamperStock(hamper)}
                             >
-                              Edit
+                              {hIsIn ? "Mark Out of Stock" : "Restock (+10)"}
                             </button>
-                            <button
-                              type="button"
-                              className="admin-btn-danger"
-                              onClick={() => handleDeleteHamper(hamper.id)}
-                            >
-                              ✕
-                            </button>
+                            <div className="catalog-btn-split">
+                              <button
+                                type="button"
+                                className="admin-btn-primary flex-1"
+                                onClick={() => handleEditHamperClick(hamper)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="admin-btn-danger"
+                                onClick={() => handleDeleteHamper(hamper.id)}
+                              >
+                                ✕
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
                       );
                     })}
                   </div>
@@ -2860,7 +2992,7 @@ export default function AdminDashboard() {
               {/* SEARCH & FILTERS */}
               <div className="admin-toolbar">
                 <div className="toolbar-search">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   <input
                     type="text"
                     placeholder="Search customer name, email, mobile, UID..."
@@ -3032,7 +3164,7 @@ export default function AdminDashboard() {
               {/* SEARCH */}
               <div className="admin-toolbar">
                 <div className="toolbar-search">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   <input
                     type="text"
                     placeholder="Search coupon code or description..."
@@ -3281,7 +3413,7 @@ export default function AdminDashboard() {
               {/* TOOLBAR */}
               <div className="admin-toolbar">
                 <div className="toolbar-search">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                   <input
                     type="text"
                     placeholder="Search by patron name, email, product or feedback..."

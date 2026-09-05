@@ -89,8 +89,16 @@
 
 
 /* ============================================================
-   IMAGE COLUMN
+   IMAGE / GALLERY COLUMN
    ============================================================ */
+
+.pdp-gallery-column {
+  width: 100%;
+  position: sticky;
+  top: 96px;
+  min-width: 0;
+  z-index: 10;
+}
 
 .pdp-image-wrap {
   position: relative;
@@ -266,8 +274,10 @@
 
 .pdp-variant-buttons {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  row-gap: 8px;
 }
 
 .pdp-variant-btn {
@@ -660,6 +670,10 @@
   .pdp-layout {
     grid-template-columns: 1fr;
     gap: 28px;
+  }
+
+  .pdp-gallery-column {
+    position: static;
   }
 
   .pdp-image-wrap {

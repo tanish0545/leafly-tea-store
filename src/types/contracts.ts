@@ -58,7 +58,7 @@ export type TeaCategory =
   | "Herbal"
   | "Teaware";
 
-export type ProductVariantKey = "100g" | "250g";
+export type ProductVariantKey = "50g" | "100g" | "250g" | "500g" | "1kg";
 
 export interface ProductVariant {
   weight: string;

@@ -149,6 +149,19 @@ export default function Orders() {
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
   const [cancelFeedback, setCancelFeedback] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (selectedInvoiceOrder) {
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+      };
+    }
+  }, [selectedInvoiceOrder]);
+
   const sortedOrders = [...orders].sort((a, b) => {
     const timeA = parseOrderDate(a.createdAt)?.getTime() || 0;
     const timeB = parseOrderDate(b.createdAt)?.getTime() || 0;
@@ -376,7 +389,13 @@ export default function Orders() {
 
       {/* AUTHORITATIVE INVOICE MODAL */}
       {selectedInvoiceOrder && (
-        <div className="invoice-modal-overlay" onClick={() => setSelectedInvoiceOrder(null)}>
+        <div 
+          className="invoice-modal-overlay" 
+          onClick={() => setSelectedInvoiceOrder(null)}
+          ref={(el) => {
+            if (el) el.scrollTop = 0;
+          }}
+        >
           <div className="invoice-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="invoice-modal-actions no-print">
               <button

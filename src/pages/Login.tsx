@@ -30,6 +30,19 @@ export default function Login() {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotMessage, setForgotMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  useEffect(() => {
+    if (showForgotModal) {
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+      };
+    }
+  }, [showForgotModal]);
+
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
@@ -337,7 +350,13 @@ export default function Login() {
           EMAIL VERIFICATION CODE PASSWORD RESET MODAL
           ===================================================== */}
       {showForgotModal && (
-        <div className="leafly-auth-modal-overlay" onClick={() => setShowForgotModal(false)}>
+        <div 
+          className="leafly-auth-modal-overlay" 
+          onClick={() => setShowForgotModal(false)}
+          ref={(el) => {
+            if (el) el.scrollTop = 0;
+          }}
+        >
           <div className="leafly-auth-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="leafly-auth-modal-header">
               <div>
