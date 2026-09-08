@@ -4,10 +4,18 @@
    ========================================================== */
 
 export type TeaCategory =
-  | "Green"
-  | "White"
-  | "Black"
-  | "Oolong";
+  | "Green Tea"
+  | "Black Tea"
+  | "Oolong Tea";
+
+export function normalizeTeaCategory(category?: string): TeaCategory {
+  if (!category) return "Green Tea";
+  const c = category.trim().toLowerCase();
+  if (c.includes("oolong")) return "Oolong Tea";
+  if (c.includes("black") || c.includes("dusk") || c.includes("chamomile") || c.includes("white")) return "Black Tea";
+  if (c.includes("green")) return "Green Tea";
+  return "Green Tea";
+}
 
 export type ProductVariantKey = "25g" | "50g" | "100g" | "250g" | "500g" | "1kg";
 
@@ -150,8 +158,8 @@ export function getProductSlug(product: { id?: number | string; name: string; sl
 export const products: Product[] = [
   {
     id: 1,
-    name: "Himalayan Green Tea",
-    category: "Green",
+    name: "Natural Green Tea",
+    category: "Green Tea",
     origin: "Darjeeling",
     caffeine: "Medium",
     weight: "100g",
@@ -178,7 +186,7 @@ export const products: Product[] = [
   {
     id: 2,
     name: "Golden Dusk Black Tea + Chamomile",
-    category: "White",
+    category: "Black Tea",
     origin: "Darjeeling",
     caffeine: "Low",
     weight: "100g",
@@ -203,8 +211,8 @@ export const products: Product[] = [
   },
   {
     id: 3,
-    name: "Darjeeling First Flush",
-    category: "Black",
+    name: "Premium Oolong Black Tea",
+    category: "Oolong Tea",
     origin: "Darjeeling",
     caffeine: "High",
     weight: "100g",
@@ -230,8 +238,8 @@ export const products: Product[] = [
   },
   {
     id: 4,
-    name: "Artisan Oolong",
-    category: "Oolong",
+    name: "Red Oolong Tea",
+    category: "Oolong Tea",
     origin: "Assam",
     caffeine: "Medium",
     weight: "100g",
@@ -253,110 +261,5 @@ export const products: Product[] = [
     ],
     rating: 4.9,
     reviewCount: 82,
-  },
-  {
-    id: 5,
-    name: "Assam Golden Black",
-    category: "Black",
-    origin: "Assam",
-    caffeine: "High",
-    weight: "100g",
-    price: 649,
-    variants: {
-      "25g": { weight: "25g", price: 180 },
-      "50g": { weight: "50g", price: 357 },
-      "100g": { weight: "100g", price: 649 },
-      "250g": { weight: "250g", price: 1429, oldPrice: 1629 },
-    },
-    badge: "Popular",
-    benefits: ["Better Focus", "Antioxidant Rich"],
-    image: "/leafly-black-tea.webp",
-    images: [
-      "/leafly-black-tea.webp",
-      "/assets/products/black-tea-angle.webp",
-      "/assets/products/assam-estate.webp",
-      "/assets/products/black-tea-lifestyle.webp",
-    ],
-    rating: 4.8,
-    reviewCount: 142,
-  },
-  {
-    id: 6,
-    name: "Kashmir White Reserve",
-    category: "White",
-    origin: "Kashmir",
-    caffeine: "Low",
-    weight: "100g",
-    price: 1199,
-    variants: {
-      "25g": { weight: "25g", price: 330 },
-      "50g": { weight: "50g", price: 659 },
-      "100g": { weight: "100g", price: 1199 },
-      "250g": { weight: "250g", price: 2699, oldPrice: 2999 },
-    },
-    badge: "Premium",
-    benefits: ["Relaxation", "Immunity"],
-    image: "/leafly-white-tea.webp",
-    images: [
-      "/leafly-white-tea.webp",
-      "/assets/products/white-tea-angle.webp",
-      "/assets/products/morning-ritual.webp",
-      "/assets/products/white-tea-hero.webp",
-    ],
-    rating: 4.9,
-    reviewCount: 68,
-  },
-  {
-    id: 7,
-    name: "Assam Vintage Reserve",
-    category: "Black",
-    origin: "Assam",
-    caffeine: "High",
-    weight: "100g",
-    price: 1099,
-    variants: {
-      "25g": { weight: "25g", price: 300 },
-      "50g": { weight: "50g", price: 604 },
-      "100g": { weight: "100g", price: 1099 },
-      "250g": { weight: "250g", price: 2449, oldPrice: 2749 },
-    },
-    badge: "Bestseller",
-    benefits: ["Better Focus", "Antioxidant Rich"],
-    image: "/leafly-black-tea.webp",
-    images: [
-      "/leafly-black-tea.webp",
-      "/assets/products/black-tea-angle.webp",
-      "/assets/products/orthodox-leaf.webp",
-      "/assets/products/black-tea-hero.webp",
-    ],
-    rating: 4.9,
-    reviewCount: 175,
-  },
-  {
-    id: 8,
-    name: "Reserve Oolong",
-    category: "Oolong",
-    origin: "Darjeeling",
-    caffeine: "Medium",
-    weight: "100g",
-    price: 1299,
-    oldPrice: 1499,
-    variants: {
-      "25g": { weight: "25g", price: 360, oldPrice: 410 },
-      "50g": { weight: "50g", price: 714, oldPrice: 824 },
-      "100g": { weight: "100g", price: 1299, oldPrice: 1499 },
-      "250g": { weight: "250g", price: 2899, oldPrice: 3299 },
-    },
-    badge: "Premium",
-    benefits: ["Relaxation", "Weight Management", "Antioxidant Rich"],
-    image: "/leafly-oolong-tea.webp",
-    images: [
-      "/leafly-oolong-tea.webp",
-      "/assets/products/oolong-tea-angle.webp",
-      "/assets/products/oolong-tea-hero.webp",
-      "/assets/products/oolong-tea-lifestyle.webp",
-    ],
-    rating: 5.0,
-    reviewCount: 91,
   },
 ];

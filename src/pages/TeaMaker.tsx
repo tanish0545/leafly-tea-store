@@ -13,20 +13,18 @@ import lemonImg from "../assets/tea-maker/ingredients/lemon.webp";
 import jaggeryImg from "../assets/tea-maker/ingredients/jaggery.webp";
 import mintImg from "../assets/tea-maker/ingredients/mint.webp";
 import lemongrassImg from "../assets/tea-maker/ingredients/lemongrass.webp";
-import pepperImg from "../assets/tea-maker/ingredients/black-pepper.webp";
-import saltImg from "../assets/tea-maker/ingredients/black-salt.webp";
+import blackPepperImg from "../assets/tea-maker/ingredients/black-pepper.webp";
+import blackSaltImg from "../assets/tea-maker/ingredients/black-salt.webp";
 import honeyImg from "../assets/tea-maker/ingredients/honey.webp";
 
 import cupImg from "../assets/tea-maker/vessels/cup-tea.webp";
 
 // Category-specific pouring images
 import pouringGreenImg from "../assets/pouring-green.webp";
-import pouringWhiteImg from "../assets/pouring-white.webp";
 import pouringBlackImg from "../assets/pouring-black.webp";
 
 // Category-specific finished tea ready images
 import greenTeaMakerImg from "../assets/green-tea-maker.webp";
-import whiteTeaMakerImg from "../assets/white-tea-maker.webp";
 import blackTeaMakerImg from "../assets/black-tea-maker.webp";
 import oolongTeaMakerImg from "../assets/oolong-tea-maker.webp";
 
@@ -39,7 +37,7 @@ import saltParticlesEffect from "../assets/tea-maker/effects/salt-particles.webp
 import honeyDropEffect from "../assets/tea-maker/effects/honey-drop.webp";
 import teaLeavesFallingEffect from "../assets/tea-maker/effects/tea-leaves-falling.webp";
 
-export type TeaType = "Green" | "White" | "Black" | "Oolong";
+export type TeaType = "Green" | "Black" | "Oolong";
 export type TeaStrength = "Light" | "Balanced" | "Strong";
 
 export type IngredientId =
@@ -92,8 +90,8 @@ const INGREDIENTS: Ingredient[] = [
   {
     id: "lemongrass",
     name: "Lemongrass",
-    subtitle: "Aromatic · Zesty · Calming",
-    description: "Highland lemongrass stalks bringing citrus aroma and digest calm.",
+    subtitle: "Tangy · Herbal · Clean",
+    description: "Crushed aromatic stalks with a tangy, herbaceous citrus aura.",
     image: lemongrassImg,
     effectImage: lemongrassPieceEffect,
     particleType: "float",
@@ -101,26 +99,26 @@ const INGREDIENTS: Ingredient[] = [
   {
     id: "black-pepper",
     name: "Black Pepper",
-    subtitle: "Piquant · Spicy · Fiery",
-    description: "Malabar black peppercorns offering warmth and immune vitality.",
-    image: pepperImg,
+    subtitle: "Spicy · Pungent · Stimulating",
+    description: "Coarsely ground Malabar peppercorns to kindle inner digestive fire.",
+    image: blackPepperImg,
     effectImage: pepperParticlesEffect,
     particleType: "spray",
   },
   {
     id: "black-salt",
     name: "Black Salt",
-    subtitle: "Savory · Mineral · Grounding",
-    description: "Himalayan kala namak adding authentic Ayurvedic depth.",
-    image: saltImg,
+    subtitle: "Savoury · Mineral · Earthy",
+    description: "Himalayan kala namak bringing savoury umami and grounding minerals.",
+    image: blackSaltImg,
     effectImage: saltParticlesEffect,
     particleType: "spray",
   },
   {
     id: "honey",
     name: "Wild Honey",
-    subtitle: "Floral · Golden · Soothing",
-    description: "Raw forest honey delivering gentle sweetness and a velvety body.",
+    subtitle: "Sweet · Floral · Amber",
+    description: "Raw forest blossom nectar creating a silky, soothing texture.",
     image: honeyImg,
     effectImage: honeyDropEffect,
     particleType: "stream",
@@ -147,7 +145,7 @@ interface TeaCategoryInfo {
 const TEA_CATEGORIES: Record<TeaType, TeaCategoryInfo> = {
   Green: {
     type: "Green",
-    title: "Green Tea",
+    title: "Natural Green Tea",
     tagline: "Fresh & Vibrant · Clean, uplifting, dewy sweetness.",
     defaultTemp: 80,
     defaultTimeSec: 150,
@@ -161,41 +159,25 @@ const TEA_CATEGORIES: Record<TeaType, TeaCategoryInfo> = {
     pouringImage: pouringGreenImg,
     readyImage: greenTeaMakerImg,
   },
-  White: {
-    type: "White",
-    title: "White Tea",
-    tagline: "Pure & Delicate · Silken, airy, hand-plucked buds.",
-    defaultTemp: 75,
-    defaultTimeSec: 180,
-    lightColor: "#f4eed9",
-    balancedColor: "#e6dcaf",
-    strongColor: "#cbbe86",
-    leafColor: "#8f967a",
-    notes: "Wild Honeysuckle · White Peach · Melon Silk",
-    matchedProductId: 2,
-    image: "/leafly-white-tea.webp",
-    pouringImage: pouringWhiteImg,
-    readyImage: whiteTeaMakerImg,
-  },
   Black: {
     type: "Black",
-    title: "Black Tea",
-    tagline: "Rich & Bold · Deep amber malt with muscatel notes.",
+    title: "Golden Dusk Black Tea + Chamomile",
+    tagline: "Rich & Bold · Deep amber warmth with soothing chamomile.",
     defaultTemp: 95,
     defaultTimeSec: 210,
     lightColor: "#d78f5a",
     balancedColor: "#b3521d",
     strongColor: "#7e320d",
     leafColor: "#3a2012",
-    notes: "Muscatel Grape · Amber Malt · Forest Oak",
-    matchedProductId: 3,
-    image: "/leafly-black-tea.webp",
+    notes: "Muscatel Grape · Amber Malt · Calming Chamomile",
+    matchedProductId: 2,
+    image: "/leafly-white-tea.webp",
     pouringImage: pouringBlackImg,
     readyImage: blackTeaMakerImg,
   },
   Oolong: {
     type: "Oolong",
-    title: "Oolong Tea",
+    title: "Oolong Tea (Premium & Red Oolong)",
     tagline: "Complex & Refined · Floral aroma with roasted orchid depth.",
     defaultTemp: 90,
     defaultTimeSec: 240,
@@ -204,7 +186,7 @@ const TEA_CATEGORIES: Record<TeaType, TeaCategoryInfo> = {
     strongColor: "#9e5c12",
     leafColor: "#574828",
     notes: "Roasted Orchid · Peach Blossom · Wild Forest Honey",
-    matchedProductId: 4,
+    matchedProductId: 3,
     image: "/leafly-oolong-tea.webp",
     pouringImage: pouringBlackImg,
     readyImage: oolongTeaMakerImg,
@@ -432,7 +414,7 @@ export default function TeaMaker() {
     if (timerRef.current) clearInterval(timerRef.current);
     setTimeLeft(0);
     setSteepProgress(1);
-    
+
     // Fast, elegant transition to pouring phase
     const tSkip = window.setTimeout(() => {
       triggerPouringStage();
@@ -509,14 +491,6 @@ export default function TeaMaker() {
         opacity: Math.min(1, 0.82 * progressFactor),
       };
     }
-    if (selectedTea === "White") {
-      return {
-        top: "#fbf6e8",
-        mid: targetMid,
-        bottom: "#b8aa70",
-        opacity: Math.min(1, 0.78 * progressFactor),
-      };
-    }
     if (selectedTea === "Black") {
       return {
         top: "#f0a871",
@@ -537,7 +511,7 @@ export default function TeaMaker() {
     <main className="tea-maker-page">
       <SEO
         title="Tea Brewing Guide & Interactive Steeping Ritual | Leafly"
-        description="Master loose leaf tea brewing with Leafly's interactive guide. Discover exact water temperatures, steeping times, and preparation rituals for green, black, white, and oolong teas."
+        description="Master loose leaf tea brewing with Leafly's interactive guide. Discover exact water temperatures, steeping times, and preparation rituals for green, black, and oolong teas."
         canonicalPath="/tea-maker"
         schema={generateBreadcrumbSchema([
           { name: "Home", url: "/" },
@@ -709,8 +683,8 @@ export default function TeaMaker() {
                       {count === 1
                         ? "Personal mindful steep (250ml)"
                         : count === 2
-                        ? "A shared moment (500ml)"
-                        : `Gathering brew (${count * 250}ml)`}
+                          ? "A shared moment (500ml)"
+                          : `Gathering brew (${count * 250}ml)`}
                     </span>
                   </button>
                 ))}
@@ -755,10 +729,10 @@ export default function TeaMaker() {
                     {temperature <= 75
                       ? "Gentle Warmth (Protects sweet tender buds)"
                       : temperature <= 85
-                      ? "Silken Steep (Optimal for green leaves)"
-                      : temperature <= 92
-                      ? "Aromatic Bloom (Unlocks oolong layers)"
-                      : "Full Rolling Boil (Draws deep rich amber)"}
+                        ? "Silken Steep (Optimal for green leaves)"
+                        : temperature <= 92
+                          ? "Aromatic Bloom (Unlocks oolong layers)"
+                          : "Full Rolling Boil (Draws deep rich amber)"}
                   </span>
                 </div>
               </div>
@@ -861,8 +835,8 @@ export default function TeaMaker() {
                     {strength === "Light"
                       ? "Gentle, airy notes with soft sweetness."
                       : strength === "Balanced"
-                      ? "Harmonious balance of aroma, tannins, and finish."
-                      : "Bold, robust body with pronounced terroir depth."}
+                        ? "Harmonious balance of aroma, tannins, and finish."
+                        : "Bold, robust body with pronounced terroir depth."}
                   </p>
                 </div>
               </div>
@@ -880,8 +854,8 @@ export default function TeaMaker() {
                       {str === "Light"
                         ? "Subtle & Airy"
                         : str === "Balanced"
-                        ? "Classic & Pure"
-                        : "Deep & Intense"}
+                          ? "Classic & Pure"
+                          : "Deep & Intense"}
                     </span>
                   </button>
                 ))}
@@ -1260,12 +1234,12 @@ export default function TeaMaker() {
                     {brewingSubStage === "heating"
                       ? "WARMING WATER & LEAVES"
                       : brewingSubStage === "adding-tea"
-                      ? "ADDING WHOLE TEA LEAVES"
-                      : brewingSubStage === "infusing-ingredients"
-                      ? "ADDING SELECTED INGREDIENTS"
-                      : brewingSubStage === "steeping"
-                      ? (isTimerPaused ? "STEEPING PAUSED" : "ACTIVE STEEPING COUNTDOWN")
-                      : "POURING FRESH TEA"}
+                        ? "ADDING WHOLE TEA LEAVES"
+                        : brewingSubStage === "infusing-ingredients"
+                          ? "ADDING SELECTED INGREDIENTS"
+                          : brewingSubStage === "steeping"
+                            ? (isTimerPaused ? "STEEPING PAUSED" : "ACTIVE STEEPING COUNTDOWN")
+                            : "POURING FRESH TEA"}
                   </span>
 
                   <div className="tm-timer-display-clock" aria-live="polite">
@@ -1421,20 +1395,6 @@ export default function TeaMaker() {
             </Link>
           </div>
 
-          <div style={{ padding: "20px", background: "rgba(255, 255, 255, 0.7)", borderRadius: "10px", border: "1px solid rgba(201, 162, 75, 0.2)" }}>
-            <h3 style={{ fontSize: "17px", margin: "0 0 8px", color: "#0b2b1e" }}>⚪ White Tea Brewing</h3>
-            <p style={{ fontSize: "13px", color: "#4b5563", margin: "0 0 10px", lineHeight: 1.5 }}>
-              Unopened Silver Tips and gently dried tender buds require gentle warmth to release their silken floral sweetness.
-            </p>
-            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px", fontSize: "13px", color: "#0b2b1e", lineHeight: 1.8 }}>
-              <li><strong>Water Temp:</strong> 70°C – 75°C</li>
-              <li><strong>Steeping Time:</strong> 3 – 4 minutes</li>
-              <li><strong>Leaf Ratio:</strong> 2.5g per 200ml water</li>
-            </ul>
-            <Link to="/collections/white-tea" style={{ fontSize: "13px", color: "#0b2b1e", fontWeight: 600, textDecoration: "underline" }}>
-              Explore White Teas →
-            </Link>
-          </div>
 
           <div style={{ padding: "20px", background: "rgba(255, 255, 255, 0.7)", borderRadius: "10px", border: "1px solid rgba(201, 162, 75, 0.2)" }}>
             <h3 style={{ fontSize: "17px", margin: "0 0 8px", color: "#0b2b1e" }}>🍂 Black Tea Brewing</h3>

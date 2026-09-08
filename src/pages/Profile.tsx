@@ -124,7 +124,7 @@ const initialNotifications: NotificationPreferences = {
 const recommendationItems: RecommendationItem[] = [
   {
     id: 1,
-    name: "Himalayan Green Tea",
+    name: "Natural Green Tea",
     category: "Green Tea",
     price: "₹699",
     image: image2,
@@ -132,14 +132,14 @@ const recommendationItems: RecommendationItem[] = [
   {
     id: 2,
     name: "Golden Dusk Black Tea + Chamomile",
-    category: "White Tea",
+    category: "Black Tea",
     price: "₹899",
     image: image3,
   },
   {
     id: 3,
-    name: "Artisan Oolong",
-    category: "Oolong",
+    name: "Premium Oolong Black Tea",
+    category: "Oolong Tea",
     price: "₹999",
     image: image5,
   },

@@ -8,10 +8,10 @@ import "./Footer.css";
 const shopLinks = [
   { label: "All Teas", href: "/shop" },
   { label: "Teaware Gear", href: "/teaware" },
-  { label: "Green Tea", href: "/tea-collections" },
-  { label: "White Tea", href: "/tea-collections" },
-  { label: "Black Tea", href: "/tea-collections" },
-  { label: "Oolong Tea", href: "/tea-collections" },
+  { label: "Natural Green Tea", href: "/tea-collections" },
+  { label: "Golden Dusk Black Tea + Chamomile", href: "/tea-collections" },
+  { label: "Premium Oolong Black Tea", href: "/tea-collections" },
+  { label: "Red Oolong Tea", href: "/tea-collections" },
 ];
 
 const exploreLinks = [

@@ -46,7 +46,7 @@ const FAQ_DATA: FaqItem[] = [
     id: "brew-1",
     category: "Brewing & Tea Maker",
     question: "Can I re-steep whole leaf teas multiple times?",
-    answer: "Yes! High-altitude orthodox whole leaves are crafted for multiple infusions. Delicate green and white teas can be steeped 2 to 3 times, while high-mountain oolongs and select single-estate black teas can yield 4 to 6 sublime steepings, evolving with subtle new notes each time."
+    answer: "Yes! High-altitude orthodox whole leaves are crafted for multiple infusions. Delicate green teas can be steeped 2 to 3 times, while high-mountain oolongs and select single-estate black teas can yield 4 to 6 sublime steepings, evolving with subtle new notes each time."
   },
   {
     id: "brew-2",
@@ -57,8 +57,8 @@ const FAQ_DATA: FaqItem[] = [
   {
     id: "brew-3",
     category: "Brewing & Tea Maker",
-    question: "What water temperature should I use for green and white teas?",
-    answer: "Delicate green and white teas should never be brewed with boiling water, which can scald tender buds and release harsh tannins. We recommend 75°C–80°C for White & Green teas, 85°C–90°C for Oolongs, and 95°C–100°C for robust Black teas."
+    question: "What water temperature should I use for delicate green teas?",
+    answer: "Delicate green teas should never be brewed with boiling water, which can scald tender buds and release harsh tannins. We recommend 75°C–80°C for Green teas, 85°C–90°C for Oolongs, and 95°C–100°C for robust Black teas."
   },
 
   // Orders & Tracking

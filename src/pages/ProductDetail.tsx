@@ -378,7 +378,7 @@ export default function ProductDetail() {
               ? `${teawareItem?.material} · ${teawareItem?.category}`
               : isHamper
               ? "Luxury Gift Sets · Estate Curations"
-              : `${product.origin} · ${product.category} Tea`}
+              : `${product.origin} · ${product.category.replace(/\s+Tea$/i, '')} Tea`}
           </p>
 
           <h1 className="pdp-name">{product.name}</h1>
@@ -677,8 +677,11 @@ export default function ProductDetail() {
       }}>
         <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", fontSize: "14px", fontWeight: 500 }}>
           {!isTeaware && (
-            <Link to={`/collections/${product.category.toLowerCase()}-tea`} style={{ color: "#0b2b1e", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-              <span>🍃</span> Explore {product.category} Tea Collection →
+            <Link
+              to={`/collections/${product.category === "Green Tea" ? "green-tea" : product.category === "Black Tea" ? "black-tea" : "oolong-tea"}`}
+              style={{ color: "#0b2b1e", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              <span>🍃</span> Explore {product.category} Collection →
             </Link>
           )}
           <Link to="/tea-maker" style={{ color: "#0b2b1e", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}>

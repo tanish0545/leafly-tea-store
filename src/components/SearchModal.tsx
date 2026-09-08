@@ -10,13 +10,13 @@ interface SearchModalProps {
 }
 
 const POPULAR_SEARCHES = [
-  "Green Tea",
+  "Natural Green Tea",
   "Oolong",
-  "White Tea",
-  "Black Tea",
+  "Golden Dusk Black Tea + Chamomile",
+  "Premium Oolong Black Tea",
+  "Red Oolong",
   "Assam",
   "Darjeeling",
-  "Himalayan",
   "Infuser",
 ];
 
@@ -206,7 +206,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
             <div className="leafly-search-empty">
               <div className="leafly-search-empty-icon">🍃</div>
               <h3>No harvests found for "{query}"</h3>
-              <p>Try searching for "Green Tea", "Darjeeling", "Oolong", or "White Tea".</p>
+              <p>Try searching for "Green Tea", "Black Tea", "Oolong", or "Darjeeling".</p>
               <div className="leafly-search-tags leafly-search-tags-center">
                 {POPULAR_SEARCHES.slice(0, 4).map((tag) => (
                   <button

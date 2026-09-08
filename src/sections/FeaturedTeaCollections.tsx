@@ -3,7 +3,7 @@ import "./FeaturedTeaCollections.css";
 
 const teas = [
   {
-    name: "Green Tea",
+    name: "Natural Green Tea",
     category: "01 · SIGNATURE COLLECTION",
     subtitle: "FRESH & LUCATE",
     description:
@@ -11,15 +11,15 @@ const teas = [
     image: "/leafly-green-tea.webp",
   },
   {
-    name: "White Tea",
+    name: "Golden Dusk Black Tea + Chamomile",
     category: "02 · DELICATE COLLECTION",
     subtitle: "PURE & DELICATE",
     description:
-      "Lightly handled leaves with an elegant, subtle character. Soft floral notes and a refined finish make this a beautifully gentle tea.",
+      "Golden Dusk combines the warmth of black tea with the gentle, soothing fragrance of chamomile. A comforting brew perfect for unwinding in the evening.",
     image: "/leafly-white-tea.webp",
   },
   {
-    name: "Black Tea",
+    name: "Premium Oolong Black Tea",
     category: "03 · CLASSIC COLLECTION",
     subtitle: "RICH & BOLD",
     description:
@@ -27,7 +27,7 @@ const teas = [
     image: "/leafly-black-tea.webp",
   },
   {
-    name: "Oolong Tea",
+    name: "Red Oolong Tea",
     category: "04 · ARTISAN COLLECTION",
     subtitle: "COMPLEX & REFINED",
     description:

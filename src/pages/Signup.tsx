@@ -9,10 +9,8 @@ import "./Signup.css";
 
 const TEA_OPTIONS = [
   "Green Tea",
-  "White Tea",
   "Black Tea",
   "Oolong Tea",
-  "Herbal / Botanical",
 ];
 
 export default function Signup() {

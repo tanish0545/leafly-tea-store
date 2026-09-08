@@ -18,7 +18,7 @@ export default function Home() {
     <div className="leafly-app">
       <SEO
         title="Leafly — Premium Single-Origin Indian Teas & Brewing Rituals"
-        description="Discover rare single-origin Darjeeling, Assam, and Himalayan loose leaf green teas, black teas, white teas, and oolongs. Experience mindful brewing rituals and bespoke tea gifting."
+        description="Discover rare single-origin Darjeeling and Assam loose leaf green teas, black teas, and oolong teas. Experience mindful brewing rituals and bespoke tea gifting."
         canonicalPath="/"
         schema={homeSchemas}
       />

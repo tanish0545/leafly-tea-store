@@ -11,6 +11,7 @@ import {
   getProductAvailableVariants,
   AVAILABLE_BENEFITS,
   SUPPORTED_WEIGHT_KEYS,
+  normalizeTeaCategory,
 } from "../data/products";
 import { useProducts } from "../context/ProductContext";
 import Footer from "../components/Footer";
@@ -24,13 +25,12 @@ const BENEFIT_OPTIONS = AVAILABLE_BENEFITS;
 
 const WEIGHT_OPTIONS = SUPPORTED_WEIGHT_KEYS;
 
-const ORIGIN_OPTIONS = ["Darjeeling", "Assam", "Nilgiri", "Other"];
+const ORIGIN_OPTIONS = ["Darjeeling", "Assam"];
 
 const TEA_TYPES = [
-  { label: "Green Tea", value: "Green" },
-  { label: "White Tea", value: "White" },
-  { label: "Black Tea", value: "Black" },
-  { label: "Oolong Tea", value: "Oolong" },
+  { label: "Green Tea", value: "Green Tea" },
+  { label: "Black Tea", value: "Black Tea" },
+  { label: "Oolong Tea", value: "Oolong Tea" },
 ];
 
 const CAFFEINE_LEVELS = ["Low", "Medium", "High"];
@@ -59,7 +59,11 @@ export default function Shop() {
   const [selectedTeaTypes, setSelectedTeaTypes] = useState<string[]>(() => {
     if (categoryParam) {
       const match = TEA_TYPES.find(
-        (t) => t.value.toLowerCase() === categoryParam.toLowerCase() || t.label.toLowerCase() === categoryParam.toLowerCase()
+        (t) =>
+          t.value.toLowerCase() === categoryParam.toLowerCase() ||
+          t.label.toLowerCase() === categoryParam.toLowerCase() ||
+          t.value.toLowerCase().startsWith(categoryParam.toLowerCase()) ||
+          categoryParam.toLowerCase().startsWith(t.value.toLowerCase().replace(/ tea$/, ""))
       );
       if (match) return [match.value];
     }
@@ -102,7 +106,11 @@ export default function Shop() {
   useEffect(() => {
     if (categoryParam) {
       const match = TEA_TYPES.find(
-        (t) => t.value.toLowerCase() === categoryParam.toLowerCase() || t.label.toLowerCase() === categoryParam.toLowerCase()
+        (t) =>
+          t.value.toLowerCase() === categoryParam.toLowerCase() ||
+          t.label.toLowerCase() === categoryParam.toLowerCase() ||
+          t.value.toLowerCase().startsWith(categoryParam.toLowerCase()) ||
+          categoryParam.toLowerCase().startsWith(t.value.toLowerCase().replace(/ tea$/, ""))
       );
       if (match) {
         setSelectedTeaTypes([match.value]);
@@ -150,15 +158,13 @@ export default function Shop() {
   const counts = useMemo(() => {
     const teaTypeCounts: Record<string, number> = {};
     TEA_TYPES.forEach((t) => {
-      teaTypeCounts[t.value] = products.filter((p) => p.category === t.value).length;
+      teaTypeCounts[t.value] = products.filter((p) => normalizeTeaCategory(p.category) === t.value).length;
     });
 
-    const originCounts: Record<string, number> = {
-      Darjeeling: products.filter((p) => p.origin === "Darjeeling").length,
-      Assam: products.filter((p) => p.origin === "Assam").length,
-      Nilgiri: products.filter((p) => p.origin === "Nilgiri").length,
-      Other: products.filter((p) => !["Darjeeling", "Assam", "Nilgiri"].includes(p.origin)).length,
-    };
+    const originCounts: Record<string, number> = {};
+    ORIGIN_OPTIONS.forEach((o) => {
+      originCounts[o] = products.filter((p) => p.origin === o).length;
+    });
 
     const caffeineCounts: Record<string, number> = {
       Low: products.filter((p) => p.caffeine === "Low").length,
@@ -207,7 +213,10 @@ export default function Shop() {
 
     // Tea types
     if (selectedTeaTypes.length > 0) {
-      result = result.filter((item) => selectedTeaTypes.includes(item.category));
+      result = result.filter((item) => {
+        const itemCat = normalizeTeaCategory(item.category);
+        return selectedTeaTypes.some((selected) => normalizeTeaCategory(selected) === itemCat);
+      });
     }
 
     // Origins
@@ -338,12 +347,10 @@ export default function Shop() {
   const quickPills = [
     { label: "All Teas", type: "all" },
     { label: "Green Tea", type: "teaType", value: "Green" },
-    { label: "White Tea", type: "teaType", value: "White" },
     { label: "Black Tea", type: "teaType", value: "Black" },
     { label: "Oolong Tea", type: "teaType", value: "Oolong" },
-    { label: "Assam Tea", type: "origin", value: "Assam" },
     { label: "Darjeeling", type: "origin", value: "Darjeeling" },
-    { label: "Low Caffeine", type: "caffeine", value: "Low" },
+    { label: "Assam", type: "origin", value: "Assam" }
   ];
 
   const handleQuickPill = (pill: (typeof quickPills)[0]) => {
@@ -614,7 +621,7 @@ export default function Shop() {
     <main className="leafly-shop-page">
       <SEO
         title="Shop Premium Loose Leaf Teas | Single Origin Tea Collection | Leafly"
-        description="Explore single-origin loose leaf green tea, black tea, white tea, and artisan oolong from Darjeeling and Assam. Handcrafted small batches delivered fresh across India."
+        description="Explore single-origin loose leaf green tea, black tea, and oolong tea from Darjeeling and Assam. Handcrafted small batches delivered fresh across India."
         canonicalPath="/shop"
         schema={generateBreadcrumbSchema([
           { name: "Home", url: "/" },
@@ -946,8 +953,8 @@ export default function Shop() {
                 const badgeClass = !inStock
                   ? "badge-out-of-stock"
                   : product.badge
-                  ? `badge-${product.badge.toLowerCase().replace(/\s+/g, "-")}`
-                  : "badge-standard";
+                    ? `badge-${product.badge.toLowerCase().replace(/\s+/g, "-")}`
+                    : "badge-standard";
 
                 return (
                   <article
@@ -1006,7 +1013,7 @@ export default function Shop() {
                     {/* CARD CONTENT */}
                     <div className="card-body">
                       <p className="card-origin-category">
-                        {product.origin.toUpperCase()} · {product.category.toUpperCase()} TEA
+                        {product.origin.toUpperCase()} · {product.category.toUpperCase().replace(/\s+TEA$/, '')} TEA
                       </p>
 
                       <h3
@@ -1194,7 +1201,7 @@ export default function Shop() {
             </div>
             <div className="shop-trust-info">
               <strong>Free Shipping</strong>
-              <p>On orders above ₹999</p>
+              <p>On orders above ₹99</p>
             </div>
           </div>
 

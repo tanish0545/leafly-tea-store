@@ -1,6 +1,5 @@
-/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { products as initialProducts, type Product, calculate25gPrice, calculate25gOldPrice } from "../data/products";
+import { products as initialProducts, type Product, type TeaCategory, normalizeTeaCategory, calculate25gPrice, calculate25gOldPrice } from "../data/products";
 import { db, auth } from "../lib/firebase";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch } from "firebase/firestore";
 
@@ -174,19 +173,44 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
             delete variants[dKey];
           }
 
-          // Ensure product 2 always has its official updated name
-          const isTargetProduct2 =
-            String(parsedId) === "2" ||
-            data.name === "Silver Tips White Tea" ||
-            data.name === "White Tea";
-          const productName = isTargetProduct2
-            ? "Golden Dusk Black Tea + Chamomile"
-            : (data.name || fallbackInitial?.name || "");
+          // Canonical metadata enforcement for the 4 Leafly tea products
+          const idStr = String(parsedId);
+          let productName = data.name || fallbackInitial?.name || "";
+          const nameLower = productName.toLowerCase().trim();
+
+          if (
+            nameLower === "white tea" ||
+            nameLower === "golden dusk" ||
+            nameLower === "golden dusk + chamomile" ||
+            nameLower === "golden dusk chamomile" ||
+            nameLower === "chamomile white" ||
+            (idStr === "2" && (!data.name || nameLower.includes("golden dusk") || nameLower.includes("white tea")))
+          ) {
+            productName = "Golden Dusk Black Tea + Chamomile";
+          } else if (idStr === "1" && !data.name) {
+            productName = "Natural Green Tea";
+          } else if (idStr === "3" && !data.name) {
+            productName = "Premium Oolong Black Tea";
+          } else if (idStr === "4" && !data.name) {
+            productName = "Red Oolong Tea";
+          }
+
+          // Category normalization: normalize whatever category is in data/fallback
+          let productCategory: TeaCategory = normalizeTeaCategory(data.category || fallbackInitial?.category);
+
+          // If product 2 in Firestore had old "White" or "White Tea" category, ensure it's Black Tea
+          if (idStr === "2" && (!data.category || data.category.toLowerCase().includes("white") || data.category.toLowerCase().includes("dusk"))) {
+            productCategory = "Black Tea";
+          }
+
+          let productOrigin = data.origin || fallbackInitial?.origin || "Darjeeling";
 
           fetchedProducts.push({
             ...data,
             id: parsedId,
             name: productName,
+            category: productCategory,
+            origin: productOrigin,
             price: Number(data.price) || 0,
             oldPrice: data.oldPrice ? Number(data.oldPrice) : undefined,
             stock,
@@ -198,15 +222,20 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           });
         });
 
+        // Filter out obsolete/extra mock items so Leafly maintains exactly the 4 products
+        const validIds = ["1", "2", "3", "4"];
+        const canonicalProducts = fetchedProducts.filter((p) => validIds.includes(String(p.id)));
+        const finalProductsList = canonicalProducts.length === 4 ? canonicalProducts : fetchedProducts;
+
         // Sort by ID to maintain consistent catalog order
-        fetchedProducts.sort((a, b) => {
+        finalProductsList.sort((a, b) => {
           const numA = Number(a.id);
           const numB = Number(b.id);
           if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
           return String(a.id).localeCompare(String(b.id));
         });
 
-        setProducts(fetchedProducts);
+        setProducts(finalProductsList);
         setLoading(false);
       },
       (error) => {

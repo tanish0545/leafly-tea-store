@@ -33,36 +33,25 @@ const collections: TeaCollection[] = [
     image: "/leafly-green-tea.webp",
   },
   {
-    id: "white",
-    name: "White Tea",
-    subtitle: "Delicate · Silken · Quiet",
+    id: "black",
+    name: "Black Tea",
+    subtitle: "Bold · Deep · Golden Dusk",
     description:
-      "The gentlest expression of the leaf. Soft, floral and beautifully restrained for slower rituals.",
-    character: "Floral & delicate",
-    caffeine: "Low",
+      "Rich, comforting black teas with soothing chamomile warmth, deep character and a smooth evening finish.",
+    character: "Bold & comforting",
+    caffeine: "Medium",
     origin: "Darjeeling",
     image: "/leafly-white-tea.webp",
   },
   {
-    id: "black",
-    name: "Black Tea",
-    subtitle: "Bold · Deep · Classic",
-    description:
-      "Full-bodied teas with depth, warmth and structure. A timeless choice for the morning ritual.",
-    character: "Bold & malty",
-    caffeine: "High",
-    origin: "Assam",
-    image: "/leafly-black-tea.webp",
-  },
-  {
     id: "oolong",
-    name: "Oolong",
+    name: "Oolong Tea",
     subtitle: "Complex · Aromatic · Layered",
     description:
-      "Partially oxidised teas that sit beautifully between green and black, revealing layer after layer.",
+      "Partially oxidised artisan harvests including Red Oolong and premium Darjeeling selections.",
     character: "Floral & layered",
     caffeine: "Medium",
-    origin: "Darjeeling",
+    origin: "Darjeeling & Assam",
     image: "/leafly-oolong-tea.webp",
   },
 ];
@@ -78,11 +67,6 @@ const collectionSeoData: Record<string, { title: string; description: string; ca
     description: "Shop bold, full-bodied premium black teas online from Assam and Darjeeling estates. Rich malty depth and golden tips crafted for purposeful morning rituals.",
     canonical: "/collections/black-tea",
   },
-  white: {
-    title: "Premium White Tea Online | Delicate Silver Tips & Reserve | Leafly",
-    description: "Explore exquisite single-origin white teas online. Pure unopened Silver Tips and gentle sun-dried leaves with silken texture and floral sweetness.",
-    canonical: "/collections/white-tea",
-  },
   oolong: {
     title: "Premium Oolong Tea Online | Artisan Handcrafted Leaves | Leafly",
     description: "Discover artisan semi-oxidized oolong tea online from Leafly. Complex orchid fragrance, honeyed roasted finish, and multi-steep depth.",
@@ -93,7 +77,7 @@ const collectionSeoData: Record<string, { title: string; description: string; ca
 function parseCategoryParam(param?: string): string {
   if (!param) return "green";
   const clean = param.toLowerCase().replace(/-tea$/, "").trim();
-  if (["green", "white", "black", "oolong"].includes(clean)) {
+  if (["green", "black", "oolong"].includes(clean)) {
     return clean;
   }
   return "green";
@@ -216,7 +200,7 @@ export default function TeaCollections() {
           </p>
 
           <h2>
-            Four expressions
+            Three expressions
             <br />
             of the leaf.
           </h2>
@@ -342,7 +326,7 @@ export default function TeaCollections() {
               type="button"
               className="collection-explore-button"
               onClick={() =>
-                navigate(`/shop?category=${encodeURIComponent(active.name.replace(/ Tea$/i, ""))}`)
+                navigate(`/shop?category=${encodeURIComponent(active.name)}`)
               }
             >
               EXPLORE THIS COLLECTION
@@ -411,7 +395,7 @@ export default function TeaCollections() {
               <span className="ritual-rec-label">Recommended:</span>
               <div className="ritual-rec-tags">
                 <span className="ritual-tag">Green Tea</span>
-                <span className="ritual-tag">White Tea</span>
+                <span className="ritual-tag">Oolong Tea</span>
               </div>
             </div>
 
@@ -444,15 +428,15 @@ export default function TeaCollections() {
             </h3>
 
             <p>
-              Silken white and oolong teas
+              Soothing black and gentle oolong teas
               for quieter afternoons.
             </p>
 
             <div className="ritual-recommendation">
               <span className="ritual-rec-label">Recommended:</span>
               <div className="ritual-rec-tags">
-                <span className="ritual-tag">White Tea</span>
-                <span className="ritual-tag">Oolong</span>
+                <span className="ritual-tag">Black Tea</span>
+                <span className="ritual-tag">Oolong Tea</span>
               </div>
             </div>
 
@@ -493,7 +477,7 @@ export default function TeaCollections() {
               <span className="ritual-rec-label">Recommended:</span>
               <div className="ritual-rec-tags">
                 <span className="ritual-tag">Black Tea</span>
-                <span className="ritual-tag">Oolong</span>
+                <span className="ritual-tag">Oolong Tea</span>
               </div>
             </div>
 
@@ -547,7 +531,7 @@ export default function TeaCollections() {
 
         <div className="collections-product-grid">
 
-          {products.slice(0, 3).map(
+          {products.slice(0, 4).map(
             (product) => {
               const isAdded = addedId === product.id;
               const inStock = isProductInStock(product);
@@ -606,8 +590,8 @@ export default function TeaCollections() {
                           !inStock
                             ? "collection-add-button disabled"
                             : isAdded
-                            ? "collection-add-button added"
-                            : "collection-add-button"
+                              ? "collection-add-button added"
+                              : "collection-add-button"
                         }
                         disabled={!inStock}
                         onClick={() =>
@@ -619,8 +603,8 @@ export default function TeaCollections() {
                         {!inStock
                           ? "OUT OF STOCK"
                           : isAdded
-                          ? "ADDED ✓"
-                          : "ADD TO CART"}
+                            ? "ADDED ✓"
+                            : "ADD TO CART"}
                       </button>
 
                     </div>

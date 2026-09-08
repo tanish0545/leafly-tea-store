@@ -5,7 +5,7 @@ import { useProducts } from "../context/ProductContext";
 import { useTeaware } from "../context/TeawareContext";
 import { useGifting } from "../context/GiftingContext";
 import { useCoupons, type UserCoupon } from "../context/CouponContext";
-import { products as initialProducts, type Product, type TeaCategory, AVAILABLE_BENEFITS, calculate25gPrice, calculate25gOldPrice } from "../data/products";
+import { products as initialProducts, type Product, type TeaCategory, normalizeTeaCategory, AVAILABLE_BENEFITS, calculate25gPrice, calculate25gOldPrice } from "../data/products";
 import { type TeawareItem, type TeawareCategory } from "../data/teaware";
 import { type GiftHamper } from "../data/gifting";
 import { useAuth } from "../context/AuthContext";
@@ -435,7 +435,7 @@ export default function AdminDashboard() {
   const handleAddNewClick = () => {
     setCurrentProduct({
       name: "",
-      category: "Green",
+      category: "Green Tea",
       origin: "",
       caffeine: "Medium",
       weight: "100g",
@@ -983,7 +983,7 @@ export default function AdminDashboard() {
 
       const matchesCat =
         productFilterCategory === "all" ||
-        p.category.toLowerCase() === productFilterCategory.toLowerCase();
+        normalizeTeaCategory(p.category).toLowerCase() === normalizeTeaCategory(productFilterCategory).toLowerCase();
 
       return matchesSearch && matchesCat;
     });
@@ -1916,10 +1916,9 @@ export default function AdminDashboard() {
                     className="toolbar-select"
                   >
                     <option value="all">All Tea Types</option>
-                    <option value="Green">Green Tea</option>
-                    <option value="White">White Tea</option>
-                    <option value="Black">Black Tea</option>
-                    <option value="Oolong">Oolong Tea</option>
+                    <option value="Green Tea">Green Tea</option>
+                    <option value="Black Tea">Black Tea</option>
+                    <option value="Oolong Tea">Oolong Tea</option>
                   </select>
                 </div>
               </div>
@@ -2118,14 +2117,12 @@ export default function AdminDashboard() {
                   <div className="form-group">
                     <label>Category</label>
                     <select
-                      value={currentProduct.category || "Green"}
+                      value={currentProduct.category || "Green Tea"}
                       onChange={e => setCurrentProduct({ ...currentProduct, category: e.target.value as TeaCategory })}
                     >
-                      <option value="Green">Green Tea</option>
-                      <option value="White">White Tea</option>
-                      <option value="Black">Black Tea</option>
-                      <option value="Oolong">Oolong Tea</option>
-                      <option value="Teaware">Teaware</option>
+                      <option value="Green Tea">Green Tea</option>
+                      <option value="Black Tea">Black Tea</option>
+                      <option value="Oolong Tea">Oolong Tea</option>
                     </select>
                   </div>
 
