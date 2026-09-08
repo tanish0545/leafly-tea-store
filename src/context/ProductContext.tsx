@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { products as initialProducts, type Product } from "../data/products";
+import { products as initialProducts, type Product, calculate25gPrice, calculate25gOldPrice } from "../data/products";
 import { db, auth } from "../lib/firebase";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch } from "firebase/firestore";
 
@@ -24,6 +24,29 @@ function sanitizeProductPayload(product: Product): Record<string, unknown> {
         }
       } else if (key === "inStock") {
         clean[key] = Boolean(value);
+      } else if (key === "benefits") {
+        clean[key] = Array.isArray(value) ? [...value] : [];
+      } else if (key === "disabledVariants") {
+        clean[key] = Array.isArray(value) ? [...value] : [];
+      } else if (key === "variants" && value !== null && typeof value === "object" && !Array.isArray(value)) {
+        const cleanVariants: Record<string, unknown> = {};
+        for (const [vKey, vVal] of Object.entries(value as Record<string, unknown>)) {
+          if (vVal && typeof vVal === "object" && !Array.isArray(vVal)) {
+            const vObj = vVal as Record<string, unknown>;
+            const variantEntry: Record<string, unknown> = {
+              weight: (vObj.weight as string) || vKey,
+              price: Number(vObj.price) || 0,
+            };
+            if (vObj.oldPrice !== undefined && vObj.oldPrice !== null && vObj.oldPrice !== "") {
+              const numOld = Number(vObj.oldPrice);
+              if (!isNaN(numOld) && numOld > 0) {
+                variantEntry.oldPrice = numOld;
+              }
+            }
+            cleanVariants[vKey] = variantEntry;
+          }
+        }
+        clean[key] = cleanVariants;
       } else if (value !== null && typeof value === "object" && !Array.isArray(value)) {
         clean[key] = { ...value };
       } else {
@@ -94,6 +117,62 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
             Array.isArray(data.images) && data.images.length > 0
               ? data.images
               : fallbackInitial?.images || (data.image ? [data.image] : []);
+          const benefits =
+            Array.isArray(data.benefits)
+              ? data.benefits
+              : fallbackInitial?.benefits || [];
+
+          const disabledVariants = Array.isArray(data.disabledVariants)
+            ? data.disabledVariants
+            : (fallbackInitial?.disabledVariants || []);
+
+          const variants: Record<string, { weight: string; price: number; oldPrice?: number }> = {};
+          if (data.variants && typeof data.variants === "object" && !Array.isArray(data.variants)) {
+            for (const [vk, vv] of Object.entries(data.variants)) {
+              if (vv && typeof vv === "object") {
+                const vObj = vv as Record<string, unknown>;
+                const pNum = Number(vObj.price);
+                if (!isNaN(pNum)) {
+                  const vOldNum = vObj.oldPrice !== undefined && vObj.oldPrice !== null ? Number(vObj.oldPrice) : undefined;
+                  variants[vk] = {
+                    weight: (vObj.weight as string) || vk,
+                    price: pNum,
+                    ...(vOldNum !== undefined && !isNaN(vOldNum) && vOldNum > 0 ? { oldPrice: vOldNum } : {}),
+                  };
+                }
+              }
+            }
+          } else if (fallbackInitial?.variants) {
+            for (const [vk, vv] of Object.entries(fallbackInitial.variants)) {
+              if (vv) {
+                variants[vk] = {
+                  weight: vv.weight || vk,
+                  price: Number(vv.price) || 0,
+                  ...(vv.oldPrice ? { oldPrice: Number(vv.oldPrice) } : {}),
+                };
+              }
+            }
+          }
+
+          // If 25g is not present in variants and not explicitly disabled, calculate proportional 25g price from 50g
+          if (!variants["25g"] && !disabledVariants.includes("25g")) {
+            if (fallbackInitial?.variants?.["25g"]) {
+              variants["25g"] = { ...fallbackInitial.variants["25g"] };
+            } else if (variants["50g"]) {
+              const p50 = variants["50g"].price;
+              const old50 = variants["50g"].oldPrice;
+              variants["25g"] = {
+                weight: "25g",
+                price: calculate25gPrice(p50),
+                oldPrice: calculate25gOldPrice(old50),
+              };
+            }
+          }
+
+          // Enforce disabledVariants across all keys
+          for (const dKey of disabledVariants) {
+            delete variants[dKey];
+          }
 
           fetchedProducts.push({
             ...data,
@@ -103,6 +182,9 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
             stock,
             inStock,
             images,
+            benefits,
+            variants: variants as unknown as Product["variants"],
+            disabledVariants,
           });
         });
 
@@ -131,12 +213,16 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const addProduct = async (product: Product): Promise<{ success: boolean; error?: string }> => {
     try {
       const newId = product.id || Date.now();
-      const newProduct = {
+      const newProduct: Product = {
         ...product,
         id: newId,
         price: Number(product.price) || 0,
+        oldPrice: product.oldPrice ? Number(product.oldPrice) : undefined,
         stock: typeof product.stock === "number" ? product.stock : 10,
         inStock: product.inStock !== false && (typeof product.stock !== "number" || product.stock > 0),
+        benefits: Array.isArray(product.benefits) ? product.benefits : [],
+        disabledVariants: Array.isArray(product.disabledVariants) ? product.disabledVariants : [],
+        variants: product.variants || {},
       };
       const cleanPayload = sanitizeProductPayload(newProduct);
       await setDoc(doc(db, "products", String(newId)), cleanPayload);
@@ -161,10 +247,13 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         oldPrice: updatedProduct.oldPrice ? Number(updatedProduct.oldPrice) : undefined,
         stock,
         inStock,
+        benefits: Array.isArray(updatedProduct.benefits) ? updatedProduct.benefits : [],
+        disabledVariants: Array.isArray(updatedProduct.disabledVariants) ? updatedProduct.disabledVariants : [],
+        variants: updatedProduct.variants || {},
       };
 
       const cleanPayload = sanitizeProductPayload(normalizedProduct);
-      await setDoc(doc(db, "products", docId), cleanPayload, { merge: true });
+      await setDoc(doc(db, "products", docId), cleanPayload);
       setProducts((prev) =>
         prev.map((p) => (String(p.id) === docId ? normalizedProduct : p))
       );

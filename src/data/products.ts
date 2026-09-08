@@ -9,9 +9,9 @@ export type TeaCategory =
   | "Black"
   | "Oolong";
 
-export type ProductVariantKey = "50g" | "100g" | "250g" | "500g" | "1kg";
+export type ProductVariantKey = "25g" | "50g" | "100g" | "250g" | "500g" | "1kg";
 
-export const SUPPORTED_WEIGHT_KEYS: ProductVariantKey[] = ["50g", "100g", "250g", "500g", "1kg"];
+export const SUPPORTED_WEIGHT_KEYS: ProductVariantKey[] = ["25g", "50g", "100g", "250g", "500g", "1kg"];
 
 export type ProductVariant = {
   weight: ProductVariantKey | string;
@@ -42,7 +42,19 @@ export type Product = {
   stock?: number;
   inStock?: boolean;
   description?: string;
+  benefits?: string[];
+  disabledVariants?: string[];
 };
+
+export const AVAILABLE_BENEFITS = [
+  "Immunity",
+  "Relaxation",
+  "Weight Management",
+  "Better Focus",
+  "Antioxidant Rich",
+] as const;
+
+export type BenefitOption = (typeof AVAILABLE_BENEFITS)[number];
 
 export type AvailableVariant = {
   key: ProductVariantKey;
@@ -80,6 +92,32 @@ export function getProductAvailableVariants(
     ];
   }
   return list;
+}
+
+export function calculate25gPrice(price50: number): number {
+  if (!price50 || price50 <= 0) return 0;
+  const half = price50 * 0.5;
+  if (price50 % 10 === 9) {
+    return Math.round((price50 + 1) * 0.5);
+  }
+  const rounded10 = Math.round(half / 10) * 10;
+  if (Math.abs(rounded10 - half) <= 3) {
+    return rounded10;
+  }
+  return Math.round(half);
+}
+
+export function calculate25gOldPrice(oldPrice50?: number): number | undefined {
+  if (!oldPrice50 || oldPrice50 <= 0) return undefined;
+  if (oldPrice50 % 10 === 9) {
+    return Math.round((oldPrice50 + 1) * 0.5);
+  }
+  const half = oldPrice50 * 0.5;
+  const rounded10 = Math.round(half / 10) * 10;
+  if (Math.abs(rounded10 - half) <= 2) {
+    return rounded10;
+  }
+  return Math.round(half);
 }
 
 export function getProductImages(product?: { image?: string; images?: string[] } | null): string[] {
@@ -120,10 +158,13 @@ export const products: Product[] = [
     price: 699,
     oldPrice: 799,
     variants: {
+      "25g": { weight: "25g", price: 150, oldPrice: 205 },
+      "50g": { weight: "50g", price: 299, oldPrice: 410 },
       "100g": { weight: "100g", price: 699, oldPrice: 799 },
       "250g": { weight: "250g", price: 1549, oldPrice: 1799 },
     },
     badge: "Premium",
+    benefits: ["Antioxidant Rich", "Immunity", "Better Focus"],
     image: "/leafly-green-tea.webp",
     images: [
       "/leafly-green-tea.webp",
@@ -143,10 +184,13 @@ export const products: Product[] = [
     weight: "100g",
     price: 899,
     variants: {
+      "25g": { weight: "25g", price: 95, oldPrice: 192 },
+      "50g": { weight: "50g", price: 189, oldPrice: 384 },
       "100g": { weight: "100g", price: 899 },
       "250g": { weight: "250g", price: 1999, oldPrice: 2249 },
     },
     badge: "Popular",
+    benefits: ["Relaxation", "Antioxidant Rich", "Immunity"],
     image: "/leafly-white-tea.webp",
     images: [
       "/leafly-white-tea.webp",
@@ -167,10 +211,13 @@ export const products: Product[] = [
     price: 749,
     oldPrice: 849,
     variants: {
+      "25g": { weight: "25g", price: 200, oldPrice: 250 },
+      "50g": { weight: "50g", price: 399, oldPrice: 499 },
       "100g": { weight: "100g", price: 749, oldPrice: 849 },
       "250g": { weight: "250g", price: 1649, oldPrice: 1899 },
     },
     badge: "Bestseller",
+    benefits: ["Better Focus", "Antioxidant Rich"],
     image: "/leafly-black-tea.webp",
     images: [
       "/leafly-black-tea.webp",
@@ -190,10 +237,13 @@ export const products: Product[] = [
     weight: "100g",
     price: 999,
     variants: {
+      "25g": { weight: "25g", price: 300, oldPrice: 350 },
+      "50g": { weight: "50g", price: 599, oldPrice: 700 },
       "100g": { weight: "100g", price: 999 },
       "250g": { weight: "250g", price: 2199, oldPrice: 2499 },
     },
     badge: "Premium",
+    benefits: ["Weight Management", "Relaxation", "Antioxidant Rich"],
     image: "/leafly-oolong-tea.webp",
     images: [
       "/leafly-oolong-tea.webp",
@@ -213,10 +263,13 @@ export const products: Product[] = [
     weight: "100g",
     price: 649,
     variants: {
+      "25g": { weight: "25g", price: 180 },
+      "50g": { weight: "50g", price: 357 },
       "100g": { weight: "100g", price: 649 },
       "250g": { weight: "250g", price: 1429, oldPrice: 1629 },
     },
     badge: "Popular",
+    benefits: ["Better Focus", "Antioxidant Rich"],
     image: "/leafly-black-tea.webp",
     images: [
       "/leafly-black-tea.webp",
@@ -236,10 +289,13 @@ export const products: Product[] = [
     weight: "100g",
     price: 1199,
     variants: {
+      "25g": { weight: "25g", price: 330 },
+      "50g": { weight: "50g", price: 659 },
       "100g": { weight: "100g", price: 1199 },
       "250g": { weight: "250g", price: 2699, oldPrice: 2999 },
     },
     badge: "Premium",
+    benefits: ["Relaxation", "Immunity"],
     image: "/leafly-white-tea.webp",
     images: [
       "/leafly-white-tea.webp",
@@ -259,10 +315,13 @@ export const products: Product[] = [
     weight: "100g",
     price: 1099,
     variants: {
+      "25g": { weight: "25g", price: 300 },
+      "50g": { weight: "50g", price: 604 },
       "100g": { weight: "100g", price: 1099 },
       "250g": { weight: "250g", price: 2449, oldPrice: 2749 },
     },
     badge: "Bestseller",
+    benefits: ["Better Focus", "Antioxidant Rich"],
     image: "/leafly-black-tea.webp",
     images: [
       "/leafly-black-tea.webp",
@@ -283,10 +342,13 @@ export const products: Product[] = [
     price: 1299,
     oldPrice: 1499,
     variants: {
+      "25g": { weight: "25g", price: 360, oldPrice: 410 },
+      "50g": { weight: "50g", price: 714, oldPrice: 824 },
       "100g": { weight: "100g", price: 1299, oldPrice: 1499 },
       "250g": { weight: "250g", price: 2899, oldPrice: 3299 },
     },
     badge: "Premium",
+    benefits: ["Relaxation", "Weight Management", "Antioxidant Rich"],
     image: "/leafly-oolong-tea.webp",
     images: [
       "/leafly-oolong-tea.webp",

@@ -45,15 +45,13 @@
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    rgba(2, 20, 14, 0.94) 0%,
-    rgba(2, 20, 14, 0.88) 20%,
-    rgba(2, 20, 14, 0.72) 38%,
-    rgba(2, 20, 14, 0.42) 56%,
-    rgba(2, 20, 14, 0.14) 76%,
-    rgba(2, 20, 14, 0.04) 100%
-  );
+  background: linear-gradient(90deg,
+      rgba(2, 20, 14, 0.94) 0%,
+      rgba(2, 20, 14, 0.88) 20%,
+      rgba(2, 20, 14, 0.72) 38%,
+      rgba(2, 20, 14, 0.42) 56%,
+      rgba(2, 20, 14, 0.14) 76%,
+      rgba(2, 20, 14, 0.04) 100%);
 }
 
 .hero-vignette {
@@ -61,13 +59,11 @@
   inset: 0;
   z-index: 3;
   pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    rgba(1, 17, 17, 0.45) 0%,
-    transparent 22%,
-    transparent 78%,
-    rgba(1, 17, 17, 0.65) 100%
-  );
+  background: linear-gradient(to bottom,
+      rgba(1, 17, 17, 0.45) 0%,
+      transparent 22%,
+      transparent 78%,
+      rgba(1, 17, 17, 0.65) 100%);
 }
 
 /* =========================================================
@@ -109,7 +105,7 @@
   color: #f7f3ec;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(48px, 5.6vw, 90px);
-  font-weight: 400;
+  font-weight: 500;
   line-height: 0.94;
   letter-spacing: -2.8px;
   text-align: left;
@@ -298,10 +294,12 @@
     opacity: 1;
     transform: translate(-50%, 0);
   }
+
   60% {
     opacity: 0.2;
     transform: translate(-50%, 9px);
   }
+
   100% {
     opacity: 0;
     transform: translate(-50%, 0);
@@ -377,31 +375,25 @@
      - Crisp luminous clarity over the tea pouch and gold Leafly brand logo */
   .hero-overlay {
     background:
-      radial-gradient(
-        circle at 22% 18%,
+      radial-gradient(circle at 22% 18%,
         rgba(2, 20, 14, 0.94) 0%,
         rgba(2, 20, 14, 0.8) 42%,
         rgba(2, 20, 14, 0.22) 75%,
-        transparent 100%
-      ),
-      linear-gradient(
-        180deg,
+        transparent 100%),
+      linear-gradient(180deg,
         rgba(2, 20, 14, 0.9) 0%,
         rgba(2, 20, 14, 0.68) 32%,
         rgba(2, 20, 14, 0.08) 55%,
         rgba(2, 20, 14, 0.12) 82%,
-        rgba(2, 20, 14, 0.68) 100%
-      );
+        rgba(2, 20, 14, 0.68) 100%);
   }
 
   .hero-vignette {
-    background: linear-gradient(
-      to bottom,
-      rgba(1, 17, 17, 0.45) 0%,
-      transparent 18%,
-      transparent 76%,
-      rgba(1, 17, 17, 0.7) 100%
-    );
+    background: linear-gradient(to bottom,
+        rgba(1, 17, 17, 0.45) 0%,
+        transparent 18%,
+        transparent 76%,
+        rgba(1, 17, 17, 0.7) 100%);
   }
 
   /* Content wrapper: structured in upper portion with generous breathing room */

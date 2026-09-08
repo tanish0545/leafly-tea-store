@@ -534,6 +534,14 @@ export default function ProductDetail() {
                     {inStock ? "In Stock" : "Out of Stock"}
                   </strong>
                 </div>
+                <div className="pdp-spec">
+                  <span>BENEFITS</span>
+                  <strong style={{ fontSize: "13.5px", lineHeight: "1.35" }}>
+                    {Array.isArray(product.benefits) && product.benefits.length > 0
+                      ? product.benefits.join(" · ")
+                      : "Antioxidant Rich"}
+                  </strong>
+                </div>
               </>
             )}
           </div>

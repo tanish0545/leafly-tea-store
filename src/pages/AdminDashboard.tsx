@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation, useParams } from "react-router-dom";
 import { useProducts } from "../context/ProductContext";
 import { useTeaware } from "../context/TeawareContext";
 import { useGifting } from "../context/GiftingContext";
 import { useCoupons, type UserCoupon } from "../context/CouponContext";
-import { type Product, type TeaCategory } from "../data/products";
+import { products as initialProducts, type Product, type TeaCategory, AVAILABLE_BENEFITS, calculate25gPrice, calculate25gOldPrice } from "../data/products";
 import { type TeawareItem, type TeawareCategory } from "../data/teaware";
 import { type GiftHamper } from "../data/gifting";
 import { useAuth } from "../context/AuthContext";
@@ -43,17 +43,69 @@ export type ReviewItem = {
 
 type TabType = "dashboard" | "products" | "teaware" | "hampers" | "orders" | "accounts" | "coupons" | "reviews";
 
+const SECTION_TO_TAB: Record<string, TabType> = {
+  dashboard: "dashboard",
+  orders: "orders",
+  products: "products",
+  teaware: "teaware",
+  gifting: "hampers",
+  hampers: "hampers",
+  accounts: "accounts",
+  coupons: "coupons",
+  reviews: "reviews",
+};
+
+const TAB_TO_PATH: Record<TabType, string> = {
+  dashboard: "/admin/dashboard",
+  orders: "/admin/orders",
+  products: "/admin/products",
+  teaware: "/admin/teaware",
+  hampers: "/admin/gifting",
+  accounts: "/admin/accounts",
+  coupons: "/admin/coupons",
+  reviews: "/admin/reviews",
+};
+
+function parseTabFromUrl(pathSection?: string, pathname?: string): TabType {
+  const sec = (pathSection || "").trim().toLowerCase();
+  if (sec && SECTION_TO_TAB[sec]) {
+    return SECTION_TO_TAB[sec];
+  }
+  if (pathname) {
+    const match = pathname.match(/\/admin\/([a-z0-9_-]+)/i);
+    if (match && match[1]) {
+      const p = match[1].toLowerCase();
+      if (SECTION_TO_TAB[p]) return SECTION_TO_TAB[p];
+    }
+  }
+  return "dashboard";
+}
+
 export default function AdminDashboard() {
   const { products, updateProduct, addProduct, deleteProduct, loading: productsLoading } = useProducts();
   const { teaware, updateTeaware, addTeaware, deleteTeaware, loading: teawareLoading } = useTeaware();
   const { hampers, updateHamper, addHamper, deleteHamper, loading: hampersLoading } = useGifting();
   const { signOut, user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { section } = useParams<{ section?: string }>();
   const { globalCoupons, createGlobalCoupon, updateGlobalCoupon, deleteGlobalCoupon } = useCoupons();
 
-  // Navigation & UI States
-  const [activeTab, setActiveTab] = useState<TabType>("dashboard");
+  // Navigation & UI States: URL path is the source of truth
+  const [activeTab, setActiveTab] = useState<TabType>(() => parseTabFromUrl(section, window.location.pathname));
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Synchronize state when browser back/forward or URL changes
+  useEffect(() => {
+    const currentTab = parseTabFromUrl(section, location.pathname);
+    if (currentTab !== activeTab) {
+      setActiveTab(currentTab);
+      setIsEditing(false);
+      setIsEditingTeaware(false);
+      setIsEditingHamper(false);
+      setIsEditingCoupon(false);
+    }
+  }, [section, location.pathname, activeTab]);
 
   // Toast notification state
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
@@ -68,6 +120,7 @@ export default function AdminDashboard() {
   // Editing States
   const [isEditing, setIsEditing] = useState(false);
   const [currentProduct, setCurrentProduct] = useState<Partial<Product>>({});
+  const [customBenefitInput, setCustomBenefitInput] = useState("");
   const [isEditingTeaware, setIsEditingTeaware] = useState(false);
   const [currentTeaware, setCurrentTeaware] = useState<Partial<TeawareItem>>({});
   const [isEditingHamper, setIsEditingHamper] = useState(false);
@@ -294,6 +347,11 @@ export default function AdminDashboard() {
     setIsEditingHamper(false);
     setIsEditingCoupon(false);
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+
+    const targetPath = TAB_TO_PATH[tab] || `/admin/${tab}`;
+    if (location.pathname !== targetPath) {
+      navigate(targetPath);
+    }
   };
 
   // Ensure edit/create views always start cleanly at the top of the viewport
@@ -330,14 +388,45 @@ export default function AdminDashboard() {
       variants["250g"] = { weight: "250g", price: Math.round(rawPrice * 2.2), oldPrice: rawOldPrice ? Math.round(rawOldPrice * 2.2) : undefined };
     }
 
+    const disabledVars = Array.isArray(product.disabledVariants) ? [...product.disabledVariants] : [];
+    if (!variants["25g"] && !disabledVars.includes("25g")) {
+      const fallbackInitial = initialProducts.find(
+        (p) => String(p.id) === String(product.id) || p.name.toLowerCase() === (product.name || "").toLowerCase()
+      );
+      if (fallbackInitial?.variants?.["25g"]) {
+        const p25 = Number(fallbackInitial.variants["25g"].price) || 0;
+        const old25 = fallbackInitial.variants["25g"].oldPrice ? Number(fallbackInitial.variants["25g"].oldPrice) : undefined;
+        variants["25g"] = {
+          weight: "25g",
+          price: p25,
+          ...(old25 !== undefined && old25 > 0 ? { oldPrice: old25 } : {}),
+        };
+      } else {
+        const p50 = variants["50g"]?.price || Math.round(rawPrice * 0.55);
+        const old50 = variants["50g"]?.oldPrice;
+        const p25 = calculate25gPrice(p50);
+        const old25 = calculate25gOldPrice(old50);
+        variants["25g"] = {
+          weight: "25g",
+          price: p25,
+          ...(old25 !== undefined && old25 > 0 ? { oldPrice: old25 } : {}),
+        };
+      }
+    } else if (disabledVars.includes("25g") && variants["25g"]) {
+      delete variants["25g"];
+    }
+
     setCurrentProduct({
       ...product,
       price: rawPrice,
       oldPrice: rawOldPrice,
       stock,
       inStock,
+      benefits: Array.isArray(product.benefits) ? [...product.benefits] : [],
+      disabledVariants: disabledVars,
       variants: variants as unknown as Product["variants"],
     });
+    setCustomBenefitInput("");
     savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditing(true);
@@ -356,11 +445,15 @@ export default function AdminDashboard() {
       stock: 10,
       inStock: true,
       customTag: { text: "", color: "#38a169" },
+      benefits: [],
       variants: {
+        "25g": { weight: "25g", price: 0 },
+        "50g": { weight: "50g", price: 0 },
         "100g": { weight: "100g", price: 0 },
         "250g": { weight: "250g", price: 0 }
       }
     });
+    setCustomBenefitInput("");
     savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setIsEditing(true);
@@ -390,6 +483,7 @@ export default function AdminDashboard() {
       badge: currentProduct.badge || "",
       rating: currentProduct.rating ?? 4.9,
       reviewCount: currentProduct.reviewCount ?? 120,
+      benefits: Array.isArray(currentProduct.benefits) ? currentProduct.benefits : [],
     } as Product;
 
     // Preserve and synchronize only selected variants
@@ -398,39 +492,54 @@ export default function AdminDashboard() {
       for (const [vKey, vData] of Object.entries(currentProduct.variants)) {
         if (vData && typeof vData === "object" && "price" in vData) {
           const vPrice = Number(vData.price) || 0;
-          const vOldPrice = vData.oldPrice ? Number(vData.oldPrice) : undefined;
-          newVariants[vKey] = {
+          const vOldPrice = vData.oldPrice !== undefined && vData.oldPrice !== null ? Number(vData.oldPrice) : undefined;
+          const entry: { weight: string; price: number; oldPrice?: number } = {
             weight: vData.weight || vKey,
             price: vPrice,
-            oldPrice: vOldPrice,
           };
+          if (vOldPrice !== undefined && !isNaN(vOldPrice) && vOldPrice > 0) {
+            entry.oldPrice = vOldPrice;
+          }
+          newVariants[vKey] = entry;
         }
       }
     }
     // If no variants were checked, fallback to 100g
     if (Object.keys(newVariants).length === 0) {
-      newVariants["100g"] = {
+      const fallbackEntry: { weight: string; price: number; oldPrice?: number } = {
         weight: "100g",
         price: basePrice,
-        oldPrice: baseOldPrice,
       };
+      if (baseOldPrice !== undefined && !isNaN(baseOldPrice) && baseOldPrice > 0) {
+        fallbackEntry.oldPrice = baseOldPrice;
+      }
+      newVariants["100g"] = fallbackEntry;
     }
 
     // Synchronize base price with 100g or first enabled variant
     if (newVariants["100g"]) {
       cleanProduct.price = newVariants["100g"].price;
-      cleanProduct.oldPrice = newVariants["100g"].oldPrice;
+      if (newVariants["100g"].oldPrice) {
+        cleanProduct.oldPrice = newVariants["100g"].oldPrice;
+      } else {
+        delete cleanProduct.oldPrice;
+      }
       cleanProduct.weight = "100g";
     } else {
       const firstKey = Object.keys(newVariants)[0];
       if (firstKey) {
         cleanProduct.price = newVariants[firstKey].price;
-        cleanProduct.oldPrice = newVariants[firstKey].oldPrice;
+        if (newVariants[firstKey].oldPrice) {
+          cleanProduct.oldPrice = newVariants[firstKey].oldPrice;
+        } else {
+          delete cleanProduct.oldPrice;
+        }
         cleanProduct.weight = firstKey;
       }
     }
 
     cleanProduct.variants = newVariants as unknown as Product["variants"];
+    cleanProduct.disabledVariants = (["25g", "50g", "100g", "250g", "500g", "1kg"] as const).filter(k => !newVariants[k]);
 
     let res: { success: boolean; error?: string };
     if (currentProduct.id) {
@@ -2168,11 +2277,13 @@ export default function AdminDashboard() {
                   <p className="form-help-text">Select which package weights are offered and configure custom pricing per variant:</p>
 
                   <div className="variants-container">
-                    {(["50g", "100g", "250g", "500g", "1kg"] as const).map(vKey => {
+                    {(["25g", "50g", "100g", "250g", "500g", "1kg"] as const).map(vKey => {
                       const isSelected = !!currentProduct.variants?.[vKey];
                       const calcDefaultPrice = (key: string, base: number) => {
+                        const p50 = currentProduct.variants?.["50g"]?.price || Math.round(base * 0.55);
                         switch (key) {
-                          case "50g": return Math.round(base * 0.55);
+                          case "25g": return calculate25gPrice(p50);
+                          case "50g": return p50;
                           case "100g": return base;
                           case "250g": return Math.round(base * 2.2);
                           case "500g": return Math.round(base * 4);
@@ -2182,8 +2293,10 @@ export default function AdminDashboard() {
                       };
                       const calcDefaultOldPrice = (key: string, baseOld?: number) => {
                         if (!baseOld) return undefined;
+                        const old50 = currentProduct.variants?.["50g"]?.oldPrice || Math.round(baseOld * 0.55);
                         switch (key) {
-                          case "50g": return Math.round(baseOld * 0.55);
+                          case "25g": return calculate25gOldPrice(old50);
+                          case "50g": return old50;
                           case "100g": return baseOld;
                           case "250g": return Math.round(baseOld * 2.2);
                           case "500g": return Math.round(baseOld * 4);
@@ -2206,15 +2319,31 @@ export default function AdminDashboard() {
                               onChange={(e) => {
                                 const newVars = { ...currentProduct.variants };
                                 if (e.target.checked) {
-                                  newVars[vKey] = {
+                                  const defPrice = variantData.price || calcDefaultPrice(vKey, currentProduct.price || 0);
+                                  const defOld = variantData.oldPrice ?? calcDefaultOldPrice(vKey, currentProduct.oldPrice);
+                                  const entry: { weight: string; price: number; oldPrice?: number } = {
                                     weight: vKey,
-                                    price: variantData.price || calcDefaultPrice(vKey, currentProduct.price || 0),
-                                    oldPrice: variantData.oldPrice ?? calcDefaultOldPrice(vKey, currentProduct.oldPrice),
+                                    price: Number(defPrice) || 0,
                                   };
+                                  if (defOld !== undefined && defOld !== null && !isNaN(Number(defOld)) && Number(defOld) > 0) {
+                                    entry.oldPrice = Number(defOld);
+                                  }
+                                  newVars[vKey] = entry;
+                                  const updatedDisabled = (currentProduct.disabledVariants || []).filter(d => d !== vKey);
+                                  setCurrentProduct({
+                                    ...currentProduct,
+                                    variants: newVars as unknown as Product["variants"],
+                                    disabledVariants: updatedDisabled,
+                                  });
                                 } else {
                                   delete newVars[vKey];
+                                  const updatedDisabled = Array.from(new Set([...(currentProduct.disabledVariants || []), vKey]));
+                                  setCurrentProduct({
+                                    ...currentProduct,
+                                    variants: newVars as unknown as Product["variants"],
+                                    disabledVariants: updatedDisabled,
+                                  });
                                 }
-                                setCurrentProduct({ ...currentProduct, variants: newVars as unknown as Product["variants"] });
                               }}
                             />
                             <strong>{vKey}</strong>
@@ -2248,12 +2377,23 @@ export default function AdminDashboard() {
                                   placeholder="Optional"
                                   onChange={(e) => {
                                     const newVars = { ...currentProduct.variants };
-                                    const val = Number(e.target.value);
-                                    newVars[vKey] = { ...variantData, oldPrice: val || undefined };
-                                    if (!val) delete newVars[vKey].oldPrice;
+                                    const rawVal = e.target.value;
+                                    const val = rawVal === "" ? undefined : Number(rawVal);
+                                    const entry: { weight: string; price: number; oldPrice?: number } = {
+                                      weight: variantData.weight || vKey,
+                                      price: variantData.price || 0,
+                                    };
+                                    if (val !== undefined && !isNaN(val) && val > 0) {
+                                      entry.oldPrice = val;
+                                    }
+                                    newVars[vKey] = entry;
                                     const updatedProduct = { ...currentProduct, variants: newVars as unknown as Product["variants"] };
                                     if (vKey === "100g") {
-                                      updatedProduct.oldPrice = val || undefined;
+                                      if (val !== undefined && !isNaN(val) && val > 0) {
+                                        updatedProduct.oldPrice = val;
+                                      } else {
+                                        delete updatedProduct.oldPrice;
+                                      }
                                     }
                                     setCurrentProduct(updatedProduct);
                                   }}
@@ -2264,6 +2404,90 @@ export default function AdminDashboard() {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Tea Benefits</label>
+                  <p className="form-help-text">Select key attributes and wellness benefits for this blend (connected directly to Shop filters):</p>
+
+                  <div className="admin-benefits-grid">
+                    {Array.from(new Set([...AVAILABLE_BENEFITS, ...(Array.isArray(currentProduct.benefits) ? currentProduct.benefits : [])])).map((benefitName) => {
+                      const isSelected = Array.isArray(currentProduct.benefits) && currentProduct.benefits.includes(benefitName);
+                      return (
+                        <label
+                          key={benefitName}
+                          className={`admin-benefit-card ${isSelected ? "selected" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              const currentList = Array.isArray(currentProduct.benefits) ? [...currentProduct.benefits] : [];
+                              if (e.target.checked) {
+                                if (!currentList.includes(benefitName)) {
+                                  setCurrentProduct({
+                                    ...currentProduct,
+                                    benefits: [...currentList, benefitName],
+                                  });
+                                }
+                              } else {
+                                setCurrentProduct({
+                                  ...currentProduct,
+                                  benefits: currentList.filter((b) => b !== benefitName),
+                                });
+                              }
+                            }}
+                          />
+                          <span>{benefitName}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="admin-add-benefit-row">
+                    <input
+                      type="text"
+                      placeholder="Add custom benefit..."
+                      value={customBenefitInput}
+                      onChange={(e) => setCustomBenefitInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const val = customBenefitInput.trim();
+                          if (val) {
+                            const currentList = Array.isArray(currentProduct.benefits) ? [...currentProduct.benefits] : [];
+                            if (!currentList.includes(val)) {
+                              setCurrentProduct({
+                                ...currentProduct,
+                                benefits: [...currentList, val],
+                              });
+                            }
+                            setCustomBenefitInput("");
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="admin-btn-secondary"
+                      style={{ padding: "7px 14px", fontSize: "12.5px" }}
+                      onClick={() => {
+                        const val = customBenefitInput.trim();
+                        if (val) {
+                          const currentList = Array.isArray(currentProduct.benefits) ? [...currentProduct.benefits] : [];
+                          if (!currentList.includes(val)) {
+                            setCurrentProduct({
+                              ...currentProduct,
+                              benefits: [...currentList, val],
+                            });
+                          }
+                          setCustomBenefitInput("");
+                        }
+                      }}
+                    >
+                      + Add Benefit
+                    </button>
                   </div>
                 </div>
 

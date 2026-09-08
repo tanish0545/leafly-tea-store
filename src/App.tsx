@@ -125,6 +125,7 @@ function App() {
                             <Route path="/freshness" element={<FreshnessGuarantee />} />
                             <Route path="/faqs" element={<FAQs />} />
                             <Route path="/faq" element={<FAQs />} />
+                            <Route path="/admin/login" element={<AdminLogin />} />
                             <Route
                               path="/admin"
                               element={
@@ -133,7 +134,14 @@ function App() {
                                 </AdminRoute>
                               }
                             />
-                            <Route path="/admin/login" element={<AdminLogin />} />
+                            <Route
+                              path="/admin/:section"
+                              element={
+                                <AdminRoute>
+                                  <AdminDashboard />
+                                </AdminRoute>
+                              }
+                            />
                             <Route path="*" element={<NotFound />} />
                           </Routes>
                         </Suspense>

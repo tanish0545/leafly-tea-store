@@ -58,7 +58,7 @@ export type TeaCategory =
   | "Herbal"
   | "Teaware";
 
-export type ProductVariantKey = "50g" | "100g" | "250g" | "500g" | "1kg";
+export type ProductVariantKey = "25g" | "50g" | "100g" | "250g" | "500g" | "1kg";
 
 export interface ProductVariant {
   weight: string;
@@ -83,6 +83,8 @@ export interface Product {
   variants?: Record<string, ProductVariant> | unknown[];
   rating?: number;
   reviewCount?: number;
+  benefits?: string[];
+  disabledVariants?: string[];
 }
 
 // ==========================================

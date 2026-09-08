@@ -1839,6 +1839,72 @@
   outline: none;
 }
 
+/* Benefits Management Grid */
+.admin-benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.admin-benefit-card {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-border-subtle);
+  background: #faf7f0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--admin-text-main);
+  transition: all 180ms ease;
+  user-select: none;
+}
+
+.admin-benefit-card:hover {
+  border-color: var(--admin-gold);
+  background: #ffffff;
+}
+
+.admin-benefit-card.selected {
+  background: #ffffff;
+  border-color: var(--admin-gold);
+  box-shadow: 0 2px 8px rgba(201, 162, 75, 0.12);
+  color: #0b2b1e;
+}
+
+.admin-benefit-card input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #0b2b1e;
+  cursor: pointer;
+  margin: 0;
+}
+
+.admin-add-benefit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.admin-add-benefit-row input {
+  max-width: 280px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--admin-border-subtle);
+  font-size: 13px;
+  outline: none;
+  background: #ffffff;
+  color: var(--admin-text-main);
+}
+
+.admin-add-benefit-row input:focus {
+  border-color: var(--admin-gold);
+}
+
 .form-actions-footer {
   display: flex;
   align-items: center;

@@ -30,8 +30,8 @@
   --leafly-text-3xl: 36px;
   --leafly-text-display: 48px;
 
-  --font-display: Georgia, "Times New Roman", serif;
-  --font-body: Inter, Arial, sans-serif;
+  --font-display: "Canela", "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: "Inter", "Sofia Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
   /* Corner Radii */
   --leafly-radius-sm: 8px;

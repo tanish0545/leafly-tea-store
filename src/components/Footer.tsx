@@ -108,9 +108,9 @@ export default function Footer() {
             </p>
 
             <h2>
-              First Flushes &
+              First Flush &
               <br />
-              Mountain Stories
+              Second Flush
             </h2>
 
             <p className="leafly-footer-newsletter-text">

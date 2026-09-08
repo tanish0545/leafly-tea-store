@@ -17,7 +17,7 @@ export default function Hero() {
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            video.play().catch(() => {});
+            video.play().catch(() => { });
           } else {
             video.pause();
           }
@@ -81,7 +81,10 @@ export default function Hero() {
             <br />
             <span>of Luxury.</span>
           </h1>
-
+          <br>
+          </br>
+          <br>
+          </br>
           {/* Description */}
 
           <p className="hero-description">

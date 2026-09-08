@@ -70,7 +70,8 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
       const matchCategory = product.category?.toLowerCase().includes(trimmed);
       const matchOrigin = product.origin?.toLowerCase().includes(trimmed);
       const matchDesc = product.description?.toLowerCase().includes(trimmed);
-      return matchName || matchCategory || matchOrigin || matchDesc;
+      const matchBenefits = Array.isArray(product.benefits) && product.benefits.some(b => b.toLowerCase().includes(trimmed));
+      return matchName || matchCategory || matchOrigin || matchDesc || matchBenefits;
     });
   }, [products, query]);
 
