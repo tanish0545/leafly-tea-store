@@ -136,7 +136,7 @@
   line-height: 1.1;
   letter-spacing: -0.5px;
   transform: none;
-  text-shadow: 0 2px 14px rgba(11, 43, 30, 0.45);
+  text-shadow: 0 2px 14px white (11, 43, 30, 0.45);
   user-select: none;
   pointer-events: none;
   text-align: left;
