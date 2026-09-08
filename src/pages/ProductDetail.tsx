@@ -99,7 +99,13 @@ export default function ProductDetail() {
           inStock: hamperItem.inStock !== false && (typeof hamperItem.stock !== "number" || hamperItem.stock > 0),
         }
       : products.find(
-          (p) => getProductSlug(p) === identifier || String(p.id) === identifier
+          (p) =>
+            getProductSlug(p) === identifier ||
+            String(p.id) === identifier ||
+            (String(p.id) === "2" &&
+              (identifier === "white-tea" ||
+                identifier === "silver-tips-white-tea" ||
+                identifier === "golden-dusk-black-tea-chamomile"))
         ) ||
         (teawareItem
           ? {

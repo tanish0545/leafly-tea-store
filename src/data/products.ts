@@ -177,7 +177,7 @@ export const products: Product[] = [
   },
   {
     id: 2,
-    name: "Silver Tips White Tea",
+    name: "Golden Dusk Black Tea + Chamomile",
     category: "White",
     origin: "Darjeeling",
     caffeine: "Low",

@@ -174,9 +174,19 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
             delete variants[dKey];
           }
 
+          // Ensure product 2 always has its official updated name
+          const isTargetProduct2 =
+            String(parsedId) === "2" ||
+            data.name === "Silver Tips White Tea" ||
+            data.name === "White Tea";
+          const productName = isTargetProduct2
+            ? "Golden Dusk Black Tea + Chamomile"
+            : (data.name || fallbackInitial?.name || "");
+
           fetchedProducts.push({
             ...data,
             id: parsedId,
+            name: productName,
             price: Number(data.price) || 0,
             oldPrice: data.oldPrice ? Number(data.oldPrice) : undefined,
             stock,

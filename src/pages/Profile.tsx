@@ -131,7 +131,7 @@ const recommendationItems: RecommendationItem[] = [
   },
   {
     id: 2,
-    name: "Silver Tips White Tea",
+    name: "Golden Dusk Black Tea + Chamomile",
     category: "White Tea",
     price: "₹899",
     image: image3,
