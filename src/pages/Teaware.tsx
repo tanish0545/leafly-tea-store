@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { type TeawareCategory, type TeawareItem } from "../data/teaware";
 import { useTeaware } from "../context/TeawareContext";
+import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { getProductSlug } from "../data/products";
 import Footer from "../components/Footer";
@@ -20,6 +21,7 @@ const categories: Array<"All Teaware" | TeawareCategory> = [
 export default function Teaware() {
   const navigate = useNavigate();
   const { teaware } = useTeaware();
+  const { addToCart, items, increaseQuantity, decreaseQuantity, openCart } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
 
   const [category, setCategory] = useState<"All Teaware" | TeawareCategory>("All Teaware");
@@ -77,6 +79,33 @@ export default function Teaware() {
     setSortBy("Featured Collection");
   };
 
+  const handleAddTeaware = (item: TeawareItem, qty = 1) => {
+    if (item.isActive === false) return;
+    addToCart(
+      {
+        id: item.id,
+        name: item.name,
+        category: "teaware",
+        origin: item.material || "Artisan Craft",
+        caffeine: "Teaware",
+        weight: item.capacity || "1 Unit",
+        price: Number(item.price) || 0,
+        oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
+        badge: item.badge || "Artisan",
+        image: item.image,
+        stock: typeof item.stock === "number" ? item.stock : 10,
+        inStock: item.inStock !== false && (typeof item.stock !== "number" || item.stock > 0),
+        material: item.material,
+        capacity: item.capacity,
+        features: item.features,
+      },
+      qty,
+      item.capacity || "Standard",
+      Number(item.price) || 0,
+      item.oldPrice ? Number(item.oldPrice) : undefined
+    );
+  };
+
   const toggleWishlist = (item: TeawareItem) => {
     const isWishlisted = isInWishlist(item.id);
     if (isWishlisted) {
@@ -85,15 +114,15 @@ export default function Teaware() {
       addToWishlist({
         id: item.id,
         name: item.name,
-        category: item.category,
-        origin: item.material,
+        category: "teaware",
+        origin: item.material || "Artisan Craft",
         caffeine: "Teaware",
         weight: item.capacity || "1 Unit",
-        price: item.price,
-        oldPrice: item.oldPrice,
+        price: Number(item.price) || 0,
+        oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
         badge: item.badge || "",
         image: item.image,
-        inStock: item.inStock !== false,
+        inStock: item.inStock !== false && (typeof item.stock !== "number" || item.stock > 0),
         stock: typeof item.stock === "number" ? item.stock : 10,
       });
     }
@@ -206,10 +235,19 @@ export default function Teaware() {
         <div className="teaware-product-grid">
           {filteredProducts.map((item, index) => {
             const isWishlisted = isInWishlist(item.id);
-            const isAvailable = item.inStock !== false && typeof item.stock === "number" && item.stock > 0;
+            const isComingSoon = item.isActive === false;
+            const isOutOfStock = !isComingSoon && (item.inStock === false || (typeof item.stock === "number" && item.stock <= 0));
+            const isAvailable = !isComingSoon && !isOutOfStock;
+            const cartItem = items.find(
+              (i) =>
+                i.product.id === item.id ||
+                i.id === `tw-${item.id}` ||
+                i.id === `${item.id}`
+            );
+            const currentQty = cartItem?.quantity || 0;
 
             return (
-              <article className={`teaware-card ${isAvailable ? "" : "teaware-coming-soon-card"}`} key={item.id}>
+              <article className={`teaware-card ${isAvailable ? "" : "teaware-out-of-stock-card"}`} key={item.id}>
                 {/* PRODUCT IMAGE */}
                 <div
                   className="teaware-image-wrap"
@@ -220,14 +258,26 @@ export default function Teaware() {
                     src={item.image}
                     alt={`Leafly ${item.name}`}
                     className="teaware-image"
-                    loading={index < 4 ? "eager" : "lazy"}
+                    loading={index < 2 ? "eager" : "lazy"}
                     decoding="async"
-                    {...(index < 2 ? { fetchPriority: "high" as const } : {})}
+                    width={600}
+                    height={600}
+                    {...(index < 2 ? { fetchPriority: "high" as const } : { fetchPriority: "low" as const })}
                   />
 
-                  <span className="teaware-badge coming-soon">
-                    {item.badge ? `${item.badge} · COMING SOON` : "COMING SOON"}
-                  </span>
+                  {isComingSoon ? (
+                    <span className="teaware-badge coming-soon">
+                      COMING SOON
+                    </span>
+                  ) : item.badge ? (
+                    <span className="teaware-badge">
+                      {item.badge}
+                    </span>
+                  ) : isOutOfStock ? (
+                    <span className="teaware-badge out-of-stock">
+                      OUT OF STOCK
+                    </span>
+                  ) : null}
 
                   <button
                     type="button"
@@ -249,8 +299,8 @@ export default function Teaware() {
                     <p className="teaware-meta">
                       {item.material} · {item.category}
                     </p>
-                    <span className="teaware-stock-pill out-of-stock">
-                      Coming Soon
+                    <span className={`teaware-stock-pill ${isComingSoon ? "coming-soon" : isAvailable ? "in-stock" : "out-of-stock"}`}>
+                      {isComingSoon ? "Coming Soon" : isAvailable ? "In Stock" : "Out of Stock"}
                     </span>
                   </div>
 
@@ -287,14 +337,58 @@ export default function Teaware() {
                       VIEW DETAILS
                     </button>
 
-                    <button
-                      type="button"
-                      className="teaware-add-btn disabled coming-soon"
-                      disabled={true}
-                      aria-label={`${item.name} is coming soon`}
-                    >
-                      COMING SOON
-                    </button>
+                    {isComingSoon ? (
+                      <span className="teaware-coming-soon-badge-btn" aria-label={`${item.name} is coming soon`}>
+                        COMING SOON ✦
+                      </span>
+                    ) : !isAvailable ? (
+                      <button
+                        type="button"
+                        className="teaware-add-btn disabled"
+                        disabled={true}
+                        aria-label={`${item.name} is out of stock`}
+                      >
+                        OUT OF STOCK
+                      </button>
+                    ) : currentQty > 0 ? (
+                      <div className="teaware-qty-stepper" aria-label={`Quantity in cart: ${currentQty}`}>
+                        <button
+                          type="button"
+                          className="teaware-qty-btn"
+                          aria-label="Decrease quantity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (cartItem) decreaseQuantity(cartItem.id);
+                          }}
+                        >
+                          −
+                        </button>
+                        <span className="teaware-qty-value">{currentQty}</span>
+                        <button
+                          type="button"
+                          className="teaware-qty-btn"
+                          aria-label="Increase quantity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (cartItem) increaseQuantity(cartItem.id);
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="teaware-add-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAddTeaware(item);
+                        }}
+                        aria-label={`Add ${item.name} to cart`}
+                      >
+                        ADD TO CART 🛒
+                      </button>
+                    )}
                   </div>
                 </div>
               </article>
@@ -308,6 +402,16 @@ export default function Teaware() {
           ===================================================== */}
       {selectedItem && (() => {
         const liveSelectedItem = teaware.find((t) => String(t.id) === String(selectedItem.id)) || selectedItem;
+        const isModalComingSoon = liveSelectedItem.isActive === false;
+        const isModalOutOfStock = !isModalComingSoon && (liveSelectedItem.inStock === false || (typeof liveSelectedItem.stock === "number" && liveSelectedItem.stock <= 0));
+        const isModalAvailable = !isModalComingSoon && !isModalOutOfStock;
+        const modalCartItem = items.find(
+          (i) =>
+            i.product.id === liveSelectedItem.id ||
+            i.id === `tw-${liveSelectedItem.id}` ||
+            i.id === `${liveSelectedItem.id}`
+        );
+        const modalQty = modalCartItem?.quantity || 0;
 
         return (
           <div
@@ -342,8 +446,8 @@ export default function Teaware() {
               </div>
 
               <div className="teaware-modal-info">
-                <span className="teaware-badge coming-soon">
-                  COMING SOON
+                <span className={`teaware-badge ${isModalComingSoon ? "coming-soon" : isModalAvailable ? "" : "out-of-stock"}`}>
+                  {isModalComingSoon ? "COMING SOON" : liveSelectedItem.badge || (isModalAvailable ? "Artisan Edition" : "Out of Stock")}
                 </span>
 
                 <p className="teaware-meta">
@@ -357,8 +461,8 @@ export default function Teaware() {
                   {liveSelectedItem.oldPrice && liveSelectedItem.oldPrice > liveSelectedItem.price && (
                     <span className="teaware-modal-old-price">₹{Number(liveSelectedItem.oldPrice).toLocaleString("en-IN")}</span>
                   )}
-                  <span className="teaware-stock-pill coming-soon">
-                    Coming Soon
+                  <span className={`teaware-stock-pill ${isModalComingSoon ? "coming-soon" : isModalAvailable ? "in-stock" : "out-of-stock"}`}>
+                    {isModalComingSoon ? "Coming Soon" : isModalAvailable ? "In Stock" : "Out of Stock"}
                   </span>
                 </div>
 
@@ -377,14 +481,65 @@ export default function Teaware() {
                 </div>
 
                 <div className="teaware-modal-actions">
-                  <button
-                    type="button"
-                    className="teaware-modal-add-btn disabled coming-soon"
-                    disabled={true}
-                    aria-label={`${liveSelectedItem.name} is coming soon`}
-                  >
-                    COMING SOON
-                  </button>
+                  {isModalComingSoon ? (
+                    <div className="teaware-modal-coming-soon-banner">
+                      <span>✦</span> COMING SOON — PRE-LAUNCH SHOWCASE
+                    </div>
+                  ) : !isModalAvailable ? (
+                    <button
+                      type="button"
+                      className="teaware-modal-add-btn disabled"
+                      disabled={true}
+                      aria-label={`${liveSelectedItem.name} is out of stock`}
+                    >
+                      OUT OF STOCK
+                    </button>
+                  ) : modalQty > 0 ? (
+                    <div style={{ display: "flex", gap: "12px", alignItems: "center", width: "100%" }}>
+                      <div className="teaware-qty-stepper teaware-modal-stepper" aria-label={`Quantity in cart: ${modalQty}`}>
+                        <button
+                          type="button"
+                          className="teaware-qty-btn"
+                          aria-label="Decrease quantity"
+                          onClick={() => {
+                            if (modalCartItem) decreaseQuantity(modalCartItem.id);
+                          }}
+                        >
+                          −
+                        </button>
+                        <span className="teaware-qty-value">{modalQty}</span>
+                        <button
+                          type="button"
+                          className="teaware-qty-btn"
+                          aria-label="Increase quantity"
+                          onClick={() => {
+                            if (modalCartItem) increaseQuantity(modalCartItem.id);
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        className="teaware-modal-add-btn"
+                        onClick={() => {
+                          setSelectedItem(null);
+                          openCart();
+                        }}
+                      >
+                        VIEW CART 🛒
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="teaware-modal-add-btn"
+                      onClick={() => handleAddTeaware(liveSelectedItem)}
+                      aria-label={`Add ${liveSelectedItem.name} to cart`}
+                    >
+                      ADD TO CART 🛒
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

@@ -7,6 +7,7 @@ import { useWishlist } from "../context/WishlistContext";
 import PhoneInput from "../components/PhoneInput";
 import SEO from "../components/SEO";
 import { generateBreadcrumbSchema } from "../lib/seoData";
+import { useAuth } from "../context/AuthContext";
 import { ApiService } from "../lib/apiClient";
 import { getProductSlug } from "../data/products";
 import "./GiftingPage.css";
@@ -54,17 +55,33 @@ export default function GiftingPage() {
     };
   }, []);
 
+  const { currentUser, firebaseUser } = useAuth();
+  const authEmail = currentUser?.email || firebaseUser?.email || "";
+  const authName = currentUser?.displayName || currentUser?.name || firebaseUser?.displayName || "";
+  const authPhone = currentUser?.phone || currentUser?.phoneNumber || firebaseUser?.phoneNumber || "";
+
   const [enquirySent, setEnquirySent] = useState(false);
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
+  const [formData, setFormData] = useState(() => ({
+    name: authName,
+    email: authEmail,
+    phone: authPhone,
     quantity: "25-50",
     message: "",
-  });
+  }));
+
+  useEffect(() => {
+    if (authEmail || authName || authPhone) {
+      setFormData((prev) => ({
+        ...prev,
+        name: prev.name || authName,
+        email: prev.email || authEmail,
+        phone: prev.phone || authPhone,
+      }));
+    }
+  }, [authEmail, authName, authPhone]);
 
   const toggleWishlist = (hamper: GiftHamper) => {
     if (isInWishlist(hamper.id)) {
@@ -73,7 +90,7 @@ export default function GiftingPage() {
       addToWishlist({
         id: hamper.id,
         name: hamper.name,
-        category: "Gifting",
+        category: "gifting",
         origin: "Curated Estate Blend",
         caffeine: "Varied",
         weight: "Gift Box",
@@ -99,16 +116,19 @@ export default function GiftingPage() {
         price: Number(hamper.price) || 0,
         oldPrice: hamper.oldPrice ? Number(hamper.oldPrice) : undefined,
         image: hamper.image,
-        category: "Luxury Gift Sets",
+        category: "gifting",
+        subCategory: hamper.category || "Luxury Gift Sets",
         origin: "Curated Estate Blend",
         caffeine: "Varied",
         weight: "Gift Box",
         badge: hamper.badge || "GIFT",
         stock,
         inStock: true,
+        includes: hamper.includes,
+        features: hamper.features,
       },
       1,
-      "100g",
+      "Gift Box",
       Number(hamper.price) || 0,
       hamper.oldPrice ? Number(hamper.oldPrice) : undefined
     );
@@ -146,7 +166,13 @@ export default function GiftingPage() {
       if (res.success) {
         setReferenceId(res.referenceId || null);
         setEnquirySent(true);
-        setFormData({ name: "", email: "", phone: "", quantity: "25-50", message: "" });
+        setFormData({
+          name: authName,
+          email: authEmail,
+          phone: authPhone,
+          quantity: "25-50",
+          message: "",
+        });
       } else {
         setFormError(res.error || "We couldn't submit your inquiry right now. Please try again.");
       }
@@ -248,6 +274,7 @@ export default function GiftingPage() {
 
               const cartItem = items.find(
                 (cItem) =>
+                  cItem.id === `gh-${hamper.id}-Gift Box` ||
                   cItem.id === `gh-${hamper.id}-100g` ||
                   cItem.id === `${hamper.id}-100g` ||
                   String(cItem.product.id) === String(hamper.id)
@@ -264,9 +291,11 @@ export default function GiftingPage() {
                     <img
                       src={hamper.image}
                       alt={hamper.name}
-                      loading={index < 3 ? "eager" : "lazy"}
+                      loading={index < 2 ? "eager" : "lazy"}
                       decoding="async"
-                      {...(index === 0 ? { fetchPriority: "high" as const } : {})}
+                      width={600}
+                      height={600}
+                      {...(index === 0 ? { fetchPriority: "high" as const } : { fetchPriority: "low" as const })}
                     />
                     {hamper.badge && (
                       <span className="gifting-hamper-badge">{hamper.badge}</span>
@@ -448,13 +477,15 @@ export default function GiftingPage() {
 
                   <div className="gifting-form-row">
                     <label className="gifting-field">
-                      <span>Email Address *</span>
+                      <span>Email Address * {authEmail ? <span style={{ fontSize: "11px", color: "#a87d22", fontWeight: 600 }}>✦ Verified Account</span> : null}</span>
                       <input
                         type="email"
                         required
                         placeholder="priya@company.com"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        readOnly={Boolean(authEmail)}
+                        style={authEmail ? { backgroundColor: "#f3efe6", cursor: "not-allowed" } : undefined}
                       />
                     </label>
                     <PhoneInput

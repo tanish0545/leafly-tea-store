@@ -25,7 +25,7 @@ const BENEFIT_OPTIONS = AVAILABLE_BENEFITS;
 
 const WEIGHT_OPTIONS = SUPPORTED_WEIGHT_KEYS;
 
-const ORIGIN_OPTIONS = ["Darjeeling", "Assam"];
+const ORIGIN_OPTIONS = ["Darjeeling"];
 
 const TEA_TYPES = [
   { label: "Green Tea", value: "Green Tea" },
@@ -37,7 +37,10 @@ const CAFFEINE_LEVELS = ["Low", "Medium", "High"];
 
 export default function Shop() {
   const navigate = useNavigate();
-  const { products } = useProducts();
+  const { products: allProducts } = useProducts();
+  const products = useMemo(() => {
+    return allProducts.filter((p) => p.category !== "teaware" && p.category !== "gifting");
+  }, [allProducts]);
 
   const {
     items,
@@ -154,27 +157,35 @@ export default function Shop() {
     }
   }, [selectedProduct, isMobileFilterOpen]);
 
+  // Base tea-only products (strictly excluding teaware and gifting categories and soft-deleted items)
+  const teaOnlyProducts = useMemo(() => {
+    return products.filter((p) => {
+      const cat = (p.category || "").toLowerCase();
+      return cat !== "teaware" && cat !== "gifting" && !p.isRemoved;
+    });
+  }, [products]);
+
   // Dynamic filter count calculations
   const counts = useMemo(() => {
     const teaTypeCounts: Record<string, number> = {};
     TEA_TYPES.forEach((t) => {
-      teaTypeCounts[t.value] = products.filter((p) => normalizeTeaCategory(p.category) === t.value).length;
+      teaTypeCounts[t.value] = teaOnlyProducts.filter((p) => normalizeTeaCategory(p.category) === t.value).length;
     });
 
     const originCounts: Record<string, number> = {};
     ORIGIN_OPTIONS.forEach((o) => {
-      originCounts[o] = products.filter((p) => p.origin === o).length;
+      originCounts[o] = teaOnlyProducts.filter((p) => p.origin === o).length;
     });
 
     const caffeineCounts: Record<string, number> = {
-      Low: products.filter((p) => p.caffeine === "Low").length,
-      Medium: products.filter((p) => p.caffeine === "Medium").length,
-      High: products.filter((p) => p.caffeine === "High").length,
+      Low: teaOnlyProducts.filter((p) => p.caffeine === "Low").length,
+      Medium: teaOnlyProducts.filter((p) => p.caffeine === "Medium").length,
+      High: teaOnlyProducts.filter((p) => p.caffeine === "High").length,
     };
 
     const weightCounts: Record<string, number> = {};
     WEIGHT_OPTIONS.forEach((w) => {
-      weightCounts[w] = products.filter((p) => {
+      weightCounts[w] = teaOnlyProducts.filter((p) => {
         const variants = getProductAvailableVariants(p);
         return variants.some((v) => v.key === w || v.weight.toLowerCase() === w.toLowerCase());
       }).length;
@@ -182,18 +193,18 @@ export default function Shop() {
 
     const benefitCounts: Record<string, number> = {};
     BENEFIT_OPTIONS.forEach((b) => {
-      benefitCounts[b] = products.filter((p) => {
+      benefitCounts[b] = teaOnlyProducts.filter((p) => {
         const itemBenefits = Array.isArray(p.benefits) ? p.benefits : [];
         return itemBenefits.includes(b);
       }).length;
     });
 
     return { teaTypeCounts, originCounts, caffeineCounts, weightCounts, benefitCounts };
-  }, [products]);
+  }, [teaOnlyProducts]);
 
   // Filtering products
   const filteredProducts = useMemo(() => {
-    let result = [...products];
+    let result = [...teaOnlyProducts];
 
     // Search query
     if (searchQuery.trim()) {
@@ -204,7 +215,7 @@ export default function Shop() {
           item.name.toLowerCase().includes(q) ||
           item.category.toLowerCase().includes(q) ||
           item.origin.toLowerCase().includes(q) ||
-          item.caffeine.toLowerCase().includes(q) ||
+          Boolean(item.caffeine && item.caffeine.toLowerCase().includes(q)) ||
           (item.description && item.description.toLowerCase().includes(q)) ||
           benefits.some((b) => b.toLowerCase().includes(q))
         );
@@ -223,7 +234,7 @@ export default function Shop() {
     if (selectedOrigins.length > 0) {
       result = result.filter((item) => {
         if (selectedOrigins.includes("Other")) {
-          if (!["Darjeeling", "Assam", "Nilgiri"].includes(item.origin)) return true;
+          if (!["Darjeeling"].includes(item.origin)) return true;
         }
         return selectedOrigins.includes(item.origin);
       });
@@ -231,7 +242,7 @@ export default function Shop() {
 
     // Caffeine
     if (selectedCaffeine.length > 0) {
-      result = result.filter((item) => selectedCaffeine.includes(item.caffeine));
+      result = result.filter((item) => Boolean(item.caffeine && selectedCaffeine.includes(item.caffeine)));
     }
 
     // Available weights
@@ -349,8 +360,7 @@ export default function Shop() {
     { label: "Green Tea", type: "teaType", value: "Green" },
     { label: "Black Tea", type: "teaType", value: "Black" },
     { label: "Oolong Tea", type: "teaType", value: "Oolong Tea" },
-    { label: "Darjeeling", type: "origin", value: "Darjeeling" },
-    { label: "Assam", type: "origin", value: "Assam" }
+    { label: "Darjeeling", type: "origin", value: "Darjeeling" }
   ];
 
   const handleQuickPill = (pill: (typeof quickPills)[0]) => {
@@ -621,7 +631,7 @@ export default function Shop() {
     <main className="leafly-shop-page">
       <SEO
         title="Shop Premium Loose Leaf Teas | Single Origin Tea Collection | Leafly"
-        description="Explore single-origin loose leaf green tea, black tea, and oolong tea from Darjeeling and Assam. Handcrafted small batches delivered fresh across India."
+        description="Explore single-origin loose leaf green tea, black tea, and oolong tea from Darjeeling. Handcrafted small batches delivered fresh across India."
         canonicalPath="/shop"
         schema={generateBreadcrumbSchema([
           { name: "Home", url: "/" },
@@ -968,9 +978,11 @@ export default function Shop() {
                         alt={`Leafly ${product.name} - ${product.origin} ${product.category} tea`}
                         className="card-main-image"
                         onClick={() => navigate(`/shop/${getProductSlug(product)}`)}
-                        loading={index < 4 ? "eager" : "lazy"}
+                        loading={index < 2 ? "eager" : "lazy"}
                         decoding="async"
-                        {...(index < 2 ? { fetchPriority: "high" as const } : {})}
+                        width={600}
+                        height={600}
+                        {...(index < 2 ? { fetchPriority: "high" as const } : { fetchPriority: "low" as const })}
                       />
 
                       {/* BADGE */}

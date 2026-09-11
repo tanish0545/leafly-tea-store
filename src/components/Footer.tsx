@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import logo from "../assets/leafly-logo.webp";
+import { useAuth } from "../context/AuthContext";
 import { ApiService } from "../lib/apiClient";
 import "./Footer.css";
 
@@ -32,7 +33,16 @@ const careLinks = [
 ];
 
 export default function Footer() {
-  const [email, setEmail] = useState("");
+  const { currentUser, firebaseUser } = useAuth();
+  const authEmail = currentUser?.email || firebaseUser?.email || "";
+  const [email, setEmail] = useState(() => authEmail);
+
+  useEffect(() => {
+    if (authEmail && !email) {
+      setEmail(authEmail);
+    }
+  }, [authEmail, email]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);

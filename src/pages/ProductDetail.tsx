@@ -69,6 +69,7 @@ export default function ProductDetail() {
           description: teawareItem.description,
           stock: typeof teawareItem.stock === "number" ? teawareItem.stock : 10,
           inStock: teawareItem.inStock !== false && (typeof teawareItem.stock !== "number" || teawareItem.stock > 0),
+          isActive: teawareItem.isActive !== false,
         }
       : isGiftingRoute && hamperItem
       ? {
@@ -97,15 +98,17 @@ export default function ProductDetail() {
           description: hamperItem.description || hamperItem.subtitle,
           stock: typeof hamperItem.stock === "number" ? hamperItem.stock : 10,
           inStock: hamperItem.inStock !== false && (typeof hamperItem.stock !== "number" || hamperItem.stock > 0),
+          isActive: hamperItem.isActive !== false,
         }
       : products.find(
           (p) =>
-            getProductSlug(p) === identifier ||
-            String(p.id) === identifier ||
-            (String(p.id) === "2" &&
-              (identifier === "white-tea" ||
-                identifier === "silver-tips-white-tea" ||
-                identifier === "golden-dusk-black-tea-chamomile"))
+            !p.isRemoved &&
+            (getProductSlug(p) === identifier ||
+              String(p.id) === identifier ||
+              (String(p.id) === "2" &&
+                (identifier === "white-tea" ||
+                  identifier === "silver-tips-white-tea" ||
+                  identifier === "golden-dusk-black-tea-chamomile")))
         ) ||
         (teawareItem
           ? {
@@ -136,6 +139,7 @@ export default function ProductDetail() {
               description: teawareItem.description,
               stock: typeof teawareItem.stock === "number" ? teawareItem.stock : 10,
               inStock: teawareItem.inStock !== false && (typeof teawareItem.stock !== "number" || teawareItem.stock > 0),
+              isActive: teawareItem.isActive !== false,
             }
           : hamperItem
           ? {
@@ -169,21 +173,21 @@ export default function ProductDetail() {
 
   /* --- product not found ----------------------------------- */
 
-  if (!product) {
+  if (!product || product.isRemoved) {
     return (
       <main className="product-detail-page">
         <div className="pdp-not-found">
           <div className="pdp-not-found-mark" aria-hidden="true">
             ❧
           </div>
-          <h1>Tea Not Found</h1>
-          <p>We couldn&apos;t find this tea in our collection.</p>
+          <h1>Product Not Found</h1>
+          <p>We couldn&apos;t find this product in our catalog.</p>
           <button
             type="button"
             className="pdp-not-found-button"
-            onClick={() => navigate("/shop")}
+            onClick={() => navigate(isTeawareRoute ? "/teaware" : isGiftingRoute ? "/gifting" : "/shop")}
           >
-            BROWSE ALL TEAS
+            {isTeawareRoute ? "BROWSE ALL TEAWARE" : isGiftingRoute ? "BROWSE GIFT HAMPERS" : "BROWSE ALL TEAS"}
           </button>
         </div>
         <Footer />
@@ -193,7 +197,8 @@ export default function ProductDetail() {
 
   /* --- variant pricing & details ---------------------------- */
 
-  const inStock = isProductInStock(product);
+  const isDeactivated = product.isActive === false;
+  const inStock = !isDeactivated && isProductInStock(product);
 
   const availableVariants = getProductAvailableVariants(product);
   const activeVariant = availableVariants.some((v) => v.key === selectedVariant)
@@ -213,7 +218,7 @@ export default function ProductDetail() {
   const wishlisted = isInWishlist(product.id);
 
   const handleAddToCart = () => {
-    if (addingToCart || !inStock || isTeaware) return;
+    if (addingToCart || !inStock || isDeactivated) return;
     setAddingToCart(true);
 
     addToCart(
@@ -230,7 +235,7 @@ export default function ProductDetail() {
   };
 
   const handleBuyNow = () => {
-    if (!inStock || isTeaware) return;
+    if (!inStock || isDeactivated) return;
     addToCart(
       product,
       quantity,
@@ -255,8 +260,8 @@ export default function ProductDetail() {
 
   /* --- render ---------------------------------------------- */
 
-  const isTeaware = Boolean(teawareItem);
-  const isHamper = Boolean(hamperItem);
+  const isTeaware = Boolean(teawareItem) || product.category === "teaware" || (product.category as string) === "Teaware";
+  const isHamper = Boolean(hamperItem) || product.category === "gifting" || (product.category as string) === "Gifting";
   const canonicalPath = isTeaware
     ? `/teaware/${getProductSlug(product)}`
     : isHamper
@@ -409,20 +414,15 @@ export default function ProductDetail() {
                 : `A carefully selected ${product.category.toLowerCase()} tea from ${product.origin}, chosen for character, freshness and a memorable tea-drinking ritual.`)}
           </p>
 
-          {isTeaware ? (
-            <div className="pdp-stock-status" style={{ color: "#c9a24b" }}>
-              <span className="pdp-stock-dot" style={{ color: "#c9a24b" }}>●</span>
-              <span>Coming Soon · Artisan Vessel Showcase</span>
-            </div>
-          ) : inStock ? (
+          {inStock ? (
             <div className="pdp-stock-status">
               <span className="pdp-stock-dot">●</span>
-              <span>In Stock · {isHamper ? "Artisan Gift Chest & Fast Dispatch" : "Handcrafted & Freshly Packed"}</span>
+              <span>In Stock · {isHamper ? "Artisan Gift Chest & Fast Dispatch" : isTeaware ? "Artisan Equipment & Safe Packaging" : "Handcrafted & Freshly Packed"}</span>
             </div>
           ) : (
             <div className="pdp-stock-status out" style={{ color: "#c53030" }}>
               <span className="pdp-stock-dot" style={{ color: "#e53e3e" }}>●</span>
-              <span>Currently Out of Stock · Fresh Harvest Arriving Soon</span>
+              <span>Currently Out of Stock · Fresh Batch Arriving Soon</span>
             </div>
           )}
 
@@ -490,8 +490,8 @@ export default function ProductDetail() {
                 </div>
                 <div className="pdp-spec">
                   <span>STATUS</span>
-                  <strong style={{ color: "#b98428" }}>
-                    Coming Soon
+                  <strong style={{ color: isDeactivated ? "#b98428" : inStock ? "#1e824c" : "#c53030" }}>
+                    {isDeactivated ? "Coming Soon" : inStock ? "In Stock" : "Out of Stock"}
                   </strong>
                 </div>
               </>
@@ -536,8 +536,8 @@ export default function ProductDetail() {
                 </div>
                 <div className="pdp-spec">
                   <span>STATUS</span>
-                  <strong style={{ color: inStock ? "#1e824c" : "#b98428" }}>
-                    {inStock ? "In Stock" : "Out of Stock"}
+                  <strong style={{ color: isDeactivated ? "#b98428" : inStock ? "#1e824c" : "#b98428" }}>
+                    {isDeactivated ? "Coming Soon" : inStock ? "In Stock" : "Out of Stock"}
                   </strong>
                 </div>
                 <div className="pdp-spec">
@@ -566,85 +566,81 @@ export default function ProductDetail() {
           </div>
 
           {/* QUANTITY COUNTER */}
-          {!isTeaware && (
-            <div className="pdp-qty-row">
-              <span className="pdp-qty-label">QUANTITY</span>
-              <div className="pdp-qty-selector">
-                <button
-                  type="button"
-                  className="pdp-qty-btn"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  disabled={quantity <= 1 || !inStock}
-                  aria-label="Decrease quantity"
-                >
-                  −
-                </button>
-                <span className="pdp-qty-val">{quantity}</span>
-                <button
-                  type="button"
-                  className="pdp-qty-btn"
-                  onClick={() => setQuantity((q) => Math.min(10, q + 1))}
-                  disabled={quantity >= 10 || !inStock}
-                  aria-label="Increase quantity"
-                >
-                  +
-                </button>
-              </div>
+          <div className="pdp-qty-row">
+            <span className="pdp-qty-label">QUANTITY</span>
+            <div className="pdp-qty-selector">
+              <button
+                type="button"
+                className="pdp-qty-btn"
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                disabled={quantity <= 1 || !inStock || isDeactivated}
+                aria-label="Decrease quantity"
+              >
+                −
+              </button>
+              <span className="pdp-qty-val">{quantity}</span>
+              <button
+                type="button"
+                className="pdp-qty-btn"
+                onClick={() => setQuantity((q) => Math.min(10, q + 1))}
+                disabled={quantity >= 10 || !inStock || isDeactivated}
+                aria-label="Increase quantity"
+              >
+                +
+              </button>
             </div>
-          )}
+          </div>
 
           {/* ACTIONS */}
           <div className="pdp-actions">
-            {isTeaware ? (
+            {isDeactivated ? (
               <button
                 type="button"
-                className="pdp-cart-button disabled coming-soon full-width"
+                className="pdp-cart-button disabled"
                 disabled={true}
                 aria-label={`${product.name} is coming soon`}
-                style={{ opacity: 0.85, cursor: "not-allowed", width: "100%" }}
+                style={{ opacity: 0.85, cursor: "not-allowed" }}
               >
-                COMING SOON
+                COMING SOON ✦
               </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  className={`pdp-cart-button ${addedToCart ? "added" : ""} ${!inStock ? "disabled out-of-stock" : ""}`}
-                  disabled={addingToCart || !inStock}
-                  onClick={handleAddToCart}
-                  aria-label={
-                    !inStock
-                      ? `${product.name} is out of stock`
-                      : addedToCart
-                      ? "Added to cart"
-                      : `Add ${quantity} of ${product.name} to cart`
-                  }
-                >
-                  {!inStock ? (
-                    "OUT OF STOCK"
-                  ) : addingToCart ? (
-                    <>
-                      <span className="pdp-cart-spinner" aria-hidden="true" />
-                      ADDING...
-                    </>
-                  ) : addedToCart ? (
-                    <>ADDED ✓</>
-                  ) : (
-                    <>ADD TO CART 🛒</>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  className={`pdp-buy-now-button ${!inStock ? "disabled" : ""}`}
-                  disabled={!inStock}
-                  onClick={handleBuyNow}
-                  aria-label={!inStock ? `${product.name} is unavailable` : `Buy ${product.name} now`}
-                >
-                  {!inStock ? "UNAVAILABLE" : "BUY NOW ❧"}
-                </button>
-              </>
+              <button
+                type="button"
+                className={`pdp-cart-button ${addedToCart ? "added" : ""} ${!inStock ? "disabled out-of-stock" : ""}`}
+                disabled={addingToCart || !inStock}
+                onClick={handleAddToCart}
+                aria-label={
+                  !inStock
+                    ? `${product.name} is out of stock`
+                    : addedToCart
+                    ? "Added to cart"
+                    : `Add ${quantity} of ${product.name} to cart`
+                }
+              >
+                {!inStock ? (
+                  "OUT OF STOCK"
+                ) : addingToCart ? (
+                  <>
+                    <span className="pdp-cart-spinner" aria-hidden="true" />
+                    ADDING...
+                  </>
+                ) : addedToCart ? (
+                  <>ADDED ✓</>
+                ) : (
+                  <>ADD TO CART 🛒</>
+                )}
+              </button>
             )}
+
+            <button
+              type="button"
+              className={`pdp-buy-now-button ${!inStock || isDeactivated ? "disabled" : ""}`}
+              disabled={!inStock || isDeactivated}
+              onClick={handleBuyNow}
+              aria-label={isDeactivated ? `${product.name} is coming soon` : !inStock ? `${product.name} is unavailable` : `Buy ${product.name} now`}
+            >
+              {isDeactivated ? "COMING SOON" : !inStock ? "UNAVAILABLE" : "BUY NOW ❧"}
+            </button>
 
             <button
               type="button"

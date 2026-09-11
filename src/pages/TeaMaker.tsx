@@ -439,7 +439,7 @@ export default function TeaMaker() {
       id: cat.matchedProductId,
       name: `${cat.title} (${selectedTea} Ritual)`,
       category: selectedTea,
-      origin: "Single Estate, India",
+      origin: "Darjeeling",
       caffeine: "Medium",
       weight: "100g",
       price: 699,
@@ -1399,7 +1399,7 @@ export default function TeaMaker() {
           <div style={{ padding: "20px", background: "rgba(255, 255, 255, 0.7)", borderRadius: "10px", border: "1px solid rgba(201, 162, 75, 0.2)" }}>
             <h3 style={{ fontSize: "17px", margin: "0 0 8px", color: "#0b2b1e" }}>🍂 Black Tea Brewing</h3>
             <p style={{ fontSize: "13px", color: "#4b5563", margin: "0 0 10px", lineHeight: 1.5 }}>
-              Fully oxidized Assam and Darjeeling black teas require hot water to draw out bold malty depth and golden liqueur notes.
+              Fully oxidized Darjeeling black teas require hot water to draw out bold malty depth and golden liqueur notes.
             </p>
             <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px", fontSize: "13px", color: "#0b2b1e", lineHeight: 1.8 }}>
               <li><strong>Water Temp:</strong> 90°C – 95°C</li>

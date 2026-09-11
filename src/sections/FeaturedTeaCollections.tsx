@@ -82,7 +82,7 @@ export default function FeaturedTeaCollections() {
 
         <div className="featured-teas-grid">
 
-          {teas.map((tea, index) => (
+          {teas.map((tea) => (
             <article
               className="featured-tea-card"
               key={tea.name}
@@ -95,8 +95,10 @@ export default function FeaturedTeaCollections() {
                 <img
                   src={tea.image}
                   alt={`Leafly ${tea.name}`}
-                  loading={index < 2 ? "eager" : "lazy"}
+                  loading="lazy"
                   decoding="async"
+                  width={600}
+                  height={600}
                 />
 
                 <div className="featured-tea-image-shade" />

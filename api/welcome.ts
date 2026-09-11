@@ -55,7 +55,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       html,
     });
 
-    res.statusCode = result.success ? 200 : 500;
+    res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(result));
   } catch (err) {

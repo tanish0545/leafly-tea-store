@@ -51,7 +51,7 @@ const collections: TeaCollection[] = [
       "Partially oxidised artisan harvests including Red Oolong and premium Darjeeling selections.",
     character: "Floral & layered",
     caffeine: "Medium",
-    origin: "Darjeeling & Assam",
+    origin: "Darjeeling",
     image: "/leafly-oolong-tea.webp",
   },
 ];
@@ -63,8 +63,8 @@ const collectionSeoData: Record<string, { title: string; description: string; ca
     canonical: "/collections/green-tea",
   },
   black: {
-    title: "Premium Black Tea Online | Assam & Darjeeling Loose Leaf | Leafly",
-    description: "Shop bold, full-bodied premium black teas online from Assam and Darjeeling estates. Rich malty depth and golden tips crafted for purposeful morning rituals.",
+    title: "Premium Black Tea Online | Darjeeling Loose Leaf | Leafly",
+    description: "Shop bold, full-bodied premium black teas online from Darjeeling estates. Rich malty depth and golden tips crafted for purposeful morning rituals.",
     canonical: "/collections/black-tea",
   },
   oolong: {

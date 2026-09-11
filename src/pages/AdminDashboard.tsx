@@ -41,7 +41,7 @@ export type ReviewItem = {
   createdAt: string;
 };
 
-type TabType = "dashboard" | "products" | "teaware" | "hampers" | "orders" | "accounts" | "coupons" | "reviews";
+type TabType = "dashboard" | "products" | "teaware" | "hampers" | "orders" | "accounts" | "coupons" | "reviews" | "removed";
 
 const SECTION_TO_TAB: Record<string, TabType> = {
   dashboard: "dashboard",
@@ -53,6 +53,8 @@ const SECTION_TO_TAB: Record<string, TabType> = {
   accounts: "accounts",
   coupons: "coupons",
   reviews: "reviews",
+  removed: "removed",
+  "removed-products": "removed",
 };
 
 const TAB_TO_PATH: Record<TabType, string> = {
@@ -64,6 +66,7 @@ const TAB_TO_PATH: Record<TabType, string> = {
   accounts: "/admin/accounts",
   coupons: "/admin/coupons",
   reviews: "/admin/reviews",
+  removed: "/admin/removed",
 };
 
 function parseTabFromUrl(pathSection?: string, pathname?: string): TabType {
@@ -82,9 +85,31 @@ function parseTabFromUrl(pathSection?: string, pathname?: string): TabType {
 }
 
 export default function AdminDashboard() {
-  const { products, updateProduct, addProduct, deleteProduct, loading: productsLoading } = useProducts();
-  const { teaware, updateTeaware, addTeaware, deleteTeaware, loading: teawareLoading } = useTeaware();
-  const { hampers, updateHamper, addHamper, deleteHamper, loading: hampersLoading } = useGifting();
+  const {
+    products,
+    removedProducts,
+    updateProduct,
+    addProduct,
+    removeProduct,
+    restoreProduct,
+    permanentlyDeleteProduct,
+    loading: productsLoading,
+  } = useProducts();
+  const {
+    teaware,
+    updateTeaware,
+    addTeaware,
+    deleteTeaware,
+    toggleTeawareActive,
+    loading: teawareLoading,
+  } = useTeaware();
+  const {
+    hampers,
+    updateHamper,
+    addHamper,
+    deleteHamper,
+    loading: hampersLoading,
+  } = useGifting();
   const { signOut, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -146,6 +171,9 @@ export default function AdminDashboard() {
   const [hamperSearchQuery, setHamperSearchQuery] = useState("");
   const [hamperFilterCategory, setHamperFilterCategory] = useState("all");
   const [couponSearchQuery, setCouponSearchQuery] = useState("");
+
+  const [removedSearchQuery, setRemovedSearchQuery] = useState("");
+  const [removedFilterCategory, setRemovedFilterCategory] = useState("all");
 
   // Reviews State
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
@@ -436,7 +464,7 @@ export default function AdminDashboard() {
     setCurrentProduct({
       name: "",
       category: "Green Tea",
-      origin: "",
+      origin: "Darjeeling",
       caffeine: "Medium",
       weight: "100g",
       price: 0,
@@ -575,12 +603,14 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteProduct = async (id: number | string) => {
-    if (window.confirm("Are you sure you want to delete this tea from the catalog? This action cannot be undone.")) {
-      const res = await deleteProduct(id);
+    const item = products.find((p) => String(p.id) === String(id));
+    const itemName = item?.name || "this tea";
+    if (window.confirm(`Move "${itemName}" to Removed Products? You can restore it at any time.`)) {
+      const res = await removeProduct(id);
       if (res.success) {
-        showToast("success", "Tea removed from catalog successfully.");
+        showToast("success", `"${itemName}" moved to Removed Products.`);
       } else {
-        showToast("error", `Failed to delete tea: ${res.error || "Database error"}`);
+        showToast("error", `Failed to remove tea: ${res.error || "Database error"}`);
       }
     }
   };
@@ -608,6 +638,7 @@ export default function AdminDashboard() {
       reviewCount: 0,
       inStock: true,
       stock: 10,
+      isActive: true,
     });
     savedModalScrollPosRef.current = window.scrollY || document.documentElement.scrollTop;
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -623,6 +654,7 @@ export default function AdminDashboard() {
     const stockQty = typeof currentTeaware.stock === "number" ? currentTeaware.stock : (currentTeaware.inStock === false ? 0 : 10);
     cleanItem.stock = stockQty;
     cleanItem.inStock = currentTeaware.inStock !== false && stockQty > 0;
+    cleanItem.isActive = currentTeaware.isActive !== false;
     cleanItem.badge = cleanItem.badge || "";
     cleanItem.image = cleanItem.image?.trim() || "";
 
@@ -636,12 +668,14 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteTeaware = async (id: number | string) => {
-    if (window.confirm("Are you sure you want to delete this teaware item?")) {
+    const item = teaware.find((t) => String(t.id) === String(id));
+    const itemName = item?.name || "this teaware item";
+    if (window.confirm(`Move "${itemName}" to Removed Products? You can restore it at any time.`)) {
       const res = await deleteTeaware(id);
       if (res.success) {
-        showToast("success", "Teaware item removed successfully.");
+        showToast("success", `"${itemName}" moved to Removed Products.`);
       } else {
-        showToast("error", `Failed to delete teaware: ${res.error || "Database error"}`);
+        showToast("error", `Failed to remove teaware: ${res.error || "Database error"}`);
       }
     }
   };
@@ -656,6 +690,19 @@ export default function AdminDashboard() {
       showToast("success", `${item.name} is now ${newInStock ? "In Stock (10 units)" : "Out of Stock"}.`);
     } else {
       showToast("error", `Failed to update stock: ${res.error || "Database error"}`);
+    }
+  };
+
+  const handleToggleTeawareActive = async (item: TeawareItem) => {
+    const willBeActive = item.isActive === false;
+    const res = await toggleTeawareActive(item.id, willBeActive);
+    if (res.success) {
+      showToast(
+        "success",
+        `Teaware "${item.name}" is now ${willBeActive ? "Active (Purchasable)" : "Coming Soon (Preview Only)"}.`
+      );
+    } else {
+      showToast("error", `Failed to update status: ${res.error || "Database error"}`);
     }
   };
 
@@ -709,12 +756,39 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteHamper = async (id: number | string) => {
-    if (window.confirm("Are you sure you want to delete this hamper?")) {
+    const item = hampers.find((h) => String(h.id) === String(id));
+    const itemName = item?.name || "this hamper";
+    if (window.confirm(`Move "${itemName}" to Removed Products? You can restore it at any time.`)) {
       const res = await deleteHamper(id);
       if (res.success) {
-        showToast("success", "Hamper removed successfully.");
+        showToast("success", `"${itemName}" moved to Removed Products.`);
       } else {
-        showToast("error", `Failed to delete hamper: ${res.error || "Database error"}`);
+        showToast("error", `Failed to remove hamper: ${res.error || "Database error"}`);
+      }
+    }
+  };
+
+  // Removed Products (Recycle Bin) Actions
+  const handleRestoreItem = async (id: number | string, name?: string) => {
+    const res = await restoreProduct(id);
+    if (res.success) {
+      showToast("success", `"${name || "Product"}" restored faithfully to its catalog category.`);
+    } else {
+      showToast("error", `Failed to restore: ${res.error || "Database error"}`);
+    }
+  };
+
+  const handlePermanentlyDeleteItem = async (id: number | string, name?: string) => {
+    if (
+      window.confirm(
+        `Are you sure you want to PERMANENTLY delete "${name || "this product"}"?\n\nThis cannot be undone and the item will not reappear on refresh.`
+      )
+    ) {
+      const res = await permanentlyDeleteProduct(id);
+      if (res.success) {
+        showToast("success", `"${name || "Product"}" permanently deleted.`);
+      } else {
+        showToast("error", `Failed to permanently delete: ${res.error || "Database error"}`);
       }
     }
   };
@@ -912,9 +986,17 @@ export default function AdminDashboard() {
     }).length;
   }, [orders]);
 
-  const lowStockCount = useMemo(() => {
-    return products.filter(p => (p.stock ?? 10) <= 3).length;
+  // Tea Products only (Strictly Tea category: Natural Green, Golden Dusk, Premium Oolong, Red Oolong)
+  const teaProducts = useMemo(() => {
+    return products.filter((p) => {
+      const cat = (p.category || "").toLowerCase();
+      return cat !== "teaware" && cat !== "gifting" && !p.isRemoved;
+    });
   }, [products]);
+
+  const lowStockCount = useMemo(() => {
+    return teaProducts.filter(p => (p.stock ?? 10) <= 3).length;
+  }, [teaProducts]);
 
   // Filtered Orders
   const filteredOrders = useMemo(() => {
@@ -972,9 +1054,9 @@ export default function AdminDashboard() {
     return pages;
   };
 
-  // Filtered Products
+  // Filtered Tea Products (Strictly isolated to Tea catalog)
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
+    return teaProducts.filter(p => {
       const queryLower = productSearchQuery.toLowerCase().trim();
       const matchesSearch =
         !queryLower ||
@@ -987,7 +1069,7 @@ export default function AdminDashboard() {
 
       return matchesSearch && matchesCat;
     });
-  }, [products, productSearchQuery, productFilterCategory]);
+  }, [teaProducts, productSearchQuery, productFilterCategory]);
 
   // Filtered Teaware
   const filteredTeaware = useMemo(() => {
@@ -1020,6 +1102,30 @@ export default function AdminDashboard() {
       return matchesSearch && matchesCat;
     });
   }, [hampers, hamperSearchQuery, hamperFilterCategory]);
+
+  // Filtered Removed Products (Recycle Bin across Tea, Teaware, and Gifting)
+  const filteredRemovedProducts = useMemo(() => {
+    return removedProducts.filter((p) => {
+      const queryLower = removedSearchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !queryLower ||
+        p.name.toLowerCase().includes(queryLower) ||
+        (p.sku || "").toLowerCase().includes(queryLower) ||
+        (p.origin || "").toLowerCase().includes(queryLower);
+
+      const cat = (p.category || "").toLowerCase();
+      let normCat = "tea";
+      if (cat === "teaware") normCat = "teaware";
+      else if (cat === "gifting") normCat = "gifting";
+
+      const matchesCat =
+        removedFilterCategory === "all" ||
+        normCat === removedFilterCategory.toLowerCase() ||
+        cat === removedFilterCategory.toLowerCase();
+
+      return matchesSearch && matchesCat;
+    });
+  }, [removedProducts, removedSearchQuery, removedFilterCategory]);
 
   // Filtered Accounts
   const filteredAccounts = useMemo(() => {
@@ -1080,6 +1186,7 @@ export default function AdminDashboard() {
     accounts: "Customer Accounts",
     coupons: "Promotions & Coupons",
     reviews: "Customer Reviews & Ratings",
+    removed: "Removed Products (Recycle Bin)",
   };
 
   const isInitialLoading = productsLoading || ordersLoading || teawareLoading || hampersLoading;
@@ -1169,7 +1276,7 @@ export default function AdminDashboard() {
           >
             <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
             <span className="admin-nav-label">Tea Products</span>
-            <span className="admin-nav-badge neutral">{products.length}</span>
+            <span className="admin-nav-badge neutral">{teaProducts.length}</span>
           </button>
 
           <button
@@ -1220,6 +1327,18 @@ export default function AdminDashboard() {
             <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
             <span className="admin-nav-label">Reviews</span>
             <span className="admin-nav-badge neutral">{reviews.length}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`admin-nav-item ${activeTab === "removed" ? "active" : ""}`}
+            onClick={() => handleTabChange("removed")}
+          >
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+            <span className="admin-nav-label">Removed Products</span>
+            {removedProducts.length > 0 && (
+              <span className="admin-nav-badge warning">{removedProducts.length}</span>
+            )}
           </button>
         </nav>
 
@@ -1289,8 +1408,8 @@ export default function AdminDashboard() {
                 <span className="stat-pill-val">{orders.length}</span>
               </div>
               <div className="header-stat-pill">
-                <span className="stat-pill-label">Products</span>
-                <span className="stat-pill-val">{products.length}</span>
+                <span className="stat-pill-label">Tea Products</span>
+                <span className="stat-pill-val">{teaProducts.length}</span>
               </div>
             </div>
           </div>
@@ -1376,9 +1495,9 @@ export default function AdminDashboard() {
                   </div>
                   <div className="kpi-data">
                     <span className="kpi-label">Total Catalog</span>
-                    <h2 className="kpi-value">{products.length + teaware.length + hampers.length}</h2>
+                    <h2 className="kpi-value">{teaProducts.length + teaware.length + hampers.length}</h2>
                     <div className="kpi-footer">
-                      <span className="kpi-subtext">{products.length} Teas · {teaware.length} Ware</span>
+                      <span className="kpi-subtext">{teaProducts.length} Teas · {teaware.length} Ware · {hampers.length} Hampers</span>
                     </div>
                   </div>
                 </div>
@@ -1678,11 +1797,24 @@ export default function AdminDashboard() {
                                 <div className="admin-order-items-preview">
                                   <span className="items-count-badge">{orderItems.length} item{orderItems.length !== 1 ? "s" : ""}</span>
                                   <div className="items-mini-list">
-                                    {orderItems.slice(0, 2).map((item, idx) => (
-                                      <span key={idx} className="item-mini-tag">
-                                        {item.quantity}x {item.name} {item.variant ? `(${item.variant})` : ""}
-                                      </span>
-                                    ))}
+                                    {orderItems.slice(0, 2).map((item, idx) => {
+                                      const cat = (item.category || "").toLowerCase();
+                                      const isTw = cat === "teaware" || cat === "teapots" || cat === "tea cups" || cat === "serving & trays" || cat === "storage & accessories";
+                                      const isGift = cat.includes("gift") || cat.includes("hamper");
+                                      const catLabel = isTw ? "Teaware" : isGift ? "Gifting" : "Tea";
+                                      const badgeStyle = isTw
+                                        ? { background: "rgba(201, 162, 75, 0.15)", color: "#b98428" }
+                                        : isGift
+                                        ? { background: "rgba(107, 70, 193, 0.15)", color: "#6b46c1" }
+                                        : { background: "rgba(30, 130, 76, 0.15)", color: "#1e824c" };
+
+                                      return (
+                                        <span key={idx} className="item-mini-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                          <span style={{ fontSize: "9px", padding: "1px 4px", borderRadius: "3px", fontWeight: 700, ...badgeStyle }}>{catLabel}</span>
+                                          {item.quantity}x {item.name} {item.variant ? `(${item.variant})` : ""}
+                                        </span>
+                                      );
+                                    })}
                                     {orderItems.length > 2 && (
                                       <span className="item-mini-more">+{orderItems.length - 2} more</span>
                                     )}
@@ -1775,11 +1907,24 @@ export default function AdminDashboard() {
                             <div className="mobile-card-items-block">
                               <span className="block-label">Items ({orderItems.length}):</span>
                               <div className="mobile-items-tags">
-                                {orderItems.map((item, idx) => (
-                                  <span key={idx} className="item-mini-tag">
-                                    {item.quantity}x {item.name} {item.variant ? `(${item.variant})` : ""}
-                                  </span>
-                                ))}
+                                {orderItems.map((item, idx) => {
+                                  const cat = (item.category || "").toLowerCase();
+                                  const isTw = cat === "teaware" || cat === "teapots" || cat === "tea cups" || cat === "serving & trays" || cat === "storage & accessories";
+                                  const isGift = cat.includes("gift") || cat.includes("hamper");
+                                  const catLabel = isTw ? "Teaware" : isGift ? "Gifting" : "Tea";
+                                  const badgeStyle = isTw
+                                    ? { background: "rgba(201, 162, 75, 0.15)", color: "#b98428" }
+                                    : isGift
+                                    ? { background: "rgba(107, 70, 193, 0.15)", color: "#6b46c1" }
+                                    : { background: "rgba(30, 130, 76, 0.15)", color: "#1e824c" };
+
+                                  return (
+                                    <span key={idx} className="item-mini-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                      <span style={{ fontSize: "9px", padding: "1px 4px", borderRadius: "3px", fontWeight: 700, ...badgeStyle }}>{catLabel}</span>
+                                      {item.quantity}x {item.name} {item.variant ? `(${item.variant})` : ""}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             </div>
                             <div className="mobile-card-info-row">
@@ -2504,11 +2649,11 @@ export default function AdminDashboard() {
               <div className="admin-section-header">
                 <div>
                   <h2 className="section-title">Teaware Collection</h2>
-                  <p className="section-subtitle">Teapots, brewing glassware, infusers, ceramic cups & ceremonial trays · <strong style={{ color: "var(--admin-gold)" }}>Showcase Only (Coming Soon)</strong></p>
+                  <p className="section-subtitle">Teapots, brewing glassware, infusers, ceramic cups & ceremonial trays · <strong style={{ color: "var(--admin-emerald)" }}>Live Ecommerce Products</strong></p>
                 </div>
                 <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                  <span className="admin-stat-badge" style={{ background: "rgba(201, 162, 75, 0.14)", color: "#b98428", border: "1px solid rgba(201, 162, 75, 0.3)" }}>
-                    ✦ PRE-LAUNCH SHOWCASE
+                  <span className="admin-stat-badge" style={{ background: "rgba(30, 130, 76, 0.14)", color: "var(--admin-emerald)", border: "1px solid rgba(30, 130, 76, 0.3)" }}>
+                    ✦ LIVE CATALOG
                   </span>
                   <button
                     type="button"
@@ -2570,6 +2715,7 @@ export default function AdminDashboard() {
                           <th>Capacity</th>
                           <th>Price</th>
                           <th>Stock Level</th>
+                          <th>Launch Status</th>
                           <th>Quick Toggle</th>
                           <th>Actions</th>
                         </tr>
@@ -2579,6 +2725,7 @@ export default function AdminDashboard() {
                           const twStock = typeof item.stock === "number" ? item.stock : 10;
                           const twIsIn = item.inStock !== false && twStock > 0;
                           const twIsLow = twIsIn && twStock <= 3;
+                          const isComingSoon = item.isActive === false;
                           return (
                             <tr key={item.id}>
                               <td style={{ width: "70px" }}>
@@ -2604,14 +2751,29 @@ export default function AdminDashboard() {
                                 </span>
                               </td>
                               <td>
-                                <button
-                                  type="button"
-                                  className={`admin-btn-stock-toggle ${twIsIn ? "in" : "out"}`}
-                                  onClick={() => handleToggleTeawareStock(item)}
-                                  title={twIsIn ? "Click to set Out of Stock" : "Click to Restock"}
-                                >
-                                  {twIsIn ? "Set Out of Stock" : "Restock (+10)"}
-                                </button>
+                                <span className={`admin-launch-badge ${isComingSoon ? "coming-soon" : "active"}`}>
+                                  {isComingSoon ? "Coming Soon" : "Active"}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                  <button
+                                    type="button"
+                                    className={`admin-btn-stock-toggle ${twIsIn ? "in" : "out"}`}
+                                    onClick={() => handleToggleTeawareStock(item)}
+                                    title={twIsIn ? "Click to set Out of Stock" : "Click to Restock"}
+                                  >
+                                    {twIsIn ? "Set Out of Stock" : "Restock (+10)"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`admin-btn-launch-toggle ${isComingSoon ? "coming-soon" : "active"}`}
+                                    onClick={() => handleToggleTeawareActive(item)}
+                                    title={isComingSoon ? "Click to Activate for purchasing" : "Click to mark Coming Soon"}
+                                  >
+                                    {isComingSoon ? "✦ Activate" : "Coming Soon"}
+                                  </button>
+                                </div>
                               </td>
                               <td>
                                 <div className="table-actions-group">
@@ -2626,6 +2788,7 @@ export default function AdminDashboard() {
                                     type="button"
                                     className="admin-btn-danger"
                                     onClick={() => handleDeleteTeaware(item.id)}
+                                    title="Move to Removed Products"
                                   >
                                     ✕
                                   </button>
@@ -2644,6 +2807,7 @@ export default function AdminDashboard() {
                       const twStock = typeof item.stock === "number" ? item.stock : 10;
                       const twIsIn = item.inStock !== false && twStock > 0;
                       const twIsLow = twIsIn && twStock <= 3;
+                      const isComingSoon = item.isActive === false;
                       return (
                         <div className="admin-catalog-card" key={item.id}>
                           <div className="catalog-card-media">
@@ -2655,9 +2819,14 @@ export default function AdminDashboard() {
                             <span className="cell-subtext">{item.material} · {item.capacity}</span>
                             <div className="catalog-card-meta">
                               <span className="gold-text large">₹{item.price.toLocaleString()}</span>
-                              <span className={`stock-pill ${!twIsIn ? "out" : twIsLow ? "low" : "in"}`}>
-                                {!twIsIn ? "Out of Stock" : `${twStock} left`}
-                              </span>
+                              <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                                <span className={`stock-pill ${!twIsIn ? "out" : twIsLow ? "low" : "in"}`}>
+                                  {!twIsIn ? "Out of Stock" : `${twStock} left`}
+                                </span>
+                                <span className={`admin-launch-badge ${isComingSoon ? "coming-soon" : "active"}`}>
+                                  {isComingSoon ? "Coming Soon" : "Active"}
+                                </span>
+                              </div>
                             </div>
                           </div>
                           <div className="catalog-card-actions-row">
@@ -2667,6 +2836,14 @@ export default function AdminDashboard() {
                               onClick={() => handleToggleTeawareStock(item)}
                             >
                               {twIsIn ? "Mark Out of Stock" : "Restock (+10)"}
+                            </button>
+                            <button
+                              type="button"
+                              className={`admin-btn-launch-toggle ${isComingSoon ? "coming-soon" : "active"}`}
+                              onClick={() => handleToggleTeawareActive(item)}
+                              style={{ width: "100%", justifyContent: "center" }}
+                            >
+                              {isComingSoon ? "✦ Launch / Activate" : "Set Coming Soon"}
                             </button>
                             <div className="catalog-btn-split">
                               <button
@@ -2680,6 +2857,7 @@ export default function AdminDashboard() {
                                 type="button"
                                 className="admin-btn-danger"
                                 onClick={() => handleDeleteTeaware(item.id)}
+                                title="Move to Removed Products"
                               >
                                 ✕
                               </button>
@@ -2769,14 +2947,26 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label>Capacity / Volume</label>
-                  <input
-                    type="text"
-                    value={currentTeaware.capacity || ""}
-                    onChange={e => setCurrentTeaware({ ...currentTeaware, capacity: e.target.value })}
-                    placeholder="e.g. 600ml / 2-3 Cups"
-                  />
+                <div className="form-grid-2">
+                  <div className="form-group">
+                    <label>Capacity / Volume</label>
+                    <input
+                      type="text"
+                      value={currentTeaware.capacity || ""}
+                      onChange={e => setCurrentTeaware({ ...currentTeaware, capacity: e.target.value })}
+                      placeholder="e.g. 600ml / 2-3 Cups"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>SKU (Stock Keeping Unit)</label>
+                    <input
+                      type="text"
+                      value={currentTeaware.sku || ""}
+                      onChange={e => setCurrentTeaware({ ...currentTeaware, sku: e.target.value })}
+                      placeholder="e.g. TW-101"
+                    />
+                  </div>
                 </div>
 
                 <ImageUploadControl
@@ -2787,6 +2977,17 @@ export default function AdminDashboard() {
                 />
 
                 <div className="form-grid-3">
+                  <div className="form-group">
+                    <label>Launch Status</label>
+                    <select
+                      value={currentTeaware.isActive !== false ? "active" : "coming-soon"}
+                      onChange={e => setCurrentTeaware({ ...currentTeaware, isActive: e.target.value === "active" })}
+                    >
+                      <option value="active">Active (Live & Purchasable)</option>
+                      <option value="coming-soon">Coming Soon (Preview Only / No Add to Cart)</option>
+                    </select>
+                  </div>
+
                   <div className="form-group">
                     <label>Stock Status</label>
                     <select
@@ -2800,8 +3001,8 @@ export default function AdminDashboard() {
                         });
                       }}
                     >
-                      <option value="in-stock">In Stock (Purchasable)</option>
-                      <option value="out-of-stock">Coming Soon / Out of Stock</option>
+                      <option value="in-stock">In Stock (Inventory Available)</option>
+                      <option value="out-of-stock">Out of Stock (Depleted)</option>
                     </select>
                   </div>
 
@@ -2822,16 +3023,16 @@ export default function AdminDashboard() {
                       }}
                     />
                   </div>
+                </div>
 
-                  <div className="form-group">
-                    <label>Badge / Tag</label>
-                    <input
-                      type="text"
-                      value={currentTeaware.badge || ""}
-                      onChange={e => setCurrentTeaware({ ...currentTeaware, badge: e.target.value })}
-                      placeholder="e.g. BESPOKE, ARTISANAL, COMING SOON"
-                    />
-                  </div>
+                <div className="form-group">
+                  <label>Badge / Tag</label>
+                  <input
+                    type="text"
+                    value={currentTeaware.badge || ""}
+                    onChange={e => setCurrentTeaware({ ...currentTeaware, badge: e.target.value })}
+                    placeholder="e.g. BESPOKE, ARTISANAL"
+                  />
                 </div>
 
                 <div className="form-group">
@@ -3101,14 +3302,26 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label>Badge Tag</label>
-                  <input
-                    type="text"
-                    value={currentHamper.badge || ""}
-                    onChange={e => setCurrentHamper({ ...currentHamper, badge: e.target.value })}
-                    placeholder="e.g. FESTIVE EDITION"
-                  />
+                <div className="form-grid-2">
+                  <div className="form-group">
+                    <label>Badge Tag</label>
+                    <input
+                      type="text"
+                      value={currentHamper.badge || ""}
+                      onChange={e => setCurrentHamper({ ...currentHamper, badge: e.target.value })}
+                      placeholder="e.g. FESTIVE EDITION"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>SKU (Stock Keeping Unit)</label>
+                    <input
+                      type="text"
+                      value={currentHamper.sku || ""}
+                      onChange={e => setCurrentHamper({ ...currentHamper, sku: e.target.value })}
+                      placeholder="e.g. GH-201"
+                    />
+                  </div>
                 </div>
 
                 <ImageUploadControl
@@ -3173,7 +3386,7 @@ export default function AdminDashboard() {
                     rows={3}
                     value={(currentHamper.includes || []).join(", ")}
                     onChange={e => setCurrentHamper({ ...currentHamper, includes: e.target.value.split(",").map(i => i.trim()) })}
-                    placeholder="e.g. 1x Assam Orthodox, 1x Brass Infuser, 1x Tasting Journal"
+                    placeholder="e.g. 1x Darjeeling Orthodox, 1x Brass Infuser, 1x Tasting Journal"
                   />
                 </div>
 
@@ -3788,6 +4001,227 @@ export default function AdminDashboard() {
               )}
             </div>
           )}
+
+          {/* =========================================================
+              TAB 9: REMOVED PRODUCTS (RECYCLE BIN)
+             ========================================================= */}
+          {activeTab === "removed" && (
+            <div className="admin-section-view">
+              <div className="admin-section-header">
+                <div>
+                  <h2 className="section-title">Removed Products (Recycle Bin)</h2>
+                  <p className="section-subtitle">
+                    Safely recover or permanently delete items across Tea, Teaware, and Gifting catalogs
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                  <span
+                    className="admin-stat-badge"
+                    style={{
+                      background: "rgba(201, 162, 75, 0.14)",
+                      color: "var(--admin-gold)",
+                      border: "1px solid rgba(201, 162, 75, 0.3)",
+                    }}
+                  >
+                    ✦ {removedProducts.length} REMOVED {removedProducts.length === 1 ? "ITEM" : "ITEMS"}
+                  </span>
+                </div>
+              </div>
+
+              {/* SEARCH & FILTERS */}
+              <div className="admin-toolbar">
+                <div className="toolbar-search">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search by name, SKU, origin..."
+                    value={removedSearchQuery}
+                    onChange={(e) => setRemovedSearchQuery(e.target.value)}
+                  />
+                  {removedSearchQuery && (
+                    <button type="button" className="toolbar-clear" onClick={() => setRemovedSearchQuery("")}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="toolbar-filters">
+                  <select
+                    value={removedFilterCategory}
+                    onChange={(e) => setRemovedFilterCategory(e.target.value)}
+                    className="toolbar-select"
+                  >
+                    <option value="all">All Catalog Categories</option>
+                    <option value="tea">Tea Products</option>
+                    <option value="teaware">Teaware Collection</option>
+                    <option value="gifting">Gift Hampers</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* REMOVED PRODUCTS LISTING */}
+              {filteredRemovedProducts.length === 0 ? (
+                <div className="admin-empty-state-card">
+                  <span className="empty-icon">🍃</span>
+                  <h3>Recycle Bin Is Empty</h3>
+                  <p>
+                    {removedProducts.length === 0
+                      ? "There are no removed products. Items removed from Tea, Teaware, or Gifting will appear here."
+                      : "No removed products match your search or filter criteria."}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Desktop Table View */}
+                  <div className="admin-table-container desktop-only">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Thumbnail</th>
+                          <th>Product Name & SKU</th>
+                          <th>Original Category</th>
+                          <th>Price</th>
+                          <th>Removed Date</th>
+                          <th>Prior Status</th>
+                          <th className="th-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRemovedProducts.map((p) => {
+                          const cat = (p.category || "").toLowerCase();
+                          const isTw = cat === "teaware";
+                          const isGift = cat === "gifting";
+                          const catLabel = isTw ? "Teaware" : isGift ? "Gift Hamper" : "Tea Product";
+                          const catClass = isTw ? "teaware" : isGift ? "gifting" : "tea";
+                          const removedDateStr = p.removedAt
+                            ? new Date(p.removedAt).toLocaleString()
+                            : "Recently";
+
+                          return (
+                            <tr key={p.id}>
+                              <td style={{ width: "70px" }}>
+                                <img
+                                  src={p.image || "/leafly-green-tea.webp"}
+                                  alt={p.name}
+                                  className="product-thumb"
+                                />
+                              </td>
+                              <td>
+                                <strong className="cell-main-text">{p.name}</strong>
+                                <div className="product-tag-row">
+                                  {p.sku && <span className="cell-subtext">SKU: {p.sku}</span>}
+                                  {p.origin && <span className="cell-subtext">{p.origin}</span>}
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`admin-cat-badge ${catClass}`}>{catLabel}</span>
+                              </td>
+                              <td>
+                                <strong className="gold-text">₹{Number(p.price || 0).toLocaleString()}</strong>
+                              </td>
+                              <td>
+                                <span className="cell-date">{removedDateStr}</span>
+                              </td>
+                              <td>
+                                {p.isActive === false ? (
+                                  <span className="admin-launch-badge coming-soon">Coming Soon</span>
+                                ) : (
+                                  <span className="admin-launch-badge active">Active</span>
+                                )}
+                              </td>
+                              <td className="td-right">
+                                <div className="table-actions-group" style={{ justifyContent: "flex-end" }}>
+                                  <button
+                                    type="button"
+                                    className="admin-btn-restore"
+                                    onClick={() => handleRestoreItem(p.id, p.name)}
+                                    title="Restore product back to its original catalog"
+                                  >
+                                    <span>↺ Restore</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-btn-perm-delete"
+                                    onClick={() => handlePermanentlyDeleteItem(p.id, p.name)}
+                                    title="Permanently delete from database"
+                                  >
+                                    <span>✕ Permanently Delete</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile View */}
+                  <div className="admin-mobile-cards-list mobile-only">
+                    {filteredRemovedProducts.map((p) => {
+                      const cat = (p.category || "").toLowerCase();
+                      const isTw = cat === "teaware";
+                      const isGift = cat === "gifting";
+                      const catLabel = isTw ? "Teaware" : isGift ? "Gift Hamper" : "Tea Product";
+                      const catClass = isTw ? "teaware" : isGift ? "gifting" : "tea";
+                      const removedDateStr = p.removedAt
+                        ? new Date(p.removedAt).toLocaleDateString()
+                        : "Recently";
+
+                      return (
+                        <div className="admin-mobile-card" key={p.id}>
+                          <div className="mobile-card-header">
+                            <div>
+                              <strong>{p.name}</strong>
+                              <span className="mobile-card-date">{p.sku ? `SKU: ${p.sku}` : p.origin || "Leafly Catalog"}</span>
+                            </div>
+                            <span className={`admin-cat-badge ${catClass}`}>{catLabel}</span>
+                          </div>
+                          <div className="mobile-card-body">
+                            <div className="mobile-card-info-row">
+                              <span>Price:</span>
+                              <strong className="gold-text">₹{Number(p.price || 0).toLocaleString()}</strong>
+                            </div>
+                            <div className="mobile-card-info-row">
+                              <span>Removed At:</span>
+                              <span>{removedDateStr}</span>
+                            </div>
+                            <div className="mobile-card-info-row">
+                              <span>Prior Status:</span>
+                              <span className={`admin-launch-badge ${p.isActive === false ? "coming-soon" : "active"}`}>
+                                {p.isActive === false ? "Coming Soon" : "Active"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mobile-card-actions" style={{ flexDirection: "column", gap: "8px" }}>
+                            <button
+                              type="button"
+                              className="admin-btn-restore"
+                              onClick={() => handleRestoreItem(p.id, p.name)}
+                              style={{ width: "100%", justifyContent: "center" }}
+                            >
+                              <span>↺ Restore Product</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="admin-btn-perm-delete"
+                              onClick={() => handlePermanentlyDeleteItem(p.id, p.name)}
+                              style={{ width: "100%", justifyContent: "center" }}
+                            >
+                              <span>✕ Permanently Delete</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </main>
       </div>
 
@@ -3917,12 +4351,13 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="modal-items-section">
-                  <h4 className="modal-section-heading">Harvest Items Ordered ({(selectedOrder.items || []).length})</h4>
+                  <h4 className="modal-section-heading">Catalog Items Ordered ({(selectedOrder.items || []).length})</h4>
                   <div className="admin-table-container">
                     <table className="admin-table">
                       <thead>
                         <tr>
                           <th>Item</th>
+                          <th>Category</th>
                           <th>Variant</th>
                           <th>Price</th>
                           <th>Qty</th>
@@ -3930,15 +4365,32 @@ export default function AdminDashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {(selectedOrder.items || []).map((item, idx) => (
-                          <tr key={idx}>
-                            <td><strong>{item.name}</strong></td>
-                            <td><span className="category-pill">{item.variant || item.weight || "100g"}</span></td>
-                            <td>₹{item.price}</td>
-                            <td>{item.quantity}</td>
-                            <td><strong className="gold-text">₹{(item.price || 0) * (item.quantity || 1)}</strong></td>
-                          </tr>
-                        ))}
+                        {(selectedOrder.items || []).map((item, idx) => {
+                          const cat = (item.category || "").toLowerCase();
+                          const isTw = cat === "teaware" || cat === "teapots" || cat === "tea cups" || cat === "serving & trays" || cat === "storage & accessories";
+                          const isGift = cat.includes("gift") || cat.includes("hamper");
+                          const catLabel = isTw ? "Teaware" : isGift ? "Gifting" : "Tea";
+                          const badgeStyle = isTw
+                            ? { background: "rgba(201, 162, 75, 0.15)", color: "#b98428" }
+                            : isGift
+                            ? { background: "rgba(107, 70, 193, 0.15)", color: "#6b46c1" }
+                            : { background: "rgba(30, 130, 76, 0.15)", color: "#1e824c" };
+
+                          return (
+                            <tr key={idx}>
+                              <td><strong>{item.name}</strong></td>
+                              <td>
+                                <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "4px", fontWeight: 700, ...badgeStyle }}>
+                                  {catLabel}
+                                </span>
+                              </td>
+                              <td><span className="category-pill">{item.variant || item.weight || "Standard"}</span></td>
+                              <td>₹{item.price}</td>
+                              <td>{item.quantity}</td>
+                              <td><strong className="gold-text">₹{(item.price || 0) * (item.quantity || 1)}</strong></td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

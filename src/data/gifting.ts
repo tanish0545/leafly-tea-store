@@ -15,11 +15,16 @@ export type GiftHamper = {
   stock?: number;
   inStock?: boolean;
   category?: string;
+  sku?: string;
+  features?: string[];
+  isActive?: boolean;
+  isRemoved?: boolean;
+  removedAt?: string | null;
 };
 
 export const giftHampers: GiftHamper[] = [
   {
-    id: 101,
+    id: 201,
     name: "The Royal Flush Heritage Box",
     subtitle: "Darjeeling First Flush, Nilgiri White Needle & Brass Infuser",
     price: 2499,
@@ -28,20 +33,22 @@ export const giftHampers: GiftHamper[] = [
     badge: "MOST POPULAR",
     stock: 10,
     inStock: true,
+    sku: "LF-GF-201",
   },
   {
-    id: 102,
+    id: 202,
     name: "The Morning Tranquility Ensemble",
-    subtitle: "Assam Orthodox Golden Tips, Pure Honey & Ceramic Cup",
+    subtitle: "Darjeeling Golden Tips, Pure Honey & Ceramic Cup",
     price: 1899,
     image: image2,
-    includes: ["1x Assam Orthodox Reserve (100g)", "Wild Forest Blossom Honey (150g)", "Hand-thrown Terracotta Tumbler", "Tasting Journal Booklet"],
+    includes: ["1x Darjeeling Golden Reserve (100g)", "Wild Forest Blossom Honey (150g)", "Hand-thrown Terracotta Tumbler", "Tasting Journal Booklet"],
     badge: "BEST FOR MORNINGS",
     stock: 10,
     inStock: true,
+    sku: "LF-GF-202",
   },
   {
-    id: 103,
+    id: 203,
     name: "The Grand Estate Connoisseur Hamper",
     subtitle: "Complete 4-Region Flight with Handcrafted Teaware",
     price: 3899,
@@ -50,5 +57,6 @@ export const giftHampers: GiftHamper[] = [
     badge: "LUXURY EDITION",
     stock: 10,
     inStock: true,
+    sku: "LF-GF-203",
   },
 ];

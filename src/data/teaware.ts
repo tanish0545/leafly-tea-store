@@ -35,6 +35,10 @@ export type TeawareItem = {
   features: string[];
   stock?: number;
   inStock?: boolean;
+  sku?: string;
+  isActive?: boolean;
+  isRemoved?: boolean;
+  removedAt?: string | null;
 };
 
 export const teawareProducts: TeawareItem[] = [

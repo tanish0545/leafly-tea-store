@@ -1,8 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { giftHampers as initialHampers, type GiftHamper } from "../data/gifting";
-import { db, auth } from "../lib/firebase";
-import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch } from "firebase/firestore";
+import React, { createContext, useContext, useMemo } from "react";
+import { type GiftHamper } from "../data/gifting";
+import { useProducts } from "./ProductContext";
+import type { Product } from "../data/products";
 
 type GiftingContextType = {
   hampers: GiftHamper[];
@@ -14,173 +14,91 @@ type GiftingContextType = {
 
 const GiftingContext = createContext<GiftingContextType | undefined>(undefined);
 
-function sanitizeHamperPayload(hamper: GiftHamper): Record<string, unknown> {
-  const clean: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(hamper)) {
-    if (value !== undefined) {
-      if (key === "price" || key === "oldPrice" || key === "stock") {
-        if (value !== null && value !== "") {
-          clean[key] = Number(value);
-        }
-      } else if (key === "inStock") {
-        clean[key] = Boolean(value);
-      } else if (Array.isArray(value)) {
-        clean[key] = [...value];
-      } else if (value !== null && typeof value === "object") {
-        clean[key] = { ...(value as Record<string, unknown>) };
-      } else {
-        clean[key] = value;
-      }
-    }
-  }
-  return clean;
-}
-
 export function GiftingProvider({ children }: { children: React.ReactNode }) {
-  const [hampers, setHampers] = useState<GiftHamper[]>(initialHampers);
-  const [loading, setLoading] = useState(true);
+  const { products, addProduct, updateProduct, deleteProduct, loading } = useProducts();
 
-  useEffect(() => {
-    const hampersRef = collection(db, "hampers");
+  const hampers = useMemo<GiftHamper[]>(() => {
+    return products
+      .filter((p) => (p.category || "").toLowerCase() === "gifting" && !p.isRemoved)
+      .map((p) => {
+        const idNum = !isNaN(Number(p.id)) ? Number(p.id) : (p.id as unknown as number);
+        const stock = typeof p.stock === "number" ? p.stock : 10;
+        const inStock = p.inStock !== false && stock > 0;
+        return {
+          id: idNum,
+          name: p.name,
+          subtitle: p.subtitle || p.origin || "Curated Estate Blend",
+          price: Number(p.price) || 0,
+          oldPrice: p.oldPrice ? Number(p.oldPrice) : undefined,
+          image: p.image,
+          includes: p.includes || (p.features ? p.features : []),
+          badge: p.badge || "",
+          description: p.description || "",
+          stock,
+          inStock,
+          sku: p.sku || `LF-GF-${idNum}`,
+          category: p.subCategory || "Luxury Gift Sets",
+          isActive: p.isActive !== false,
+          isRemoved: Boolean(p.isRemoved),
+          removedAt: p.removedAt || null,
+        };
+      });
+  }, [products]);
 
-    // Initialize data if empty (runs only if an authorized admin is authenticated)
-    const initializeData = async () => {
-      const currentUserEmail = auth.currentUser?.email?.toLowerCase();
-      if (!currentUserEmail || (currentUserEmail !== "leaflydatabase@gmail.com" && currentUserEmail !== "admin@leafly.com")) {
-        return;
-      }
-      try {
-        const snapshot = await getDocs(hampersRef);
-        if (snapshot.empty) {
-          console.log("Initializing Firestore hampers...");
-          const batch = writeBatch(db);
-          initialHampers.forEach((hamper) => {
-            const docRef = doc(hampersRef, String(hamper.id));
-            const clean = sanitizeHamperPayload({
-              ...hamper,
-              stock: hamper.stock ?? 10,
-              inStock: hamper.inStock ?? true,
-            });
-            batch.set(docRef, clean);
-          });
-          await batch.commit();
-          console.log("Firestore hampers initialized successfully.");
-        }
-      } catch (error) {
-        console.error("Error initializing hampers:", error);
-      }
+  const addHamper = async (hamper: GiftHamper) => {
+    const prod: Product = {
+      id: hamper.id || Date.now(),
+      name: hamper.name,
+      category: "gifting",
+      subCategory: hamper.category || "Luxury Gift Sets",
+      subtitle: hamper.subtitle,
+      price: Number(hamper.price) || 0,
+      oldPrice: hamper.oldPrice ? Number(hamper.oldPrice) : undefined,
+      badge: hamper.badge,
+      image: hamper.image,
+      includes: hamper.includes || [],
+      description: hamper.description || hamper.subtitle,
+      stock: typeof hamper.stock === "number" ? hamper.stock : 10,
+      inStock: hamper.inStock !== false && (typeof hamper.stock !== "number" || hamper.stock > 0),
+      isActive: hamper.isActive !== false,
+      isRemoved: false,
+      origin: hamper.subtitle || "Darjeeling & Indian Terroirs",
+      weight: "Gift Box",
+      caffeine: "Varied",
+      sku: hamper.sku || `LF-GF-${hamper.id || Date.now()}`,
     };
-
-    // Set up real-time listener immediately
-    const unsubscribe = onSnapshot(
-      hampersRef,
-      (snapshot) => {
-        if (snapshot.empty) {
-          setHampers(initialHampers);
-          setLoading(false);
-          initializeData();
-          return;
-        }
-
-        const fetchedHampers: GiftHamper[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data() as GiftHamper;
-          const rawId = docSnap.id;
-          const parsedId = !isNaN(Number(rawId)) ? Number(rawId) : rawId;
-          const stock = typeof data.stock === "number" ? data.stock : 10;
-          const inStock = data.inStock !== false && stock > 0;
-
-          fetchedHampers.push({
-            ...data,
-            id: parsedId as number,
-            price: Number(data.price) || 0,
-            oldPrice: data.oldPrice ? Number(data.oldPrice) : undefined,
-            stock,
-            inStock,
-            category: data.category || "Luxury Gift Sets",
-            includes: Array.isArray(data.includes) ? data.includes : [],
-          });
-        });
-
-        // Sort by ID to maintain consistent order
-        fetchedHampers.sort((a, b) => {
-          const numA = Number(a.id);
-          const numB = Number(b.id);
-          if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-          return String(a.id).localeCompare(String(b.id));
-        });
-        setHampers(fetchedHampers);
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching hampers from Firestore:", error);
-        // Fallback to local data on error
-        setHampers(initialHampers);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
-
-  const addHamper = async (hamper: GiftHamper): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const newId = hamper.id || Date.now();
-      const stock = typeof hamper.stock === "number" ? hamper.stock : 10;
-      const inStock = hamper.inStock !== false && stock > 0;
-      const newHamper: GiftHamper = {
-        ...hamper,
-        id: newId as number,
-        price: Number(hamper.price) || 0,
-        oldPrice: hamper.oldPrice ? Number(hamper.oldPrice) : undefined,
-        stock,
-        inStock,
-      };
-      const clean = sanitizeHamperPayload(newHamper);
-      await setDoc(doc(db, "hampers", String(newId)), clean);
-      setHampers((prev) => [...prev.filter((p) => String(p.id) !== String(newId)), newHamper]);
-      return { success: true };
-    } catch (error) {
-      console.error("Error adding hamper:", error);
-      const msg = error instanceof Error ? error.message : String(error);
-      return { success: false, error: msg };
-    }
+    return addProduct(prod);
   };
 
-  const updateHamper = async (updatedHamper: GiftHamper): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const docId = String(updatedHamper.id);
-      const stock = typeof updatedHamper.stock === "number" ? updatedHamper.stock : 10;
-      const inStock = updatedHamper.inStock !== false && stock > 0;
-      const normalizedHamper: GiftHamper = {
-        ...updatedHamper,
-        price: Number(updatedHamper.price) || 0,
-        oldPrice: updatedHamper.oldPrice ? Number(updatedHamper.oldPrice) : undefined,
-        stock,
-        inStock,
-      };
-      const clean = sanitizeHamperPayload(normalizedHamper);
-      await setDoc(doc(db, "hampers", docId), clean, { merge: true });
-      setHampers((prev) => prev.map((p) => (String(p.id) === docId ? normalizedHamper : p)));
-      return { success: true };
-    } catch (error) {
-      console.error("Error updating hamper:", error);
-      const msg = error instanceof Error ? error.message : String(error);
-      return { success: false, error: msg };
-    }
+  const updateHamper = async (updatedHamper: GiftHamper) => {
+    const existing = products.find((p) => String(p.id) === String(updatedHamper.id));
+    const prod: Product = {
+      ...existing,
+      id: updatedHamper.id,
+      name: updatedHamper.name,
+      category: "gifting",
+      subCategory: updatedHamper.category || existing?.subCategory || "Luxury Gift Sets",
+      subtitle: updatedHamper.subtitle,
+      price: Number(updatedHamper.price) || 0,
+      oldPrice: updatedHamper.oldPrice ? Number(updatedHamper.oldPrice) : undefined,
+      badge: updatedHamper.badge,
+      image: updatedHamper.image,
+      includes: updatedHamper.includes || existing?.includes || [],
+      description: updatedHamper.description || updatedHamper.subtitle || existing?.description,
+      stock: typeof updatedHamper.stock === "number" ? updatedHamper.stock : 10,
+      inStock: updatedHamper.inStock !== false && (typeof updatedHamper.stock !== "number" || updatedHamper.stock > 0),
+      isActive: updatedHamper.isActive !== false,
+      isRemoved: false,
+      origin: updatedHamper.subtitle || existing?.origin || "Darjeeling & Indian Terroirs",
+      weight: "Gift Box",
+      caffeine: "Varied",
+      sku: updatedHamper.sku || existing?.sku || `LF-GF-${updatedHamper.id}`,
+    };
+    return updateProduct(prod);
   };
 
-  const deleteHamper = async (id: number | string): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const docId = String(id);
-      await deleteDoc(doc(db, "hampers", docId));
-      setHampers((prev) => prev.filter((p) => String(p.id) !== docId));
-      return { success: true };
-    } catch (error) {
-      console.error("Error deleting hamper:", error);
-      const msg = error instanceof Error ? error.message : String(error);
-      return { success: false, error: msg };
-    }
+  const deleteHamper = async (id: number | string) => {
+    return deleteProduct(id);
   };
 
   return (

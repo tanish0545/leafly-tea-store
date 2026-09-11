@@ -289,7 +289,7 @@ export default function WhyLeafly() {
               </svg>
             </div>
             <h3>ORIGIN MATTERS</h3>
-            <p>We source the finest teas from India&apos;s most renowned tea gardens across Darjeeling, Assam, and Kangra.</p>
+            <p>We source the finest teas from India&apos;s most renowned tea gardens in Darjeeling.</p>
           </div>
 
           <div className="why-diff-card">

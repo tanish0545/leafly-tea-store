@@ -220,8 +220,11 @@ export default function WishlistDrawer() {
 
                         <div className="leafly-wishlist-item-info">
                           <p className="leafly-wishlist-category">
-                            {product.origin} ·{" "}
-                            {product.category}
+                            {product.category === "teaware" || product.category === "Teaware"
+                              ? `Artisan Teaware · ${product.origin || "Artisan Craft"}`
+                              : product.category === "gifting" || product.category === "Gifting" || product.category?.toLowerCase().includes("gift")
+                              ? `Luxury Gift Set · ${product.origin || "Curated Blend"}`
+                              : `${product.origin} · ${product.category}`}
                           </p>
 
                           <h3>
@@ -229,9 +232,10 @@ export default function WishlistDrawer() {
                           </h3>
 
                           <span className="leafly-wishlist-details">
-                            {product.weight} ·{" "}
-                            {product.caffeine}{" "}
-                            caffeine
+                            {product.weight || "1 Unit"}
+                            {product.caffeine && product.caffeine !== "None" && product.caffeine !== "Teaware" && product.caffeine !== "Varied" ? (
+                              <> · {product.caffeine} caffeine</>
+                            ) : null}
                           </span>
 
                           <div className="leafly-wishlist-item-footer">

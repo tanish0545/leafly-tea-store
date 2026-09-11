@@ -40,8 +40,10 @@ export function getTransporter(): nodemailer.Transporter | null {
   }
 
   // Check for Gmail App Password or generic SMTP
-  const user = process.env.GMAIL_USER || process.env.EMAIL_USER || process.env.SMTP_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD || process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
+  const rawUser = process.env.GMAIL_USER || process.env.EMAIL_USER || process.env.SMTP_USER;
+  const rawPass = process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD || process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
+  const user = rawUser?.trim();
+  const pass = rawPass?.trim();
   const host = process.env.SMTP_HOST || "smtp.gmail.com";
   const port = parseInt(process.env.SMTP_PORT || "465", 10);
   const secure = port === 465;
@@ -71,7 +73,7 @@ export async function sendMail(payload: EmailPayload): Promise<MailResult> {
   console.info(`[Leafly Mailer] Recipient: ${payload.to}`);
 
   if (!transporter) {
-    console.error(`[Leafly Mailer] ERROR: GMAIL_USER/GMAIL_APP_PASSWORD missing. Email not delivered.`);
+    console.warn(`[Leafly Mailer] WARNING: No SMTP credentials found. Email NOT sent to <${payload.to}>. Please set GMAIL_USER and GMAIL_APP_PASSWORD in server environment variables.`);
     console.info(`[Leafly Mailer] Provider accepted message: false`);
     return {
       success: false,

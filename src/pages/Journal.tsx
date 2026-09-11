@@ -220,7 +220,7 @@ export default function Journal() {
 
   const pageDescription = selectedStory
     ? selectedStory.description
-    : "Read thoughtful guides to loose leaf tea brewing, mountain terroirs of Darjeeling and Assam, whole leaf craft, and mindful daily tea rituals.";
+    : "Read thoughtful guides to loose leaf tea brewing, mountain terroirs of Darjeeling, whole leaf craft, and mindful daily tea rituals.";
 
   const canonicalPath = selectedStory
     ? `/journal/${getStorySlug(selectedStory)}`
@@ -585,7 +585,7 @@ export default function Journal() {
                 <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
                   <Link to="/tea-maker" style={{ color: "#0b2b1e", textDecoration: "underline" }}>Interactive Steeping Guide →</Link>
                   <Link to="/collections/green-tea" style={{ color: "#0b2b1e", textDecoration: "underline" }}>Single-Origin Green Teas →</Link>
-                  <Link to="/collections/black-tea" style={{ color: "#0b2b1e", textDecoration: "underline" }}>Bold Assam Black Teas →</Link>
+                  <Link to="/collections/black-tea" style={{ color: "#0b2b1e", textDecoration: "underline" }}>Bold Darjeeling Black Teas →</Link>
                   <Link to="/shop" style={{ color: "#0b2b1e", textDecoration: "underline" }}>Browse All Teas →</Link>
                 </div>
               </div>

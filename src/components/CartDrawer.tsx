@@ -145,8 +145,11 @@ export default function CartDrawer() {
 
                     <div className="leafly-cart-item-info">
                       <p>
-                        {item.product.origin} ·{" "}
-                        {item.product.category}
+                        {item.product.category === "teaware" || item.product.category === "Teaware"
+                          ? `Artisan Teaware · ${item.product.origin || "Artisan Craft"}`
+                          : item.product.category === "gifting" || item.product.category === "Gifting" || item.product.category?.toLowerCase().includes("gift")
+                          ? `Luxury Gift Set · ${item.product.origin || "Curated Blend"}`
+                          : `${item.product.origin} · ${item.product.category}`}
                       </p>
 
                       <h3>
@@ -154,9 +157,10 @@ export default function CartDrawer() {
                       </h3>
 
                       <span className="leafly-cart-variant-meta">
-                        <strong className="leafly-variant-badge">{item.variant || item.weight}</strong>
-                        {" · "}
-                        {item.product.caffeine} caffeine
+                        <strong className="leafly-variant-badge">{item.variant || item.weight || "1 Unit"}</strong>
+                        {item.product.caffeine && item.product.caffeine !== "None" && item.product.caffeine !== "Teaware" && item.product.caffeine !== "Varied" ? (
+                          <> · {item.product.caffeine} caffeine</>
+                        ) : null}
                       </span>
 
                       {isItemUnavailable && (

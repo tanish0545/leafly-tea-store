@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useOrderContext } from "../context/OrderContext";
+import { useCart } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext";
 import { db } from "../lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import type { Order } from "../types/contracts";
 import DeliveryAnimation from "../components/DeliveryAnimation";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
@@ -17,41 +20,105 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
 export default function OrderSuccess() {
   const navigate = useNavigate();
   const { latestOrder } = useOrderContext();
+  const { clearCart } = useCart();
+  const { currentUser, firebaseUser } = useAuth();
+
+  // 1. Resolve order: priority to context latestOrder, fallback to sessionStorage
+  const [persistedOrder, setPersistedOrder] = useState<Order | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("leafly_last_order");
+        if (stored) return JSON.parse(stored) as Order;
+      } catch {
+        // ignore storage errors
+      }
+    }
+    return null;
+  });
+
+  const order = latestOrder || persistedOrder;
+
+  // Clear cart on mount cleanly - ensures Checkout never rendered empty-cart flash
+  useEffect(() => {
+    clearCart();
+  }, [clearCart]);
+
+  // Synchronize latestOrder into sessionStorage
+  useEffect(() => {
+    if (latestOrder) {
+      setPersistedOrder(latestOrder);
+      try {
+        sessionStorage.setItem("leafly_last_order", JSON.stringify(latestOrder));
+      } catch {
+        // ignore
+      }
+    }
+  }, [latestOrder]);
 
   const [rating, setRating] = useState<number>(5);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [feedback, setFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-
-  const order = latestOrder;
+  const [isSubmitted, setIsSubmitted] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("leafly_last_order");
+        const orderId = latestOrder?.id || (stored ? JSON.parse(stored)?.id : null);
+        if (orderId && sessionStorage.getItem(`leafly_review_${orderId}`) === "true") {
+          return true;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return false;
+  });
 
   const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    if (order) {
-      try {
-        const customerName = order.shippingAddress?.fullName || order.customerName || "Verified Patron";
-        const customerEmail = order.customerEmail || "";
-        const productName = (order.items || []).map((i) => i.name).join(", ") || "Leafly Botanical Harvest";
-        await addDoc(collection(db, "reviews"), {
-          orderId: order.id,
-          customerName,
-          customerEmail,
-          productName,
-          rating,
-          feedback: feedback.trim() || "Exquisite tea craftsmanship.",
-          status: "Approved",
-          createdAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        console.warn("Could not save review to Firestore:", err);
-      }
-    }
+    const activeOrder = order;
+    const currentUid = firebaseUser?.uid || currentUser?.uid || activeOrder?.userId || null;
+    const currentEmail = activeOrder?.customerEmail || firebaseUser?.email || currentUser?.email || "";
+    const customerName =
+      activeOrder?.shippingAddress?.fullName ||
+      activeOrder?.customerName ||
+      currentUser?.name ||
+      currentUser?.displayName ||
+      "Verified Patron";
+    const productName =
+      (activeOrder?.items || []).map((i) => i.name).filter(Boolean).join(", ") ||
+      "Leafly Botanical Harvest";
+    const productId = activeOrder?.items?.[0]?.productId || "tea-harvest";
+    const orderId = activeOrder?.id || `ORD-${Date.now().toString(36).toUpperCase()}`;
 
-    setIsSubmitting(false);
-    setIsSubmitted(true);
+    try {
+      await addDoc(collection(db, "reviews"), {
+        orderId,
+        userId: currentUid,
+        customerName,
+        customerEmail: currentEmail,
+        productName,
+        productId,
+        rating: Number(rating) || 5,
+        feedback: feedback.trim() || "Exquisite tea craftsmanship.",
+        status: "Approved",
+        createdAt: new Date().toISOString(),
+        timestamp: serverTimestamp(),
+      });
+
+      try {
+        sessionStorage.setItem(`leafly_review_${orderId}`, "true");
+      } catch {
+        // ignore
+      }
+    } catch (err) {
+      console.warn("Could not save review to Firestore:", err);
+    } finally {
+      setIsSubmitting(false);
+      setIsSubmitted(true);
+    }
   };
 
   if (!order) {

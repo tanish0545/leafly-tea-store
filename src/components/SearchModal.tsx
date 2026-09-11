@@ -15,7 +15,6 @@ const POPULAR_SEARCHES = [
   "Golden Dusk Black Tea + Chamomile",
   "Premium Oolong Black Tea",
   "Red Oolong",
-  "Assam",
   "Darjeeling",
   "Infuser",
 ];

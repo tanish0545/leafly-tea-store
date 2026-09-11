@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { type ProductVariantKey, type Product, SUPPORTED_WEIGHT_KEYS } from "../data/products";
+import { type ProductVariantKey, type Product } from "../data/products";
 import type { TeawareItem } from "../data/teaware";
 import type { GiftHamper } from "../data/gifting";
 import { useProducts } from "./ProductContext";
@@ -19,21 +19,27 @@ export type CartProduct = {
   name: string;
   category: string;
   origin: string;
-  caffeine: string;
-  weight: string;
+  caffeine?: string;
+  weight?: string;
   price: number;
   oldPrice?: number;
   badge?: string;
   image: string;
   stock?: number;
   inStock?: boolean;
+  material?: string;
+  capacity?: string;
+  subCategory?: string;
+  sku?: string;
+  features?: string[];
+  includes?: string[];
   variants?: Product["variants"];
 };
 
 export type CartItem = {
   id: string; // Composite key: `${product.id}-${variant}`
   product: CartProduct;
-  variant: ProductVariantKey;
+  variant: ProductVariantKey | string;
   weight: string;
   price: number;
   oldPrice?: number;
@@ -50,7 +56,7 @@ type CartContextType = {
   addToCart: (
     product: CartProduct,
     quantity?: number,
-    variant?: ProductVariantKey,
+    variant?: ProductVariantKey | string,
     customPrice?: number,
     customOldPrice?: number
   ) => void;
@@ -236,18 +242,21 @@ export function CartProvider({
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return parsed.map((item: any) => {
-        const variant: ProductVariantKey = (item.variant && (SUPPORTED_WEIGHT_KEYS as readonly string[]).includes(item.variant))
-          ? (item.variant as ProductVariantKey)
-          : (item.variant === "250g" ? "250g" : "100g");
+        const variant: ProductVariantKey | string = item.variant || "100g";
         const compositeId = item.id && typeof item.id === "string" && item.id.includes("-")
           ? item.id
           : `${item.product?.id || item.id || 1}-${variant}`;
 
+        const prod = item.product ? {
+          ...item.product,
+          origin: (item.product.origin && item.product.origin.toLowerCase().includes("assam")) ? "Darjeeling" : (item.product.origin || "Darjeeling"),
+        } : item.product;
+
         return {
           id: compositeId,
-          product: item.product,
+          product: prod,
           variant,
-          weight: item.weight || variant,
+          weight: item.weight || (typeof variant === "string" ? variant : "100g"),
           price: typeof item.price === "number" ? item.price : item.product?.price || 0,
           oldPrice: item.oldPrice ?? item.product?.oldPrice,
           quantity: item.quantity || 1,
@@ -262,16 +271,12 @@ export function CartProvider({
     useState(false);
 
   // Synchronize cart items with live catalog data dynamically whenever products, teaware, or hampers update
-  // Filter out any items that are out of stock / Coming Soon (stock <= 0)
+  // Filter out any items that are out of stock (stock <= 0)
   const items = useMemo<CartItem[]>(() => {
     return rawItems
       .filter((item) => {
         const live = resolveLiveCatalogProduct(item.product, products, teaware, hampers);
         if (!live) return true;
-        // Showcase pre-launch enforcement: Teaware is showcase only
-        if (isTeawareItem(item.product, teaware) || item.product.category === "Teaware" || String(item.id).startsWith("tw-")) {
-          return false;
-        }
         // Live stock validation: if stock <= 0 or inStock is false, filter out immediately
         if (live.inStock === false || (typeof live.stock === "number" && live.stock <= 0)) {
           return false;
@@ -301,6 +306,7 @@ export function CartProvider({
           oldPrice: effectiveOldPrice,
           product: {
             ...item.product,
+            origin: ("origin" in live && typeof (live as any).origin === "string") ? (live as any).origin : (item.product?.origin || "Darjeeling"),
             price: effectivePrice,
             oldPrice: effectiveOldPrice,
             stock: live.stock,
@@ -337,17 +343,13 @@ export function CartProvider({
   const addToCart = (
     product: CartProduct,
     quantity = 1,
-    variant: ProductVariantKey = "100g",
+    variant: ProductVariantKey | string = "100g",
     customPrice?: number,
     customOldPrice?: number
   ) => {
     const isTw = isTeawareItem(product, teaware);
-    if (isTw || product.category === "Teaware" || String(product.id).startsWith("tw-")) {
-      console.warn("Teaware items are currently in showcase pre-launch mode and cannot be added to cart.");
-      return;
-    }
     const isGh = isHamperItem(product, hampers);
-    const pfx = isGh ? "gh" : "tea";
+    const pfx = isTw ? "tw" : isGh ? "gh" : "tea";
     const cartItemId = `${pfx}-${product.id}-${variant}`;
 
     // Live availability check: block if stock <= 0

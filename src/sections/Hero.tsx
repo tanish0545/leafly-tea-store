@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import heroVideo from "../assets/leafly-hero.mp4";
-import heroPoster from "../assets/leafly-hero-poster.webp";
 import "./Hero.css";
 
 export default function Hero() {
@@ -41,7 +40,7 @@ export default function Hero() {
         ref={videoRef}
         className="hero-background-video"
         src={heroVideo}
-        poster={heroPoster}
+        poster="/leafly-hero-poster.webp"
         autoPlay
         muted
         loop

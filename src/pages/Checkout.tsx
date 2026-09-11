@@ -89,9 +89,9 @@ const defaultAddress: AddressForm = {
 
 export default function Checkout() {
   const navigate = useNavigate();
-  const { items, subtotal, clearCart } = useCart();
+  const { items, subtotal } = useCart();
   const { addOrder } = useOrderContext();
-  const { currentUser, loading: authLoading, isAuthenticated } = useAuth();
+  const { currentUser, firebaseUser, loading: authLoading, isAuthenticated } = useAuth();
   const { validateUserCoupon, markCouponUsed } = useCoupons();
 
   const [couponInput, setCouponInput] = useState("");
@@ -110,17 +110,22 @@ export default function Checkout() {
     }
   }, [authLoading, isAuthenticated, navigate]);
 
-  const [email, setEmail] = useState(() => currentUser?.email || "");
-  const [phone, setPhone] = useState(() => currentUser?.phone || currentUser?.phoneNumber || "");
+  const resolvedAuthEmail = currentUser?.email || firebaseUser?.email || auth.currentUser?.email || "";
+  const resolvedAuthPhone = currentUser?.phone || currentUser?.phoneNumber || firebaseUser?.phoneNumber || "";
+
+  const [email, setEmail] = useState(() => resolvedAuthEmail);
+  const [phone, setPhone] = useState(() => resolvedAuthPhone);
 
   useEffect(() => {
-    if (currentUser?.email && !email) {
-      setEmail(currentUser.email);
+    const authEmail = currentUser?.email || firebaseUser?.email || auth.currentUser?.email;
+    if (authEmail && (!email || email !== authEmail)) {
+      setEmail(authEmail);
     }
-    if ((currentUser?.phone || currentUser?.phoneNumber) && !phone) {
-      setPhone(currentUser.phone || currentUser.phoneNumber || "");
+    const authPhone = currentUser?.phone || currentUser?.phoneNumber || firebaseUser?.phoneNumber;
+    if (authPhone && (!phone || phone !== authPhone)) {
+      setPhone(authPhone);
     }
-  }, [currentUser, email, phone]);
+  }, [currentUser, firebaseUser, email, phone]);
 
   const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express">("standard");
   const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "cod">("cod");
@@ -130,6 +135,7 @@ export default function Checkout() {
   // Order submission feedback state
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBursting, setIsBursting] = useState(false);
+  const orderCompletedRef = useRef(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
   const [shippingAddress, setShippingAddress] = useState<AddressForm>(() => {
@@ -162,15 +168,17 @@ export default function Checkout() {
     const prevUid = prevUidRef.current;
     prevUidRef.current = currentUser?.uid;
 
-    if (currentUser?.uid) {
-      setEmail(currentUser.email || "");
-      setPhone(currentUser.phone || currentUser.phoneNumber || "");
+    const activeUid = currentUser?.uid || firebaseUser?.uid;
+    if (activeUid) {
+      setEmail(resolvedAuthEmail || "");
+      setPhone(resolvedAuthPhone || "");
       setDeliveryInstructions("");
-      const savedAddresses = readSavedAddresses(currentUser.uid);
+      const savedAddresses = readSavedAddresses(activeUid);
+      const authDisplayName = currentUser?.displayName || currentUser?.name || firebaseUser?.displayName || "";
       if (savedAddresses.length > 0) {
         const lastSaved = savedAddresses[0];
         setShippingAddress({
-          fullName: lastSaved.fullName || currentUser.displayName || currentUser.name || "",
+          fullName: lastSaved.fullName || authDisplayName,
           addressLine1: lastSaved.addressLine1 || "",
           addressLine2: lastSaved.addressLine2 || "",
           city: lastSaved.city || "Mumbai",
@@ -181,7 +189,7 @@ export default function Checkout() {
       } else {
         setShippingAddress({
           ...defaultAddress,
-          fullName: currentUser.displayName || currentUser.name || "",
+          fullName: authDisplayName,
         });
       }
     } else if (prevUid) {
@@ -264,7 +272,7 @@ export default function Checkout() {
 
   const deliveryFee = useMemo(() => {
     if (items.length === 0) return 0;
-    return deliveryMethod === "express" ? 99 : 0;
+    return deliveryMethod === "express" ? 59 : 0;
   }, [deliveryMethod, items.length]);
 
   const discountAmount = useMemo(() => {
@@ -318,9 +326,11 @@ export default function Checkout() {
 
   const validateCheckout = () => {
     const nextErrors: FormErrors = {};
-    if (!email.trim()) {
+    const cleanEmail = email.trim().toLowerCase();
+    const isAuthEmail = Boolean(resolvedAuthEmail && cleanEmail === resolvedAuthEmail.toLowerCase());
+    if (!cleanEmail) {
       nextErrors.email = "Email is required.";
-    } else if (!isValidGmailAddress(email)) {
+    } else if (!isAuthEmail && !isValidGmailAddress(cleanEmail)) {
       nextErrors.email = GMAIL_ERROR_MESSAGE;
     }
 
@@ -435,8 +445,10 @@ export default function Checkout() {
       customerId: currentUid,
       customerName: shippingAddress.fullName.trim(),
       customerEmail: (
+        resolvedAuthEmail ||
         email.trim() ||
         currentUser?.email ||
+        firebaseUser?.email ||
         auth.currentUser?.email ||
         ""
       ).toLowerCase(),
@@ -520,22 +532,14 @@ export default function Checkout() {
       for (const item of order.items) {
         if (item.productId) {
           const idStr = String(item.productId);
-          const cat = (item.category || "").toLowerCase();
-
-          // Determine preferred collection
-          let preferredCol = "products";
-          if (cat === "teaware" || cat === "teapots" || cat === "tea cups" || cat === "serving & trays" || cat === "storage & accessories") {
-            preferredCol = "teaware";
-          } else if (cat.includes("hamper") || cat.includes("gift")) {
-            preferredCol = "hampers";
-          }
 
           try {
-            let docRef = doc(db, preferredCol, idStr);
+            // Check unified products collection first
+            let docRef = doc(db, "products", idStr);
             let snap = await getDoc(docRef);
 
-            // Probe remaining collections if not in preferred
-            if (!snap.exists() && preferredCol !== "teaware") {
+            // Backward-compatibility fallback for legacy standalone collections
+            if (!snap.exists()) {
               const twRef = doc(db, "teaware", idStr);
               const twSnap = await getDoc(twRef);
               if (twSnap.exists()) {
@@ -543,20 +547,12 @@ export default function Checkout() {
                 snap = twSnap;
               }
             }
-            if (!snap.exists() && preferredCol !== "hampers") {
+            if (!snap.exists()) {
               const hRef = doc(db, "hampers", idStr);
               const hSnap = await getDoc(hRef);
               if (hSnap.exists()) {
                 docRef = hRef;
                 snap = hSnap;
-              }
-            }
-            if (!snap.exists() && preferredCol !== "products") {
-              const pRef = doc(db, "products", idStr);
-              const pSnap = await getDoc(pRef);
-              if (pSnap.exists()) {
-                docRef = pRef;
-                snap = pSnap;
               }
             }
 
@@ -594,16 +590,18 @@ export default function Checkout() {
         total: order.total
       });
 
-      // Navigate to order success after celebratory burst.
-      // clearCart() is called AFTER navigate so the Checkout page
-      // never renders the empty-cart state while still mounted.
-      setTimeout(() => {
-        setIsProcessing(false);
-        setIsBursting(false);
-        navigate("/order-success");
-        // Defer cart clear by one more tick so it happens after unmount
-        Promise.resolve().then(() => clearCart());
-      }, 450);
+      // Store order persistently for /order-success and reviews
+      try {
+        sessionStorage.setItem("leafly_last_order", JSON.stringify(order));
+      } catch {
+        // ignore storage quota errors
+      }
+
+      // Seamlessly navigate to order confirmation.
+      // Cart clearing is handled on OrderSuccess mount so Checkout
+      // never flashes an empty-cart state.
+      orderCompletedRef.current = true;
+      navigate("/order-success");
 
     } catch (error) {
       console.error("Error saving order to Firestore:", error);
@@ -724,7 +722,7 @@ export default function Checkout() {
     await finalizeOrder();
   };
 
-  if (items.length === 0 && !isProcessing) {
+  if (items.length === 0 && !isProcessing && !orderCompletedRef.current) {
     return (
       <main className="checkout-page checkout-page-empty">
         <div className="checkout-empty-state">
@@ -787,18 +785,18 @@ export default function Checkout() {
           <div className="checkout-card">
             <div className="checkout-card-header">
               <p>CONTACT INFORMATION</p>
-              {currentUser && <span style={{ fontSize: "11px", color: "#a87d22", fontWeight: 600 }}>✦ Verified Account</span>}
+              {resolvedAuthEmail && <span style={{ fontSize: "11px", color: "#a87d22", fontWeight: 600 }}>✦ Verified Account</span>}
             </div>
 
             <div className="checkout-field-grid two-up">
               <label className="checkout-field">
-                <span>Email {currentUser ? "(Tied to your authenticated account)" : ""}</span>
+                <span>Email {resolvedAuthEmail ? "(Tied to your verified account)" : ""}</span>
                 <input
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  readOnly={Boolean(currentUser?.email)}
-                  style={currentUser?.email ? { backgroundColor: "#f3efe6", cursor: "not-allowed" } : undefined}
+                  readOnly={Boolean(resolvedAuthEmail)}
+                  style={resolvedAuthEmail ? { backgroundColor: "#f3efe6", cursor: "not-allowed" } : undefined}
                   aria-invalid={Boolean(errors.email)}
                 />
                 {errors.email && <small>{errors.email}</small>}
@@ -980,7 +978,7 @@ export default function Checkout() {
                 />
                 <span className="checkout-delivery-option-row">
                   <strong>EXPRESS DELIVERY</strong>
-                  <small>₹99</small>
+                  <small>₹59</small>
                 </span>
               </label>
             </div>

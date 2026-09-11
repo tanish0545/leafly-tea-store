@@ -52,7 +52,13 @@ export function WishlistProvider({
       const parsed = JSON.parse(saved);
 
       return Array.isArray(parsed)
-        ? parsed
+        ? parsed.map((item: any) => ({
+            ...item,
+            product: item.product ? {
+              ...item.product,
+              origin: item.product.origin && item.product.origin.toLowerCase().includes("assam") ? "Darjeeling" : (item.product.origin || "Darjeeling"),
+            } : item.product,
+          }))
         : [];
     } catch {
       return [];
@@ -76,11 +82,16 @@ export function WishlistProvider({
   const addToWishlist = (
     product: CartProduct
   ) => {
+    const cleanProduct = {
+      ...product,
+      origin: product.origin && product.origin.toLowerCase().includes("assam") ? "Darjeeling" : (product.origin || "Darjeeling"),
+    };
+
     setItems((current) => {
       const exists =
         current.find(
           (item) =>
-            String(item.product.id) === String(product.id)
+            String(item.product.id) === String(cleanProduct.id)
         );
 
       if (exists) {
@@ -90,7 +101,7 @@ export function WishlistProvider({
       return [
         ...current,
         {
-          product,
+          product: cleanProduct,
         },
       ];
     });

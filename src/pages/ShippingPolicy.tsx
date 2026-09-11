@@ -130,7 +130,7 @@ export default function ShippingPolicy() {
                     <td><strong>Express Priority Air</strong></td>
                     <td>Major Metros & Select Pincodes</td>
                     <td>1 – 2 Business Days</td>
-                    <td>₹99 flat rate</td>
+                    <td>₹59 flat rate</td>
                   </tr>
                 </tbody>
               </table>

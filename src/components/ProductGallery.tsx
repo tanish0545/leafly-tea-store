@@ -161,6 +161,8 @@ export default function ProductGallery({
             loading="eager"
             fetchPriority="high"
             decoding="async"
+            width={800}
+            height={800}
           />
         </div>
 
@@ -263,6 +265,8 @@ export default function ProductGallery({
                   className="gallery-thumb-img"
                   loading="lazy"
                   decoding="async"
+                  width={120}
+                  height={120}
                 />
                 <span className="thumb-active-glow" />
               </button>

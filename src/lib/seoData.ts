@@ -26,7 +26,7 @@ export function generateOrganizationSchema() {
     "name": "Leafly",
     "url": SITE_URL,
     "logo": `${SITE_URL}/leafly-logo.png`,
-    "description": "Curator of single-origin Indian teas, whole leaf Darjeeling, Assam, and Himalayan harvests, artisan teaware, and mindful brewing rituals.",
+    "description": "Curator of single-origin Indian teas, whole leaf Darjeeling harvests, artisan teaware, and mindful brewing rituals.",
     "email": "leaflydatabase@gmail.com",
     "sameAs": [
       "https://www.instagram.com/leafly.greentea?igsi=MWI2dG5qenQyYjUxZA==",

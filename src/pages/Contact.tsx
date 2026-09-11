@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import { generateOrganizationSchema, generateBreadcrumbSchema } from "../lib/seoData";
+import { useAuth } from "../context/AuthContext";
+import { ApiService } from "../lib/apiClient";
 import "./Contact.css";
 
 type ContactForm = {
@@ -65,21 +67,34 @@ const faqItems: FaqItem[] = [
   },
 ];
 
-const initialForm: ContactForm = {
-  name: "",
-  email: "",
-  phone: "",
-  subject: "",
-  message: "",
-};
-
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-import { ApiService } from "../lib/apiClient";
 
 export default function Contact() {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState<ContactForm>(initialForm);
+  const { currentUser, firebaseUser } = useAuth();
+  const authEmail = currentUser?.email || firebaseUser?.email || "";
+  const authName = currentUser?.displayName || currentUser?.name || firebaseUser?.displayName || "";
+  const authPhone = currentUser?.phone || currentUser?.phoneNumber || firebaseUser?.phoneNumber || "";
+
+  const [formData, setFormData] = useState<ContactForm>(() => ({
+    name: authName,
+    email: authEmail,
+    phone: authPhone,
+    subject: "",
+    message: "",
+  }));
+
+  useEffect(() => {
+    if (authEmail || authName || authPhone) {
+      setFormData((prev) => ({
+        ...prev,
+        name: prev.name || authName,
+        email: prev.email || authEmail,
+        phone: prev.phone || authPhone,
+      }));
+    }
+  }, [authEmail, authName, authPhone]);
+
   const [errors, setErrors] = useState<ContactErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -151,7 +166,13 @@ export default function Contact() {
       if (res.success) {
         setIsSubmitted(true);
         setReferenceId(res.referenceId || null);
-        setFormData(initialForm);
+        setFormData({
+          name: authName,
+          email: authEmail,
+          phone: authPhone,
+          subject: "",
+          message: "",
+        });
       } else {
         setSubmitError(res.error || "We couldn't send your message right now. Please try again.");
       }
@@ -235,13 +256,15 @@ export default function Contact() {
               </label>
 
               <label className="field">
-                <span>Email *</span>
+                <span>Email * {authEmail ? <span style={{ fontSize: "11px", color: "#a87d22", fontWeight: 600 }}>✦ Verified Account</span> : null}</span>
                 <input
                   type="email"
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="name@example.com"
+                  readOnly={Boolean(authEmail)}
+                  style={authEmail ? { backgroundColor: "#f3efe6", cursor: "not-allowed" } : undefined}
                   aria-invalid={Boolean(errors.email)}
                 />
                 {errors.email && <small>{errors.email}</small>}

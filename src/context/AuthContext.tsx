@@ -11,6 +11,7 @@ import {
   signOut as firebaseSignOut,
   sendPasswordResetEmail,
   updateProfile,
+  getAdditionalUserInfo,
   type User as FirebaseUser,
   type UserCredential,
 } from "firebase/auth";
@@ -176,6 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const currentFbUser = result.user;
           const displayName = currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer";
           const isUserAdmin = currentFbUser.email?.toLowerCase() === adminEmail.toLowerCase();
+          const additionalInfo = getAdditionalUserInfo(result);
+          const isNewUser = Boolean(additionalInfo?.isNewUser);
           const googleProfile: Record<string, unknown> = {
             uid: currentFbUser.uid,
             email: currentFbUser.email,
@@ -188,9 +191,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             isAdmin: isUserAdmin,
             updatedAt: new Date().toISOString(),
           };
+          if (isNewUser) {
+            googleProfile.createdAt = new Date().toISOString();
+          }
           await setDoc(doc(db, "users", currentFbUser.uid), googleProfile, { merge: true }).catch((e) => {
             console.warn("Redirect Google profile save notice:", e);
           });
+          if (isNewUser && currentFbUser.email) {
+            ApiService.sendWelcomeEmail({
+              name: displayName,
+              email: currentFbUser.email,
+            }).catch((welcomeErr) => {
+              console.warn("Redirect Google welcome email notice:", welcomeErr);
+            });
+          }
           setFirebaseUser(currentFbUser);
         }
       })
@@ -375,6 +389,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const currentFbUser = userCred.user;
         const displayName = currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer";
         const isUserAdmin = currentFbUser.email?.toLowerCase() === adminEmail.toLowerCase();
+        const additionalInfo = getAdditionalUserInfo(userCred);
+        const isNewUser = Boolean(additionalInfo?.isNewUser);
         const googleProfile: Record<string, unknown> = {
           uid: currentFbUser.uid,
           email: currentFbUser.email,
@@ -387,9 +403,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isAdmin: isUserAdmin,
           updatedAt: new Date().toISOString(),
         };
+        if (isNewUser) {
+          googleProfile.createdAt = new Date().toISOString();
+        }
         await setDoc(doc(db, "users", currentFbUser.uid), googleProfile, { merge: true }).catch((e) => {
           console.warn("Google profile save notice:", e);
         });
+        if (isNewUser && currentFbUser.email) {
+          ApiService.sendWelcomeEmail({
+            name: displayName,
+            email: currentFbUser.email,
+          }).catch((welcomeErr) => {
+            console.warn("Google welcome email notice:", welcomeErr);
+          });
+        }
         setFirebaseUser(currentFbUser);
       }
     } finally {
@@ -407,6 +434,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const currentFbUser = userCred.user;
         const displayName = currentFbUser.displayName || currentFbUser.email?.split("@")[0] || "Customer";
         const isUserAdmin = currentFbUser.email?.toLowerCase() === adminEmail.toLowerCase();
+        const additionalInfo = getAdditionalUserInfo(userCred);
+        const isNewUser = Boolean(additionalInfo?.isNewUser);
         const googleProfile: Record<string, unknown> = {
           uid: currentFbUser.uid,
           email: currentFbUser.email,
@@ -419,9 +448,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isAdmin: isUserAdmin,
           updatedAt: new Date().toISOString(),
         };
+        if (isNewUser) {
+          googleProfile.createdAt = new Date().toISOString();
+        }
         await setDoc(doc(db, "users", currentFbUser.uid), googleProfile, { merge: true }).catch((e) => {
           console.warn("Google profile save notice:", e);
         });
+        if (isNewUser && currentFbUser.email) {
+          ApiService.sendWelcomeEmail({
+            name: displayName,
+            email: currentFbUser.email,
+          }).catch((welcomeErr) => {
+            console.warn("Google credential welcome email notice:", welcomeErr);
+          });
+        }
         setFirebaseUser(currentFbUser);
       }
     } finally {

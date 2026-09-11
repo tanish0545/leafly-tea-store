@@ -439,7 +439,7 @@ export default function Orders() {
                   <h4>SOLD BY:</h4>
                   <strong>Leafly Sanctuary Private Limited</strong>
                   <p>Heritage Tea Estate, High Range Sanctuary</p>
-                  <p>Assam / Darjeeling / Nilgiri Estates, India</p>
+                  <p>Darjeeling Estates, India</p>
                   <p>GSTIN: 29AAACL1234F1Z5</p>
                   <p>support@leafly.in · www.leafly.in</p>
                 </div>

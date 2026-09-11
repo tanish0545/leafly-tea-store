@@ -9,15 +9,15 @@ const values = [
   },
   {
     icon: "⌁",
-    title: "SINGLE ORIGIN",
+    title: "CURATED PREMIUM INGREDIENTS",
     description:
-      "Teas from distinct regions, chosen for their character, clarity, and story.",
+      "Hand selected teas flowers and natural botanical chosen for there exceptional flavour clarity and story",
   },
   {
-    icon: "♧",
-    title: "ETHICAL & SUSTAINABLE",
+    icon: "🍃",
+    title: "ETHICALLY SOURCED & SUSTAINABLE",
     description:
-      "Responsible sourcing, fair partnerships, and a lighter footprint on our planet.",
+      "From the gardens to your cup, we choose partners and processes that respect the planet and support fair practices.",
   },
   {
     icon: "♡",
