@@ -1,7 +1,10 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import { useMemo, useState, useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { deleteUser } from "firebase/auth";
+import { doc, deleteDoc } from "firebase/firestore";
+import { auth, db } from "../lib/firebase";
+import { useProducts } from "../context/ProductContext";
 import { useOrderContext } from "../context/OrderContext";
 import { useAuth, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
 import { useCoupons } from "../context/CouponContext";
@@ -40,14 +43,6 @@ type SidebarItem = {
   id: SidebarItemId;
   label: string;
   icon: ReactNode;
-};
-
-type RecommendationItem = {
-  id: number;
-  name: string;
-  category: string;
-  price: string;
-  image: string;
 };
 
 const sidebarItems: SidebarItem[] = [
@@ -121,30 +116,6 @@ const initialNotifications: NotificationPreferences = {
   exclusiveVouchers: false,
 };
 
-const recommendationItems: RecommendationItem[] = [
-  {
-    id: 1,
-    name: "Natural Green Tea",
-    category: "Green Tea",
-    price: "₹699",
-    image: image2,
-  },
-  {
-    id: 2,
-    name: "Golden Dusk Black Tea + Chamomile",
-    category: "Black Tea",
-    price: "₹899",
-    image: image3,
-  },
-  {
-    id: 3,
-    name: "Premium Oolong Black Tea",
-    category: "Oolong Tea",
-    price: "₹999",
-    image: image5,
-  },
-];
-
 const promiseItems = [
   {
     title: "Whole leaf tea",
@@ -190,6 +161,97 @@ export default function Profile() {
   const navigate = useNavigate();
   const { user, loading, isAuthenticated, logout, updateUserProfile } = useAuth();
   const { orders } = useOrderContext();
+  const { products } = useProducts();
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState("");
+
+  const dynamicRecommendations = useMemo(() => {
+    const targetIds = [1, 2, 3];
+    return targetIds.map((tid) => {
+      const match = products.find((p) => String(p.id) === String(tid));
+      if (match) {
+        return {
+          id: match.id,
+          name: match.name,
+          category: match.category,
+          price: `₹${match.price}`,
+          oldPrice: match.oldPrice ? `₹${match.oldPrice}` : undefined,
+          image: match.image || (tid === 1 ? image2 : tid === 2 ? image3 : image5),
+        };
+      }
+      return {
+        id: tid,
+        name: tid === 1 ? "Natural Green Tea" : tid === 2 ? "Golden Dusk Black Tea + Chamomile" : "Premium Oolong Black Tea",
+        category: tid === 1 ? "Green Tea" : tid === 2 ? "Black Tea" : "Oolong Tea",
+        price: tid === 1 ? "₹699" : tid === 2 ? "₹899" : "₹999",
+        image: tid === 1 ? image2 : tid === 2 ? image3 : image5,
+      };
+    });
+  }, [products]);
+
+  useEffect(() => {
+    if (!showDeleteConfirm) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isDeletingAccount) {
+        setShowDeleteConfirm(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showDeleteConfirm, isDeletingAccount]);
+
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    setDeleteAccountError("");
+
+    try {
+      const currentFbUser = auth.currentUser;
+      if (!currentFbUser || !user || currentFbUser.uid !== user.uid) {
+        throw new Error("No authenticated user session found.");
+      }
+
+      // 1. Delete personal profile document in Firestore
+      try {
+        await deleteDoc(doc(db, "users", currentFbUser.uid));
+      } catch (docErr) {
+        console.warn("Could not delete firestore user document:", docErr);
+      }
+
+      // 2. Delete user account from Firebase Auth
+      await deleteUser(currentFbUser);
+
+      // 3. Clear personal user session and sensitive cache
+      try {
+        localStorage.removeItem("leafly-cart-v2");
+        localStorage.removeItem(NOTIF_STORAGE_KEY);
+      } catch {}
+
+      // 4. Close modal and redirect safely to home
+      document.body.style.overflow = "";
+      setShowDeleteConfirm(false);
+      navigate("/", { replace: true });
+    } catch (err: unknown) {
+      console.error("Account deletion error:", err);
+      const fbErr = err as { code?: string; message?: string };
+      if (fbErr?.code === "auth/requires-recent-login") {
+        setDeleteAccountError(
+          "For security reasons, deleting your account requires recent authentication. Please log out, log back in, and try deleting your account again."
+        );
+      } else {
+        setDeleteAccountError(fbErr?.message || "Failed to delete account. Please try again.");
+      }
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
 
   // Protected route enforcement
   useEffect(() => {
@@ -998,6 +1060,58 @@ export default function Profile() {
                   </div>
                 </div>
               </div>
+
+              {/* DANGER ZONE: DELETE ACCOUNT */}
+              <div
+                style={{
+                  marginTop: "28px",
+                  padding: "20px 24px",
+                  background: "rgba(220, 53, 69, 0.04)",
+                  border: "1px solid rgba(220, 53, 69, 0.2)",
+                  borderRadius: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "16px",
+                }}
+              >
+                <div>
+                  <h3 style={{ margin: "0 0 4px", color: "#b02a37", fontSize: "16px", fontWeight: 700 }}>
+                    Delete Account
+                  </h3>
+                  <p style={{ margin: 0, fontSize: "13px", color: "rgba(11, 43, 30, 0.7)", lineHeight: 1.4 }}>
+                    Permanently delete your Leafly profile, saved addresses, and credentials. This action is irreversible.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #dc3545",
+                    color: "#dc3545",
+                    padding: "10px 20px",
+                    borderRadius: "8px",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                    letterSpacing: "1px",
+                    cursor: "pointer",
+                    transition: "all 180ms ease",
+                    textTransform: "uppercase",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#dc3545";
+                    e.currentTarget.style.color = "#ffffff";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "#dc3545";
+                  }}
+                >
+                  DELETE ACCOUNT
+                </button>
+              </div>
             </section>
           )}
 
@@ -1019,7 +1133,7 @@ export default function Profile() {
             </div>
 
             <div className="profile-recommendations-list">
-              {recommendationItems.map((item) => {
+              {dynamicRecommendations.map((item) => {
                 return (
                   <article key={item.id} className="profile-recommendation-item">
                     <img src={item.image} alt={item.name} loading="lazy" />
@@ -1028,6 +1142,18 @@ export default function Profile() {
                       <span>{item.category}</span>
                       <div className="profile-recommendation-row">
                         <strong>{item.price}</strong>
+                        {item.oldPrice && (
+                          <span
+                            style={{
+                              textDecoration: "line-through",
+                              opacity: 0.55,
+                              marginLeft: "6px",
+                              fontSize: "0.85em",
+                            }}
+                          >
+                            {item.oldPrice}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </article>
@@ -1091,6 +1217,74 @@ export default function Profile() {
                   onClick={handleLogout}
                 >
                   LOG OUT
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {showDeleteConfirm &&
+        createPortal(
+          <div
+            className="profile-logout-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delete account confirmation"
+            onClick={() => !isDeletingAccount && setShowDeleteConfirm(false)}
+          >
+            <div
+              className="profile-logout-modal"
+              style={{ borderColor: "rgba(220, 53, 69, 0.45)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="profile-modal-close-btn"
+                onClick={() => !isDeletingAccount && setShowDeleteConfirm(false)}
+                disabled={isDeletingAccount}
+                aria-label="Close dialog"
+              >
+                ✕
+              </button>
+              <p className="profile-card-kicker" style={{ color: "#dc3545" }}>PERMANENT DELETION</p>
+              <h3 style={{ color: "#b02a37" }}>Delete your Leafly account?</h3>
+              <p style={{ margin: 0, fontSize: "14px", color: "rgba(11,43,30,0.75)", lineHeight: 1.5 }}>
+                This action cannot be undone. Your profile details, saved addresses, preferences, and authentication records will be permanently erased.
+              </p>
+              {deleteAccountError && (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: "8px",
+                    background: "rgba(220, 53, 69, 0.1)",
+                    border: "1px solid rgba(220, 53, 69, 0.3)",
+                    color: "#b02a37",
+                    fontSize: "13px",
+                    textAlign: "left",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {deleteAccountError}
+                </div>
+              )}
+              <div className="profile-logout-actions" style={{ marginTop: "14px" }}>
+                <button
+                  type="button"
+                  className="profile-secondary-button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isDeletingAccount}
+                >
+                  KEEP ACCOUNT
+                </button>
+                <button
+                  type="button"
+                  className="profile-primary-button"
+                  style={{ background: "#dc3545", borderColor: "#b02a37", color: "#ffffff" }}
+                  onClick={handleDeleteAccount}
+                  disabled={isDeletingAccount}
+                >
+                  {isDeletingAccount ? "DELETING..." : "PERMANENTLY DELETE"}
                 </button>
               </div>
             </div>

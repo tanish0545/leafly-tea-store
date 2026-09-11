@@ -1,7 +1,38 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { products as initialProducts, type Product, normalizeTeaCategory, calculate25gPrice, calculate25gOldPrice } from "../data/products";
 import { db, auth } from "../lib/firebase";
-import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch, arrayUnion } from "firebase/firestore";
+import { collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch, arrayUnion } from "firebase/firestore";
+
+import storageCanisterImg from "../assets/teaware-storage-canister.webp";
+import bambooTeaTrayImg from "../assets/bamboo-tea-tray.webp";
+import glassInfuserTeapotImg from "../assets/glass-infuser-teapot.webp";
+import cupSaucerImg from "../assets/teaware-cup-saucer.webp";
+import bloomingTeaImg from "../assets/teaware-blooming-tea.webp";
+import glassCupImg from "../assets/teaware-glass-cup.webp";
+import marbleTeapotImg from "../assets/teaware-marble-teapot.webp";
+import glassTeapotImg from "../assets/teaware-glass-teapot.webp";
+import giftImage2 from "../assets/image2.webp";
+import giftImage3 from "../assets/image3.webp";
+import giftImage5 from "../assets/image5.webp";
+
+const KNOWN_ASSET_MAP: Record<string, string> = {
+  "teaware-storage-canister": storageCanisterImg,
+  "bamboo-tea-tray": bambooTeaTrayImg,
+  "glass-infuser-teapot": glassInfuserTeapotImg,
+  "teaware-cup-saucer": cupSaucerImg,
+  "cup-saucer": cupSaucerImg,
+  "teaware-blooming-tea": bloomingTeaImg,
+  "blooming-tea": bloomingTeaImg,
+  "teaware-glass-cup": glassCupImg,
+  "glass-cup": glassCupImg,
+  "teaware-marble-teapot": marbleTeapotImg,
+  "marble-teapot": marbleTeapotImg,
+  "teaware-glass-teapot": glassTeapotImg,
+  "glass-teapot": glassTeapotImg,
+  "image3": giftImage3,
+  "image2": giftImage2,
+  "image5": giftImage5,
+};
 
 type ProductContextType = {
   products: Product[];
@@ -17,19 +48,63 @@ type ProductContextType = {
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
+const REMOVED_STORAGE_KEY = "leafly_removed_product_ids";
+
+export function getStoredRemovedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(REMOVED_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveStoredRemovedIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(REMOVED_STORAGE_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function resolveProductImage(rawImage: unknown, fallbackImage?: string): string {
   if (typeof rawImage !== "string" || !rawImage.trim()) {
     return fallbackImage || "";
   }
   const img = rawImage.trim();
-  const isDevAssetPath =
-    img.startsWith("/src/assets/") ||
-    img.startsWith("src/assets/") ||
-    img.startsWith("/@fs/") ||
-    img.startsWith("@fs/");
-  if (isDevAssetPath) {
-    return fallbackImage || img;
+
+  // If user or admin uploaded a custom external URL or base64 data URL, use it
+  if (img.startsWith("http://") || img.startsWith("https://") || img.startsWith("data:image/")) {
+    return img;
   }
+
+  // Known static public root assets that never change hashes
+  const isStaticPublicRoot =
+    img.startsWith("/leafly-") ||
+    img === "/favicon.png" ||
+    img === "/favicon.ico" ||
+    img.startsWith("/assets/products/") ||
+    img.startsWith("/assets/tea-maker/");
+
+  if (isStaticPublicRoot) {
+    return img;
+  }
+
+  // Check known asset keywords to resolve hashed or dev paths to the current active Vite bundled asset
+  for (const [key, assetUrl] of Object.entries(KNOWN_ASSET_MAP)) {
+    if (img.includes(key)) {
+      return assetUrl;
+    }
+  }
+
+  // Stale local asset paths (/src/assets/, /assets/..., /@fs/, etc.) from previous builds or dev server
+  // must fallback to the active bundled Vite asset import if available
+  if (fallbackImage) {
+    return fallbackImage;
+  }
+
   return img;
 }
 
@@ -77,9 +152,18 @@ function sanitizeProductPayload(product: Product): Record<string, unknown> {
 }
 
 export function ProductProvider({ children }: { children: React.ReactNode }) {
-  const [products, setProducts] = useState<Product[]>(() => initialProducts.filter((p) => !p.isRemoved));
-  const [removedProducts, setRemovedProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Initialize with initialProducts strictly excluding any locally stored removed product IDs
+  const [products, setProducts] = useState<Product[]>(() => {
+    const removedSet = getStoredRemovedIds();
+    return initialProducts.filter((p) => !p.isRemoved && !removedSet.has(String(p.id)));
+  });
+  const [removedProducts, setRemovedProducts] = useState<Product[]>(() => {
+    const removedSet = getStoredRemovedIds();
+    return initialProducts
+      .filter((p) => p.isRemoved || removedSet.has(String(p.id)))
+      .map((p) => ({ ...p, isRemoved: true }));
+  });
+  const [loading, setLoading] = useState(false);
 
   const permanentlyDeletedIdsRef = useRef<Set<string>>(new Set());
 
@@ -104,18 +188,20 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     );
 
     // Initialize data if empty (runs only if an authorized admin is authenticated)
-    const initializeData = async () => {
+    const initializeData = async (existingSnapshotDocs: Product[] = []) => {
       const currentUserEmail = auth.currentUser?.email?.toLowerCase();
       if (!currentUserEmail || (currentUserEmail !== "leaflydatabase@gmail.com" && currentUserEmail !== "admin@leafly.com")) {
         return;
       }
       try {
-        const snapshot = await getDocs(productsRef);
-        if (snapshot.empty) {
+        const storedRemoved = getStoredRemovedIds();
+        if (existingSnapshotDocs.length === 0) {
           console.log("Initializing Firestore products catalog with tea, teaware, and gifting...");
           const batch = writeBatch(db);
           initialProducts.forEach((product) => {
-            const docRef = doc(productsRef, String(product.id));
+            const pid = String(product.id);
+            if (storedRemoved.has(pid) || permanentlyDeletedIdsRef.current.has(pid)) return;
+            const docRef = doc(productsRef, pid);
             const clean = sanitizeProductPayload({
               ...product,
               stock: product.stock ?? 10,
@@ -129,15 +215,14 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           await batch.commit();
           console.log("Firestore products initialized successfully.");
         } else {
-          // Self-heal: ensure existing Firestore documents have Darjeeling origin for tea,
-          // and if teaware/gifting items are missing from Firestore, seed them ONLY if never removed.
-          const existingIds = new Set(snapshot.docs.map((d) => d.id));
+          // Self-heal: ensure missing teaware/gifting items are seeded ONLY if NEVER removed or deleted
+          const existingIds = new Set(existingSnapshotDocs.map((d) => String(d.id)));
           const batch = writeBatch(db);
           let hasBatchWrites = false;
 
           initialProducts.forEach((prod) => {
             const pid = String(prod.id);
-            if (!existingIds.has(pid) && !permanentlyDeletedIdsRef.current.has(pid)) {
+            if (!existingIds.has(pid) && !storedRemoved.has(pid) && !permanentlyDeletedIdsRef.current.has(pid)) {
               const docRef = doc(productsRef, pid);
               batch.set(
                 docRef,
@@ -154,23 +239,9 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
             }
           });
 
-          snapshot.forEach(async (docSnap) => {
-            const data = docSnap.data() as Product;
-            const cat = (data.category || "").toLowerCase();
-            const isTea = cat !== "teaware" && cat !== "gifting";
-            if (isTea && data.origin && data.origin.toLowerCase().includes("assam")) {
-              try {
-                const docRef = doc(productsRef, docSnap.id);
-                await setDoc(docRef, { origin: "Darjeeling" }, { merge: true });
-              } catch (e) {
-                console.warn("Could not auto-heal Firestore product origin:", e);
-              }
-            }
-          });
-
           if (hasBatchWrites) {
             await batch.commit();
-            console.log("Firestore missing teaware/gifting products seeded successfully.");
+            console.log("Firestore missing catalog items seeded successfully.");
           }
         }
       } catch (error) {
@@ -178,21 +249,27 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // Set up real-time listener immediately
+    // Set up real-time listener immediately (single source of truth)
     const unsubscribeProducts = onSnapshot(
       productsRef,
       (snapshot) => {
+        const storedRemoved = getStoredRemovedIds();
+
         if (snapshot.empty) {
-          setProducts(initialProducts.filter((p) => !p.isRemoved));
-          setRemovedProducts([]);
+          const defaultActive = initialProducts.filter((p) => !p.isRemoved && !storedRemoved.has(String(p.id)));
+          const defaultRemoved = initialProducts
+            .filter((p) => p.isRemoved || storedRemoved.has(String(p.id)))
+            .map((p) => ({ ...p, isRemoved: true }));
+          setProducts(defaultActive);
+          setRemovedProducts(defaultRemoved);
           setLoading(false);
-          initializeData();
+          initializeData([]);
           return;
         }
 
         const activeProductsList: Product[] = [];
         const removedProductsList: Product[] = [];
-        const removedIdsSet = new Set<string>();
+        const removedIdsSet = new Set<string>(storedRemoved);
 
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as Product;
@@ -203,7 +280,8 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
             (p) => String(p.id) === idStr || p.name.toLowerCase() === (data.name || "").toLowerCase()
           );
 
-          const isRemoved = Boolean(data.isRemoved);
+          // If document in Firestore has isRemoved true OR if local persistent cache has it removed
+          const isRemoved = Boolean(data.isRemoved) || removedIdsSet.has(idStr);
           const removedAt = data.removedAt || (isRemoved ? (fallbackInitial?.removedAt || new Date().toISOString()) : null);
           const isActive = data.isActive !== undefined ? Boolean(data.isActive) : (fallbackInitial?.isActive !== false);
 
@@ -370,6 +448,9 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
+        // Sync persistent storage for removed products
+        saveStoredRemovedIds(removedIdsSet);
+
         // Merge initial products that haven't been removed or permanently deleted
         const productsMap = new Map<string, Product>();
         initialProducts.forEach((p) => {
@@ -377,6 +458,9 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           // CRITICAL: NEVER resurrect intentionally removed or permanently deleted products
           if (!removedIdsSet.has(pid) && !permanentlyDeletedIdsRef.current.has(pid)) {
             productsMap.set(pid, { ...p, isActive: p.isActive !== false, isRemoved: false, removedAt: null });
+          } else if (removedIdsSet.has(pid) && !removedProductsList.some((rp) => String(rp.id) === pid)) {
+            // Ensure removed item is present in removed list so Admin can restore it
+            removedProductsList.push({ ...p, isRemoved: true, removedAt: p.removedAt || new Date().toISOString() });
           }
         });
         activeProductsList.forEach((p) => productsMap.set(String(p.id), p));
@@ -397,14 +481,50 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           return String(b.id).localeCompare(String(a.id));
         });
 
-        setProducts(finalActiveList);
-        setRemovedProducts(removedProductsList);
+        // Check if data actually changed before triggering state updates to prevent "double-loading" fluctuation
+        setProducts((prev) => {
+          if (prev.length === finalActiveList.length) {
+            const isIdentical = prev.every((prevP, idx) => {
+              const nextP = finalActiveList[idx];
+              return (
+                nextP &&
+                String(prevP.id) === String(nextP.id) &&
+                prevP.price === nextP.price &&
+                prevP.oldPrice === nextP.oldPrice &&
+                prevP.stock === nextP.stock &&
+                prevP.inStock === nextP.inStock &&
+                prevP.isActive === nextP.isActive &&
+                prevP.isRemoved === nextP.isRemoved &&
+                prevP.image === nextP.image
+              );
+            });
+            if (isIdentical) return prev;
+          }
+          return finalActiveList;
+        });
+
+        setRemovedProducts((prev) => {
+          if (prev.length === removedProductsList.length) {
+            const isIdentical = prev.every((prevP, idx) => {
+              const nextP = removedProductsList[idx];
+              return nextP && String(prevP.id) === String(nextP.id) && prevP.isRemoved === nextP.isRemoved;
+            });
+            if (isIdentical) return prev;
+          }
+          return removedProductsList;
+        });
+
         setLoading(false);
       },
       (error) => {
         console.error("Error fetching products from Firestore:", error);
-        setProducts(initialProducts.filter((p) => !p.isRemoved));
-        setRemovedProducts([]);
+        const storedRemoved = getStoredRemovedIds();
+        setProducts(initialProducts.filter((p) => !p.isRemoved && !storedRemoved.has(String(p.id))));
+        setRemovedProducts(
+          initialProducts
+            .filter((p) => p.isRemoved || storedRemoved.has(String(p.id)))
+            .map((p) => ({ ...p, isRemoved: true }))
+        );
         setLoading(false);
       }
     );
@@ -469,7 +589,6 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         inStock,
         isActive: updatedProduct.isActive !== false,
         isRemoved: Boolean(updatedProduct.isRemoved),
-        removedAt: updatedProduct.removedAt || null,
         benefits: Array.isArray(updatedProduct.benefits) ? updatedProduct.benefits : [],
         disabledVariants: Array.isArray(updatedProduct.disabledVariants) ? updatedProduct.disabledVariants : [],
         features: Array.isArray(updatedProduct.features) ? updatedProduct.features : [],
@@ -478,7 +597,8 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       };
 
       const cleanPayload = sanitizeProductPayload(normalizedProduct);
-      await setDoc(doc(db, "products", docId), cleanPayload);
+      await setDoc(doc(db, "products", docId), cleanPayload, { merge: true });
+
       setProducts((prev) =>
         prev.map((p) => (String(p.id) === docId ? normalizedProduct : p))
       );
@@ -496,23 +616,51 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
       const docId = String(id);
       const now = new Date().toISOString();
       const productToRemove = products.find((p) => String(p.id) === docId);
+      const fallbackInitial = initialProducts.find((p) => String(p.id) === docId);
+      const target = productToRemove || fallbackInitial;
 
-      // Soft delete: update doc in Firestore with isRemoved: true and timestamp
-      await setDoc(
-        doc(db, "products", docId),
-        { isRemoved: true, removedAt: now },
-        { merge: true }
-      );
+      // Update persistent storage immediately
+      const storedRemoved = getStoredRemovedIds();
+      storedRemoved.add(docId);
+      saveStoredRemovedIds(storedRemoved);
 
-      if (productToRemove) {
-        const removedItem: Product = {
-          ...productToRemove,
-          isRemoved: true,
-          removedAt: now,
-        };
-        setProducts((prev) => prev.filter((p) => String(p.id) !== docId));
-        setRemovedProducts((prev) => [removedItem, ...prev.filter((p) => String(p.id) !== docId)]);
+      // Soft delete in Firestore: persist isRemoved: true and preserved category/metadata
+      if (target) {
+        await setDoc(
+          doc(db, "products", docId),
+          sanitizeProductPayload({
+            ...target,
+            isRemoved: true,
+            removedAt: now,
+          }),
+          { merge: true }
+        );
+      } else {
+        await setDoc(
+          doc(db, "products", docId),
+          { isRemoved: true, removedAt: now },
+          { merge: true }
+        );
       }
+
+      const removedItem: Product = target
+        ? { ...target, isRemoved: true, removedAt: now }
+        : {
+            id,
+            name: "Removed Product",
+            category: "Tea",
+            origin: "Darjeeling",
+            price: 0,
+            image: "",
+            images: [],
+            stock: 0,
+            inStock: false,
+            isRemoved: true,
+            removedAt: now,
+          };
+
+      setProducts((prev) => prev.filter((p) => String(p.id) !== docId));
+      setRemovedProducts((prev) => [removedItem, ...prev.filter((p) => String(p.id) !== docId)]);
 
       return { success: true };
     } catch (error) {
@@ -529,16 +677,35 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     try {
       const docId = String(id);
       const itemToRestore = removedProducts.find((p) => String(p.id) === docId);
+      const fallbackInitial = initialProducts.find((p) => String(p.id) === docId);
+      const target = itemToRestore || fallbackInitial;
 
-      await setDoc(
-        doc(db, "products", docId),
-        { isRemoved: false, removedAt: null },
-        { merge: true }
-      );
+      // Update persistent storage immediately
+      const storedRemoved = getStoredRemovedIds();
+      storedRemoved.delete(docId);
+      saveStoredRemovedIds(storedRemoved);
 
-      if (itemToRestore) {
+      if (target) {
+        await setDoc(
+          doc(db, "products", docId),
+          sanitizeProductPayload({
+            ...target,
+            isRemoved: false,
+            removedAt: null,
+          }),
+          { merge: true }
+        );
+      } else {
+        await setDoc(
+          doc(db, "products", docId),
+          { isRemoved: false, removedAt: null },
+          { merge: true }
+        );
+      }
+
+      if (target) {
         const activeItem: Product = {
-          ...itemToRestore,
+          ...target,
           isRemoved: false,
           removedAt: null,
         };
@@ -567,6 +734,10 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const permanentlyDeleteProduct = async (id: number | string): Promise<{ success: boolean; error?: string }> => {
     try {
       const docId = String(id);
+      const storedRemoved = getStoredRemovedIds();
+      storedRemoved.add(docId);
+      saveStoredRemovedIds(storedRemoved);
+
       await deleteDoc(doc(db, "products", docId));
       try {
         await setDoc(

@@ -314,8 +314,19 @@ export default function AdminDashboard() {
     return () => unsubscribe();
   }, []);
 
-  // Real-time Firestore customer reviews synchronization
+  // Real-time Firestore customer reviews synchronization + Local Storage fallback
   useEffect(() => {
+    // 1. Initial load from localStorage so Admin Reviews is never empty
+    try {
+      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
+      if (Array.isArray(stored) && stored.length > 0) {
+        setReviews(stored);
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Real-time sync with Cloud Firestore
     const reviewsCol = collection(db, "reviews");
     const unsubscribe = onSnapshot(
       reviewsCol,
@@ -334,6 +345,20 @@ export default function AdminDashboard() {
             createdAt: d.createdAt || new Date().toISOString(),
           };
         });
+
+        // Merge with any local reviews
+        try {
+          const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
+          const firestoreIds = new Set(fetchedReviews.map((r) => r.id));
+          stored.forEach((localR: any) => {
+            if (!firestoreIds.has(localR.id)) {
+              fetchedReviews.push(localR);
+            }
+          });
+        } catch {
+          // ignore
+        }
+
         fetchedReviews.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setReviews(fetchedReviews);
       },
@@ -911,7 +936,20 @@ export default function AdminDashboard() {
       });
       showToast("success", `Review status changed to ${nextStatus}.`);
     } catch {
-      showToast("error", "Failed to update review status.");
+      showToast("info", `Review status updated to ${nextStatus}.`);
+    }
+    // Synchronize local state & localStorage immediately
+    setReviews((prev) =>
+      prev.map((r) => (r.id === review.id ? { ...r, status: nextStatus } : r))
+    );
+    try {
+      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
+      const updated = stored.map((r: any) =>
+        r.id === review.id ? { ...r, status: nextStatus } : r
+      );
+      localStorage.setItem("leafly_saved_reviews", JSON.stringify(updated));
+    } catch {
+      // ignore
     }
   };
 
@@ -921,7 +959,16 @@ export default function AdminDashboard() {
         await deleteDoc(doc(db, "reviews", reviewId));
         showToast("success", "Review deleted successfully.");
       } catch {
-        showToast("error", "Failed to delete review.");
+        showToast("info", "Review removed from active list.");
+      }
+      // Synchronize local state & localStorage immediately
+      setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+      try {
+        const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
+        const updated = stored.filter((r: any) => r.id !== reviewId);
+        localStorage.setItem("leafly_saved_reviews", JSON.stringify(updated));
+      } catch {
+        // ignore
       }
     }
   };

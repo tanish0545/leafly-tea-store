@@ -129,11 +129,12 @@ export function isHamperItem(
 }
 
 export function resolveLiveCatalogProduct(
-  itemProduct: CartProduct,
+  itemProduct: CartProduct | null | undefined,
   products: Product[],
   teaware: TeawareItem[],
   hampers: GiftHamper[]
 ): { price: number; oldPrice?: number; stock: number; inStock: boolean; image: string; name: string; variants?: Product["variants"] } | null {
+  if (!itemProduct || !itemProduct.id) return null;
   const pId = String(itemProduct.id);
   const pNameLower = (itemProduct.name || "").toLowerCase();
 
@@ -240,28 +241,35 @@ export function CartProvider({
         return [];
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return parsed.map((item: any) => {
+      // Strictly parse legitimate cart items added by user; never invent or fallback to product 1
+      const validItems: CartItem[] = [];
+      for (const item of parsed) {
+        if (!item || typeof item !== "object") continue;
+        const prod = item.product;
+        const prodId = prod?.id || (typeof item.id === "string" && !item.id.includes("-") ? item.id : null);
+        if (!prod || !prodId || !prod.name) continue;
+
         const variant: ProductVariantKey | string = item.variant || "100g";
         const compositeId = item.id && typeof item.id === "string" && item.id.includes("-")
           ? item.id
-          : `${item.product?.id || item.id || 1}-${variant}`;
+          : `${prodId}-${variant}`;
 
-        const prod = item.product ? {
-          ...item.product,
-          origin: (item.product.origin && item.product.origin.toLowerCase().includes("assam")) ? "Darjeeling" : (item.product.origin || "Darjeeling"),
-        } : item.product;
-
-        return {
+        validItems.push({
           id: compositeId,
-          product: prod,
+          product: {
+            ...prod,
+            id: prodId,
+            origin: (prod.origin && prod.origin.toLowerCase().includes("assam")) ? "Darjeeling" : (prod.origin || "Darjeeling"),
+          },
           variant,
           weight: item.weight || (typeof variant === "string" ? variant : "100g"),
-          price: typeof item.price === "number" ? item.price : item.product?.price || 0,
-          oldPrice: item.oldPrice ?? item.product?.oldPrice,
-          quantity: item.quantity || 1,
-        };
-      });
+          price: typeof item.price === "number" ? item.price : prod.price || 0,
+          oldPrice: item.oldPrice ?? prod.oldPrice,
+          quantity: typeof item.quantity === "number" && item.quantity > 0 ? item.quantity : 1,
+        });
+      }
+
+      return validItems;
     } catch {
       return [];
     }
@@ -271,12 +279,13 @@ export function CartProvider({
     useState(false);
 
   // Synchronize cart items with live catalog data dynamically whenever products, teaware, or hampers update
-  // Filter out any items that are out of stock (stock <= 0)
+  // Drop any items that are corrupted, missing, removed, or out of stock (stock <= 0)
   const items = useMemo<CartItem[]>(() => {
     return rawItems
       .filter((item) => {
+        if (!item || !item.product || !item.product.id) return false;
         const live = resolveLiveCatalogProduct(item.product, products, teaware, hampers);
-        if (!live) return true;
+        if (!live) return false;
         // Live stock validation: if stock <= 0 or inStock is false, filter out immediately
         if (live.inStock === false || (typeof live.stock === "number" && live.stock <= 0)) {
           return false;

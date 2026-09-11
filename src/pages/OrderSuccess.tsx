@@ -93,28 +93,37 @@ export default function OrderSuccess() {
     const productId = activeOrder?.items?.[0]?.productId || "tea-harvest";
     const orderId = activeOrder?.id || `ORD-${Date.now().toString(36).toUpperCase()}`;
 
+    const reviewPayload = {
+      id: `order-rev-${Date.now()}`,
+      orderId,
+      userId: currentUid,
+      customerName,
+      customerEmail: currentEmail,
+      productName,
+      productId: String(productId),
+      rating: Number(rating) || 5,
+      feedback: feedback.trim() || "Exquisite tea craftsmanship.",
+      status: "Approved" as const,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Save to localStorage for instant patron & admin visibility
+    try {
+      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
+      stored.unshift(reviewPayload);
+      localStorage.setItem("leafly_saved_reviews", JSON.stringify(stored.slice(0, 100)));
+      sessionStorage.setItem(`leafly_review_${orderId}`, "true");
+    } catch {
+      // ignore
+    }
+
     try {
       await addDoc(collection(db, "reviews"), {
-        orderId,
-        userId: currentUid,
-        customerName,
-        customerEmail: currentEmail,
-        productName,
-        productId,
-        rating: Number(rating) || 5,
-        feedback: feedback.trim() || "Exquisite tea craftsmanship.",
-        status: "Approved",
-        createdAt: new Date().toISOString(),
+        ...reviewPayload,
         timestamp: serverTimestamp(),
       });
-
-      try {
-        sessionStorage.setItem(`leafly_review_${orderId}`, "true");
-      } catch {
-        // ignore
-      }
     } catch (err) {
-      console.warn("Could not save review to Firestore:", err);
+      console.warn("Could not save review to Firestore; persisted locally:", err);
     } finally {
       setIsSubmitting(false);
       setIsSubmitted(true);

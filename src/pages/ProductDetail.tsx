@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
+import { useAuth } from "../context/AuthContext";
+import { db } from "../lib/firebase";
+import { collection, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { type Product, type ProductVariantKey, getProductSlug, isProductInStock, getProductImages, getProductAvailableVariants } from "../data/products";
 import { useTeaware } from "../context/TeawareContext";
 import { useGifting } from "../context/GiftingContext";
@@ -12,12 +15,23 @@ import SEO from "../components/SEO";
 import { generateProductSchema, generateTeawareSchema, generateBreadcrumbSchema } from "../lib/seoData";
 import "./ProductDetail.css";
 
+interface CustomerReview {
+  id: string;
+  customerName: string;
+  customerEmail?: string;
+  rating: number;
+  feedback: string;
+  createdAt: string;
+  status?: string;
+}
+
 export default function ProductDetail() {
   const { slug, id } = useParams<{ slug?: string; id?: string }>();
   const navigate = useNavigate();
   const { products } = useProducts();
   const { teaware } = useTeaware();
   const { hampers } = useGifting();
+  const { currentUser, firebaseUser } = useAuth();
 
   const { addToCart } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
@@ -258,6 +272,164 @@ export default function ProductDetail() {
     ? Math.round(((currentOldPrice - currentPrice) / currentOldPrice) * 100)
     : null;
 
+  /* --- customer reviews & tasting notes -------------------- */
+  const [reviews, setReviews] = useState<CustomerReview[]>([]);
+  const [isWritingReview, setIsWritingReview] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewHoverRating, setReviewHoverRating] = useState<number | null>(null);
+  const [reviewName, setReviewName] = useState(currentUser?.name || currentUser?.displayName || "");
+  const [reviewFeedback, setReviewFeedback] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewSuccessMsg, setReviewSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (currentUser?.name || currentUser?.displayName) {
+      setReviewName(currentUser.name || currentUser.displayName || "");
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!product?.id) return;
+    const targetIdStr = String(product.id);
+
+    // 1. Initial load from localStorage so customer reviews are immediately visible
+    try {
+      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
+      if (Array.isArray(stored)) {
+        const localMatched: CustomerReview[] = stored
+          .filter((r: any) => String(r.productId) === targetIdStr && r.status !== "Hidden")
+          .map((r: any) => ({
+            id: r.id || `local-${Date.now()}`,
+            customerName: r.customerName || "Verified Patron",
+            customerEmail: r.customerEmail || "",
+            rating: typeof r.rating === "number" ? r.rating : 5,
+            feedback: r.feedback || "",
+            createdAt: r.createdAt || new Date().toISOString(),
+            status: r.status || "Approved",
+          }));
+        if (localMatched.length > 0) {
+          setReviews(localMatched);
+        }
+      }
+    } catch {
+      // ignore storage error
+    }
+
+    // 2. Real-time Firestore sync
+    const reviewsCol = collection(db, "reviews");
+    const unsubscribe = onSnapshot(
+      reviewsCol,
+      (snapshot) => {
+        const fetched: CustomerReview[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (String(d.productId) === targetIdStr && d.status !== "Hidden") {
+            fetched.push({
+              id: docSnap.id,
+              customerName: d.customerName || "Verified Patron",
+              customerEmail: d.customerEmail || "",
+              rating: typeof d.rating === "number" ? d.rating : 5,
+              feedback: d.feedback || "",
+              createdAt: d.createdAt || new Date().toISOString(),
+              status: d.status || "Approved",
+            });
+          }
+        });
+
+        // Merge with local reviews
+        try {
+          const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
+          const firestoreIds = new Set(fetched.map((f) => f.id));
+          stored.forEach((r: any) => {
+            if (String(r.productId) === targetIdStr && r.status !== "Hidden" && !firestoreIds.has(r.id)) {
+              fetched.push({
+                id: r.id,
+                customerName: r.customerName || "Verified Patron",
+                customerEmail: r.customerEmail || "",
+                rating: typeof r.rating === "number" ? r.rating : 5,
+                feedback: r.feedback || "",
+                createdAt: r.createdAt || new Date().toISOString(),
+                status: r.status || "Approved",
+              });
+            }
+          });
+        } catch {
+          // ignore
+        }
+
+        fetched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setReviews(fetched);
+      },
+      (err) => {
+        console.warn("Could not load real-time reviews from Firestore:", err);
+      }
+    );
+    return () => unsubscribe();
+  }, [product?.id]);
+
+  const baseRating = product?.rating ?? 4.9;
+  const baseCount = product?.reviewCount ?? 128;
+  const totalReviewCount = baseCount + reviews.length;
+  const avgRating = useMemo(() => {
+    if (reviews.length === 0) return baseRating.toFixed(1);
+    const sum = baseRating * baseCount + reviews.reduce((acc, r) => acc + r.rating, 0);
+    return (sum / totalReviewCount).toFixed(1);
+  }, [baseRating, baseCount, reviews, totalReviewCount]);
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!product || !reviewFeedback.trim()) return;
+    setReviewSubmitting(true);
+    setReviewSuccessMsg(null);
+
+    const authorName = reviewName.trim() || currentUser?.name || currentUser?.displayName || "Verified Patron";
+    const authorEmail = currentUser?.email || firebaseUser?.email || "";
+    const currentUid = firebaseUser?.uid || currentUser?.uid || null;
+    const newRevId = `rev-${Date.now()}`;
+    const newCreatedAt = new Date().toISOString();
+
+    const reviewPayload = {
+      id: newRevId,
+      productId: String(product.id),
+      productName: product.name,
+      rating: Number(reviewRating) || 5,
+      feedback: reviewFeedback.trim(),
+      customerName: authorName,
+      customerEmail: authorEmail,
+      userId: currentUid,
+      status: "Approved" as const,
+      createdAt: newCreatedAt,
+    };
+
+    // Always persist to localStorage first for zero-data-loss resiliency
+    try {
+      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
+      stored.unshift(reviewPayload);
+      localStorage.setItem("leafly_saved_reviews", JSON.stringify(stored.slice(0, 100)));
+    } catch {
+      // ignore storage failure
+    }
+
+    // Optimistically update view
+    setReviews((prev) => [reviewPayload, ...prev.filter((p) => p.id !== newRevId)]);
+
+    // Write to Firestore
+    try {
+      await addDoc(collection(db, "reviews"), {
+        ...reviewPayload,
+        timestamp: serverTimestamp(),
+      });
+      setReviewSuccessMsg("Thank you! Your tasting review has been published.");
+    } catch (err) {
+      console.warn("Firestore write pending rules deployment; review saved locally:", err);
+      setReviewSuccessMsg("Thank you! Your tasting review has been recorded.");
+    } finally {
+      setReviewFeedback("");
+      setIsWritingReview(false);
+      setReviewSubmitting(false);
+    }
+  };
+
   /* --- render ---------------------------------------------- */
 
   const isTeaware = Boolean(teawareItem) || product.category === "teaware" || (product.category as string) === "Teaware";
@@ -391,17 +563,22 @@ export default function ProductDetail() {
           {/* RATING ROW */}
           <div
             className="pdp-rating-row"
-            aria-label={`${(product.rating ?? 4.9).toFixed(1)} out of 5 stars based on ${product.reviewCount ?? 128} reviews`}
+            onClick={() => {
+              const el = document.getElementById("pdp-reviews");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            }}
+            style={{ cursor: "pointer" }}
+            aria-label={`${avgRating} out of 5 stars based on ${totalReviewCount} reviews`}
           >
             <div className="pdp-stars" aria-hidden="true">
               ★★★★★
             </div>
             <span className="pdp-rating-score">
-              {(product.rating ?? 4.9).toFixed(1)}
+              {avgRating}
             </span>
             <span className="pdp-rating-sep">·</span>
             <span className="pdp-review-count">
-              {product.reviewCount ?? 128} Reviews
+              {totalReviewCount} Reviews
             </span>
           </div>
 
@@ -658,6 +835,155 @@ export default function ProductDetail() {
           </div>
         </div>
       </div>
+
+      {/* 4. CUSTOMER REVIEWS & TASTING IMPRESSIONS */}
+      <section id="pdp-reviews" className="pdp-reviews-section" aria-label="Customer Reviews">
+        <div className="pdp-reviews-container">
+          <div className="pdp-reviews-header">
+            <div>
+              <p className="pdp-reviews-eyebrow">PATRON IMPRESSIONS</p>
+              <h2 className="pdp-reviews-title">Customer Reviews &amp; Tasting Notes</h2>
+              <div className="pdp-reviews-score-summary">
+                <span className="pdp-reviews-stars">★★★★★</span>
+                <span className="pdp-reviews-avg">{avgRating} out of 5</span>
+                <span className="pdp-reviews-count-badge">Based on {totalReviewCount} tasting notes</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="pdp-write-review-btn"
+              onClick={() => setIsWritingReview((prev) => !prev)}
+            >
+              {isWritingReview ? "Cancel Review ✕" : "Write a Review ✎"}
+            </button>
+          </div>
+
+          {reviewSuccessMsg && (
+            <div className="pdp-review-alert success" role="alert">
+              <span>✓</span> {reviewSuccessMsg}
+            </div>
+          )}
+
+          {isWritingReview && (
+            <form className="pdp-review-form" onSubmit={handleSubmitReview}>
+              <h3 className="pdp-review-form-title">Share Your Experience with {product.name}</h3>
+
+              <div className="pdp-form-group">
+                <label className="pdp-form-label">Your Rating</label>
+                <div className="pdp-star-rating-input">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      type="button"
+                      key={star}
+                      className={`pdp-star-btn ${star <= (reviewHoverRating ?? reviewRating) ? "active" : ""}`}
+                      onClick={() => setReviewRating(star)}
+                      onMouseEnter={() => setReviewHoverRating(star)}
+                      onMouseLeave={() => setReviewHoverRating(null)}
+                      aria-label={`Rate ${star} star${star > 1 ? "s" : ""}`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                  <span className="pdp-star-rating-hint">{reviewRating} of 5 Stars</span>
+                </div>
+              </div>
+
+              <div className="pdp-form-grid">
+                <div className="pdp-form-group">
+                  <label htmlFor="reviewName" className="pdp-form-label">Your Name</label>
+                  <input
+                    id="reviewName"
+                    type="text"
+                    className="pdp-form-input"
+                    value={reviewName}
+                    onChange={(e) => setReviewName(e.target.value)}
+                    placeholder="e.g. Maya S."
+                    required
+                  />
+                </div>
+                <div className="pdp-form-group">
+                  <label htmlFor="reviewEmail" className="pdp-form-label">Email (Private)</label>
+                  <input
+                    id="reviewEmail"
+                    type="email"
+                    className="pdp-form-input"
+                    value={currentUser?.email || firebaseUser?.email || ""}
+                    disabled
+                    placeholder="Your account email"
+                  />
+                </div>
+              </div>
+
+              <div className="pdp-form-group">
+                <label htmlFor="reviewFeedback" className="pdp-form-label">Tasting Notes &amp; Feedback</label>
+                <textarea
+                  id="reviewFeedback"
+                  className="pdp-form-textarea"
+                  rows={4}
+                  value={reviewFeedback}
+                  onChange={(e) => setReviewFeedback(e.target.value)}
+                  placeholder="Describe the liquor color, aroma, flavor notes, mouthfeel, or brewing method..."
+                  required
+                />
+              </div>
+
+              <div className="pdp-form-actions">
+                <button
+                  type="submit"
+                  className="pdp-submit-review-btn"
+                  disabled={reviewSubmitting || !reviewFeedback.trim()}
+                >
+                  {reviewSubmitting ? "Submitting..." : "Publish Review ✦"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* REVIEWS LIST */}
+          <div className="pdp-reviews-list">
+            {reviews.length === 0 ? (
+              <div className="pdp-reviews-empty">
+                <span className="pdp-empty-icon">☕</span>
+                <h4>First Harvest Edition</h4>
+                <p>
+                  No patron reviews submitted yet for this harvest. Be the first to share your mindful brewing notes!
+                </p>
+                {!isWritingReview && (
+                  <button
+                    type="button"
+                    className="pdp-empty-cta"
+                    onClick={() => setIsWritingReview(true)}
+                  >
+                    Be the First to Review →
+                  </button>
+                )}
+              </div>
+            ) : (
+              reviews.map((rev) => (
+                <article key={rev.id} className="pdp-review-card">
+                  <div className="pdp-review-top">
+                    <div className="pdp-review-stars">
+                      {"★".repeat(rev.rating)}{"☆".repeat(5 - rev.rating)}
+                    </div>
+                    <time className="pdp-review-date" dateTime={rev.createdAt}>
+                      {new Date(rev.createdAt).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </time>
+                  </div>
+                  <p className="pdp-review-feedback">&ldquo;{rev.feedback}&rdquo;</p>
+                  <div className="pdp-review-author-row">
+                    <span className="pdp-author-name">{rev.customerName}</span>
+                    <span className="pdp-verified-badge">✓ Verified Buyer</span>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* RITUAL & PAIRING INTERNAL LINKS */}
       <section className="pdp-ritual-links" aria-label="Explore Tea Rituals" style={{
