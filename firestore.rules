@@ -137,5 +137,12 @@ service cloud.firestore {
       allow create: if true;
       allow read, update, delete: if isAdmin();
     }
+
+    // 12. System metadata (catalog metadata for permanently deleted items):
+    // Publicly readable so customer catalog knows deleted items. Admin has full write access.
+    match /system/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }

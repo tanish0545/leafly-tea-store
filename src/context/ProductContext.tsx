@@ -17,6 +17,22 @@ type ProductContextType = {
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
+export function resolveProductImage(rawImage: unknown, fallbackImage?: string): string {
+  if (typeof rawImage !== "string" || !rawImage.trim()) {
+    return fallbackImage || "";
+  }
+  const img = rawImage.trim();
+  const isDevAssetPath =
+    img.startsWith("/src/assets/") ||
+    img.startsWith("src/assets/") ||
+    img.startsWith("/@fs/") ||
+    img.startsWith("@fs/");
+  if (isDevAssetPath) {
+    return fallbackImage || img;
+  }
+  return img;
+}
+
 function sanitizeProductPayload(product: Product): Record<string, unknown> {
   const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(product)) {
@@ -197,10 +213,25 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
 
           const stock = typeof data.stock === "number" ? data.stock : (fallbackInitial?.stock ?? 10);
           const inStock = data.inStock !== false && stock > 0;
-          const images =
-            Array.isArray(data.images) && data.images.length > 0
-              ? data.images
-              : fallbackInitial?.images || (data.image ? [data.image] : (fallbackInitial?.image ? [fallbackInitial.image] : []));
+
+          const resolvedMainImage = resolveProductImage(data.image, fallbackInitial?.image);
+
+          const rawImagesList =
+            Array.isArray(data.images) && data.images.length > 0 ? data.images : [];
+          const resolvedImages = rawImagesList
+            .map((img: string) => resolveProductImage(img, fallbackInitial?.image))
+            .filter(Boolean);
+
+          const finalImages =
+            resolvedImages.length > 0
+              ? resolvedImages
+              : fallbackInitial?.images && fallbackInitial.images.length > 0
+              ? fallbackInitial.images
+              : resolvedMainImage
+              ? [resolvedMainImage]
+              : fallbackInitial?.image
+              ? [fallbackInitial.image]
+              : [];
           const benefits =
             Array.isArray(data.benefits)
               ? data.benefits
@@ -325,8 +356,8 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
             isActive,
             isRemoved,
             removedAt,
-            image: data.image || fallbackInitial?.image || "",
-            images,
+            image: resolvedMainImage || fallbackInitial?.image || "",
+            images: finalImages,
             benefits,
             variants: variants as unknown as Product["variants"],
             disabledVariants,
