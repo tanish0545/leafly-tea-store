@@ -190,14 +190,15 @@ export default function About() {
             <article key={item.id} className="about-video-card">
               <div className="about-video-poster-wrap">
                 <video
-                  src={item.videoSrc}
                   poster={item.poster}
                   controls
                   preload="none"
                   playsInline
                   className="about-video-element"
                   aria-label={item.title}
-                />
+                >
+                  <source src={item.videoSrc} type="video/mp4" />
+                </video>
               </div>
 
               <div className="about-video-info">

@@ -135,6 +135,14 @@ function App() {
                               }
                             />
                             <Route
+                              path="/admin/reviews"
+                              element={
+                                <AdminRoute>
+                                  <AdminDashboard />
+                                </AdminRoute>
+                              }
+                            />
+                            <Route
                               path="/admin/:section"
                               element={
                                 <AdminRoute>

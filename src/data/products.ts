@@ -48,7 +48,7 @@ export type Product = {
   slug?: string;
   category: ProductCategory;
   origin: string;
-  caffeine?: "Low" | "Medium" | "High" | "None" | "Teaware" | "Varied" | string;
+  caffeine?: string; // Optional legacy field for backwards compatibility with existing Firestore records
   weight?: string;
   price: number;
   oldPrice?: number;
@@ -188,7 +188,6 @@ export const products: Product[] = [
     name: "Natural Green Tea",
     category: "Green Tea",
     origin: "Darjeeling",
-    caffeine: "Medium",
     weight: "100g",
     price: 699,
     oldPrice: 799,
@@ -215,7 +214,6 @@ export const products: Product[] = [
     name: "Golden Dusk Black Tea + Chamomile",
     category: "Black Tea",
     origin: "Darjeeling",
-    caffeine: "Low",
     weight: "100g",
     price: 899,
     variants: {
@@ -241,7 +239,6 @@ export const products: Product[] = [
     name: "Premium Oolong Black Tea",
     category: "Oolong Tea",
     origin: "Darjeeling",
-    caffeine: "High",
     weight: "100g",
     price: 749,
     oldPrice: 849,
@@ -268,7 +265,6 @@ export const products: Product[] = [
     name: "Red Oolong Tea",
     category: "Oolong Tea",
     origin: "Darjeeling",
-    caffeine: "Medium",
     weight: "100g",
     price: 999,
     variants: {
@@ -304,7 +300,6 @@ export const products: Product[] = [
     oldPrice: 949,
     sku: "LF-TW-101",
     origin: "UV-Shield Stainless Steel",
-    caffeine: "None",
     weight: "150g Storage",
     rating: 4.9,
     reviewCount: 38,
@@ -331,7 +326,6 @@ export const products: Product[] = [
     oldPrice: 1499,
     sku: "LF-TW-102",
     origin: "Organic Solid Bamboo",
-    caffeine: "None",
     weight: "Gongfu Size",
     rating: 4.8,
     reviewCount: 24,
@@ -358,7 +352,6 @@ export const products: Product[] = [
     oldPrice: 1999,
     sku: "LF-TW-103",
     origin: "Thermal Borosilicate Glass",
-    caffeine: "None",
     weight: "650ml",
     rating: 4.9,
     reviewCount: 84,
@@ -385,7 +378,6 @@ export const products: Product[] = [
     oldPrice: 1099,
     sku: "LF-TW-104",
     origin: "High-Fired Glazed Ceramic",
-    caffeine: "None",
     weight: "220ml",
     rating: 4.8,
     reviewCount: 46,
@@ -412,7 +404,6 @@ export const products: Product[] = [
     oldPrice: 2199,
     sku: "LF-TW-105",
     origin: "Mouth-Blown Borosilicate Glass",
-    caffeine: "None",
     weight: "800ml",
     rating: 5.0,
     reviewCount: 62,
@@ -439,7 +430,6 @@ export const products: Product[] = [
     oldPrice: 799,
     sku: "LF-TW-106",
     origin: "Double-Walled Thermal Glass",
-    caffeine: "None",
     weight: "Set of 2",
     rating: 4.9,
     reviewCount: 94,
@@ -466,7 +456,6 @@ export const products: Product[] = [
     oldPrice: 2499,
     sku: "LF-TW-107",
     origin: "High-Fired Stoneware",
-    caffeine: "None",
     weight: "550ml",
     rating: 4.9,
     reviewCount: 32,
@@ -493,7 +482,6 @@ export const products: Product[] = [
     oldPrice: 2299,
     sku: "LF-TW-108",
     origin: "Mouth-Blown Borosilicate Glass",
-    caffeine: "None",
     weight: "750ml",
     rating: 4.9,
     reviewCount: 78,
@@ -522,7 +510,6 @@ export const products: Product[] = [
     price: 2499,
     sku: "LF-GF-201",
     origin: "Darjeeling & Nilgiri Estates",
-    caffeine: "Varied",
     weight: "Gift Box",
     badge: "MOST POPULAR",
     image: giftImage3,
@@ -545,7 +532,6 @@ export const products: Product[] = [
     price: 1899,
     sku: "LF-GF-202",
     origin: "Darjeeling Single-Estates",
-    caffeine: "Varied",
     weight: "Gift Box",
     badge: "BEST FOR MORNINGS",
     image: giftImage2,
@@ -568,7 +554,6 @@ export const products: Product[] = [
     price: 3899,
     sku: "LF-GF-203",
     origin: "Darjeeling High Terroirs",
-    caffeine: "Varied",
     weight: "Gift Box",
     badge: "LUXURY EDITION",
     image: giftImage5,

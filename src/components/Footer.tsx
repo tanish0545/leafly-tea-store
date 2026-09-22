@@ -1,18 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import logo from "../assets/leafly-logo.webp";
-import { useAuth } from "../context/AuthContext";
 import { ApiService } from "../lib/apiClient";
 import "./Footer.css";
 
 const shopLinks = [
   { label: "All Teas", href: "/shop" },
   { label: "Teaware Gear", href: "/teaware" },
-  { label: "Natural Green Tea", href: "/tea-collections" },
-  { label: "Golden Dusk Black Tea + Chamomile", href: "/tea-collections" },
-  { label: "Premium Oolong Black Tea", href: "/tea-collections" },
-  { label: "Red Oolong Tea", href: "/tea-collections" },
+  { label: "Natural Green Tea", href: "/shop/natural-green-tea" },
+  { label: "Golden Dusk Black Tea + Chamomile", href: "/shop/golden-dusk-black-tea-chamomile" },
+  { label: "Premium Oolong Black Tea", href: "/shop/premium-oolong-black-tea" },
+  { label: "Red Oolong Tea", href: "/shop/red-oolong-tea" },
 ];
 
 const exploreLinks = [
@@ -33,15 +32,7 @@ const careLinks = [
 ];
 
 export default function Footer() {
-  const { currentUser, firebaseUser } = useAuth();
-  const authEmail = currentUser?.email || firebaseUser?.email || "";
-  const [email, setEmail] = useState(() => authEmail);
-
-  useEffect(() => {
-    if (authEmail && !email) {
-      setEmail(authEmail);
-    }
-  }, [authEmail, email]);
+  const [email, setEmail] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -271,11 +262,11 @@ export default function Footer() {
           <p className="leafly-footer-motto">REAL TEA. BETTER MOMENTS.</p>
 
           <div className="leafly-footer-legal">
-            <Link to="/privacy-policy">Privacy Policy</Link>
+            <Link to="/privacy-policy" onClick={() => window.scrollTo({ top: 0, behavior: "instant" })}>Privacy Policy</Link>
             <span>•</span>
-            <Link to="/terms-and-conditions">Terms & Conditions</Link>
+            <Link to="/terms-and-conditions" onClick={() => window.scrollTo({ top: 0, behavior: "instant" })}>Terms & Conditions</Link>
             <span>•</span>
-            <Link to="/faqs">FAQs</Link>
+            <Link to="/faqs" onClick={() => window.scrollTo({ top: 0, behavior: "instant" })}>FAQs</Link>
           </div>
         </div>
       </div>

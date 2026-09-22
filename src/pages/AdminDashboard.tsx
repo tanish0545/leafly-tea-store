@@ -10,10 +10,11 @@ import { type TeawareItem, type TeawareCategory } from "../data/teaware";
 import { type GiftHamper } from "../data/gifting";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../lib/firebase";
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, getDoc } from "firebase/firestore";
 import type { Order, OrderStatus } from "../types/contracts";
 import SEO from "../components/SEO";
 import ImageUploadControl from "../components/ImageUploadControl";
+import leaflyLogo from "../assets/leafly-logo.webp";
 import "./AdminDashboard.css";
 
 export type AccountUser = {
@@ -23,6 +24,7 @@ export type AccountUser = {
   email: string;
   phone?: string;
   createdAt?: string | null;
+  deletedAt?: string | null;
   status: string;
   authProvider: string;
   favoriteTea?: string | null;
@@ -51,8 +53,13 @@ const SECTION_TO_TAB: Record<string, TabType> = {
   gifting: "hampers",
   hampers: "hampers",
   accounts: "accounts",
+  customers: "accounts",
   coupons: "coupons",
   reviews: "reviews",
+  review: "reviews",
+  "customer-reviews": "reviews",
+  ratings: "reviews",
+  feedback: "reviews",
   removed: "removed",
   "removed-products": "removed",
 };
@@ -69,11 +76,27 @@ const TAB_TO_PATH: Record<TabType, string> = {
   removed: "/admin/removed",
 };
 
-function parseTabFromUrl(pathSection?: string, pathname?: string): TabType {
+function parseTabFromUrl(pathSection?: string, pathname?: string, search?: string): TabType {
+  // 1. Check query parameters first (?section=reviews, ?tab=reviews, ?activeSection=reviews)
+  if (search) {
+    try {
+      const params = new URLSearchParams(search);
+      const querySec = (params.get("section") || params.get("tab") || params.get("activeSection") || "").trim().toLowerCase();
+      if (querySec && SECTION_TO_TAB[querySec]) {
+        return SECTION_TO_TAB[querySec];
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2. Check route path section
   const sec = (pathSection || "").trim().toLowerCase();
   if (sec && SECTION_TO_TAB[sec]) {
     return SECTION_TO_TAB[sec];
   }
+
+  // 3. Check window pathname
   if (pathname) {
     const match = pathname.match(/\/admin\/([a-z0-9_-]+)/i);
     if (match && match[1]) {
@@ -84,7 +107,12 @@ function parseTabFromUrl(pathSection?: string, pathname?: string): TabType {
   return "dashboard";
 }
 
-export default function AdminDashboard() {
+interface AdminDashboardProps {
+  activeSection?: string;
+  activeTab?: string;
+}
+
+export default function AdminDashboard({ activeSection: propActiveSection, activeTab: propActiveTab }: AdminDashboardProps = {}) {
   const {
     products,
     removedProducts,
@@ -110,19 +138,52 @@ export default function AdminDashboard() {
     deleteHamper,
     loading: hampersLoading,
   } = useGifting();
-  const { signOut, user } = useAuth();
+  const { signOut, user, loading: authLoading, isAuthenticated, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { section } = useParams<{ section?: string }>();
   const { globalCoupons, createGlobalCoupon, updateGlobalCoupon, deleteGlobalCoupon } = useCoupons();
 
-  // Navigation & UI States: URL path is the source of truth
-  const [activeTab, setActiveTab] = useState<TabType>(() => parseTabFromUrl(section, window.location.pathname));
+  // Navigation & UI States: URL path, search params, or props are the source of truth
+  const initialTab = useMemo<TabType>(() => {
+    if (propActiveSection && SECTION_TO_TAB[propActiveSection.trim().toLowerCase()]) {
+      return SECTION_TO_TAB[propActiveSection.trim().toLowerCase()];
+    }
+    if (propActiveTab && SECTION_TO_TAB[propActiveTab.trim().toLowerCase()]) {
+      return SECTION_TO_TAB[propActiveTab.trim().toLowerCase()];
+    }
+    return parseTabFromUrl(section, window.location.pathname, window.location.search);
+  }, [propActiveSection, propActiveTab, section]);
+
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+  const activeSection = activeTab;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Synchronize state when browser back/forward or URL changes
+  // Synchronize state when browser back/forward, URL, search params, or props change
   useEffect(() => {
-    const currentTab = parseTabFromUrl(section, location.pathname);
+    if (propActiveSection && SECTION_TO_TAB[propActiveSection.trim().toLowerCase()]) {
+      const target = SECTION_TO_TAB[propActiveSection.trim().toLowerCase()];
+      if (target !== activeTab) {
+        setActiveTab(target);
+        setIsEditing(false);
+        setIsEditingTeaware(false);
+        setIsEditingHamper(false);
+        setIsEditingCoupon(false);
+      }
+      return;
+    }
+    if (propActiveTab && SECTION_TO_TAB[propActiveTab.trim().toLowerCase()]) {
+      const target = SECTION_TO_TAB[propActiveTab.trim().toLowerCase()];
+      if (target !== activeTab) {
+        setActiveTab(target);
+        setIsEditing(false);
+        setIsEditingTeaware(false);
+        setIsEditingHamper(false);
+        setIsEditingCoupon(false);
+      }
+      return;
+    }
+    const currentTab = parseTabFromUrl(section, location.pathname, location.search);
     if (currentTab !== activeTab) {
       setActiveTab(currentTab);
       setIsEditing(false);
@@ -130,7 +191,7 @@ export default function AdminDashboard() {
       setIsEditingHamper(false);
       setIsEditingCoupon(false);
     }
-  }, [section, location.pathname, activeTab]);
+  }, [section, location.pathname, location.search, propActiveSection, propActiveTab, activeTab]);
 
   // Toast notification state
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
@@ -184,15 +245,55 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [newOrderAlert, setNewOrderAlert] = useState<Order | null>(null);
+  const isInitialOrdersLoad = useRef(true);
+  const [browserAlertsEnabled] = useState<boolean>(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      const muted = localStorage.getItem("leafly_admin_alerts_muted") === "true";
+      return Notification.permission === "granted" && !muted;
+    }
+    return false;
+  });
 
   // Accounts State
   const [accounts, setAccounts] = useState<AccountUser[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountViewFilter, setAccountViewFilter] = useState<"active" | "deleted">("active");
   const [accountSearchQuery, setAccountSearchQuery] = useState("");
   const [accountFilterProvider, setAccountFilterProvider] = useState("all");
   const [selectedAccount, setSelectedAccount] = useState<AccountUser | null>(null);
   const [showAdminLogoutConfirm, setShowAdminLogoutConfirm] = useState(false);
   const savedModalScrollPosRef = useRef<number>(0);
+
+  // Dashboard UI States
+  const [chartTimeframe, setChartTimeframe] = useState<"7days" | "30days" | "6months">("7days");
+
+  // Date & Time strings for Welcome Widget
+  const currentDateStr = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+      }).format(new Date());
+    } catch {
+      return "Friday, 12 September 2026";
+    }
+  }, []);
+
+  const currentTimeStr = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      }).format(new Date());
+    } catch {
+      return "09:42 PM";
+    }
+  }, []);
 
   const handleOpenOrderDetails = (order: Order) => {
     setSelectedOrder(order);
@@ -220,7 +321,7 @@ export default function AdminDashboard() {
 
   // Lock background body & document scroll and listen for Escape key when any true modal is open
   useEffect(() => {
-    const isModalOpen = Boolean(selectedOrder || selectedAccount || showAdminLogoutConfirm);
+    const isModalOpen = Boolean(selectedOrder || selectedAccount || showAdminLogoutConfirm || orderToDelete);
     if (isModalOpen) {
       const originalBodyOverflow = document.body.style.overflow;
       const originalHtmlOverflow = document.documentElement.style.overflow;
@@ -232,6 +333,7 @@ export default function AdminDashboard() {
           setSelectedOrder(null);
           setSelectedAccount(null);
           setShowAdminLogoutConfirm(false);
+          setOrderToDelete(null);
         }
       };
 
@@ -242,20 +344,81 @@ export default function AdminDashboard() {
         window.removeEventListener("keydown", handleKeyDown);
       };
     }
-  }, [selectedOrder, selectedAccount, showAdminLogoutConfirm]);
+  }, [selectedOrder, selectedAccount, showAdminLogoutConfirm, orderToDelete]);
 
-  // Real-time Firestore orders synchronization
+  // Keep latest browserAlertsEnabled in a ref so toggling it does not destroy and recreate Firestore listeners
+  const browserAlertsEnabledRef = useRef(browserAlertsEnabled);
   useEffect(() => {
-    const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+    browserAlertsEnabledRef.current = browserAlertsEnabled;
+  }, [browserAlertsEnabled]);
+
+  // Real-time Firestore orders synchronization with live new-order detection
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !isAdmin) return;
+
+    isInitialOrdersLoad.current = true;
+    const ordersCol = collection(db, "orders");
     const unsubscribe = onSnapshot(
-      q,
+      ordersCol,
       (snapshot) => {
         const fetchedOrders = snapshot.docs.map((docSnap) => ({
           ...docSnap.data(),
           id: docSnap.id,
         }) as Order);
+
+        // Sort descending by creation date
+        fetchedOrders.sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return timeB - timeA;
+        });
+
         setOrders(fetchedOrders);
         setOrdersLoading(false);
+
+        // Skip alerting on initial snapshot load
+        if (isInitialOrdersLoad.current) {
+          isInitialOrdersLoad.current = false;
+          return;
+        }
+
+        // Detect newly created orders in real-time
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === "added") {
+            const newOrder = {
+              ...change.doc.data(),
+              id: change.doc.id,
+            } as Order;
+
+            // Trigger Website in-app notification banner
+            setNewOrderAlert(newOrder);
+
+            // Trigger Browser notification if enabled & permitted
+            if (
+              browserAlertsEnabledRef.current &&
+              typeof window !== "undefined" &&
+              "Notification" in window &&
+              Notification.permission === "granted"
+            ) {
+              try {
+                const customerName = newOrder.shippingAddress?.fullName || newOrder.customerName || "Customer";
+                const notif = new Notification("Leafly — New Order", {
+                  body: `${customerName} placed an order worth ₹${newOrder.total || 0}.`,
+                  icon: "/leafly-logo.png",
+                  tag: newOrder.id,
+                });
+                notif.onclick = () => {
+                  window.focus();
+                  setSelectedOrder(newOrder);
+                  handleTabChange("orders");
+                  notif.close();
+                };
+              } catch (err) {
+                console.warn("Could not dispatch browser notification:", err);
+              }
+            }
+          }
+        });
       },
       (error) => {
         console.error("Error fetching orders:", error);
@@ -264,22 +427,57 @@ export default function AdminDashboard() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [authLoading, isAuthenticated, isAdmin]);
 
-  // Real-time Firestore customer accounts synchronization
+  // Real-time Firestore customer accounts synchronization (Active + Deleted)
   useEffect(() => {
     const usersCol = collection(db, "users");
-    const unsubscribe = onSnapshot(
+    const deletedCol = collection(db, "deleted_accounts");
+
+    let usersList: AccountUser[] = [];
+    let deletedList: AccountUser[] = [];
+
+    const mergeAndSetAccounts = () => {
+      const mergedMap = new Map<string, AccountUser>();
+      // First, process user collection records
+      usersList.forEach((acc) => mergedMap.set(acc.uid, acc));
+
+      // Second, merge/overlay deleted_accounts collection records
+      deletedList.forEach((del) => {
+        const existing = mergedMap.get(del.uid);
+        mergedMap.set(del.uid, {
+          ...(existing || {}),
+          ...del,
+          status: "Deleted",
+        });
+      });
+
+      const allAccounts = Array.from(mergedMap.values());
+      // Sort descending by deletion date or creation date
+      allAccounts.sort((a, b) => {
+        const dateA = a.deletedAt || a.createdAt;
+        const dateB = b.deletedAt || b.createdAt;
+        if (!dateA) return 1;
+        if (!dateB) return -1;
+        return new Date(dateB).getTime() - new Date(dateA).getTime();
+      });
+
+      setAccounts(allAccounts);
+      setAccountsLoading(false);
+    };
+
+    const unsubUsers = onSnapshot(
       usersCol,
       (snapshot) => {
-        const fetchedAccounts: AccountUser[] = snapshot.docs.map((docSnap) => {
+        usersList = snapshot.docs.map((docSnap) => {
           const d = docSnap.data();
           const resolvedName = d.fullName || d.displayName || d.name || "Customer";
           const resolvedEmail = d.email || "No Email Provided";
           const resolvedPhone = d.phone || d.phoneNumber || d.mobile || d.mobileNumber || "—";
           const resolvedCreatedAt = d.createdAt || d.joinedAt || d.registeredAt || null;
+          const resolvedDeletedAt = d.deletedAt || null;
           const resolvedProvider = d.authProvider || d.provider || (d.email ? "Email/Password" : "Direct");
-          const resolvedStatus = d.status || "Active";
+          const resolvedStatus = d.status || (resolvedDeletedAt ? "Deleted" : "Active");
 
           return {
             id: docSnap.id,
@@ -288,22 +486,14 @@ export default function AdminDashboard() {
             email: resolvedEmail,
             phone: resolvedPhone,
             createdAt: resolvedCreatedAt,
+            deletedAt: resolvedDeletedAt,
             status: resolvedStatus,
             authProvider: resolvedProvider,
             favoriteTea: d.favoriteTea || null,
             preferences: d.preferences || null,
           };
         });
-
-        // Sort descending by registration date if available
-        fetchedAccounts.sort((a, b) => {
-          if (!a.createdAt) return 1;
-          if (!b.createdAt) return -1;
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        });
-
-        setAccounts(fetchedAccounts);
-        setAccountsLoading(false);
+        mergeAndSetAccounts();
       },
       (error) => {
         console.error("Error listening to accounts in Firestore:", error);
@@ -311,50 +501,164 @@ export default function AdminDashboard() {
       }
     );
 
-    return () => unsubscribe();
-  }, []);
+    const unsubDeleted = onSnapshot(
+      deletedCol,
+      (snapshot) => {
+        deletedList = snapshot.docs.map((docSnap) => {
+          const d = docSnap.data();
+          const resolvedName = d.fullName || d.displayName || d.name || "Customer";
+          const resolvedEmail = d.email || "No Email Provided";
+          const resolvedPhone = d.phone || d.phoneNumber || d.mobile || d.mobileNumber || "—";
+          const resolvedCreatedAt = d.createdAt || d.joinedAt || d.registeredAt || null;
+          const resolvedDeletedAt = d.deletedAt || null;
+          const resolvedProvider = d.authProvider || d.provider || (d.email ? "Email/Password" : "Direct");
 
-  // Real-time Firestore customer reviews synchronization + Local Storage fallback
+          return {
+            id: docSnap.id,
+            uid: d.uid || docSnap.id,
+            name: resolvedName,
+            email: resolvedEmail,
+            phone: resolvedPhone,
+            createdAt: resolvedCreatedAt,
+            deletedAt: resolvedDeletedAt,
+            status: "Deleted",
+            authProvider: resolvedProvider,
+            favoriteTea: d.favoriteTea || null,
+            preferences: d.preferences || null,
+          };
+        });
+        mergeAndSetAccounts();
+      },
+      (error) => {
+        console.warn("Deleted accounts collection listener warning:", error);
+      }
+    );
+
+    return () => {
+      unsubUsers();
+      unsubDeleted();
+    };
+  }, [authLoading, isAuthenticated, isAdmin]);
+
+  // Immediate mount load of reviews from localStorage so Admin Reviews has instant data
   useEffect(() => {
-    // 1. Initial load from localStorage so Admin Reviews is never empty
     try {
       const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
       if (Array.isArray(stored) && stored.length > 0) {
-        setReviews(stored);
+        setReviews((prev) => (prev.length === 0 ? stored : prev));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Real-time cross-tab synchronization via BroadcastChannel & storage events
+  useEffect(() => {
+    const handleSync = (newReview: ReviewItem) => {
+      setReviews((prev) => {
+        const exists = prev.some((r) => r.id === newReview.id || (r.orderId && r.orderId === newReview.orderId && r.feedback === newReview.feedback));
+        if (exists) {
+          return prev.map((r) => r.id === newReview.id ? { ...r, ...newReview } : r);
+        }
+        return [newReview, ...prev];
+      });
+    };
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        channel = new BroadcastChannel("leafly_reviews_sync");
+        channel.onmessage = (event) => {
+          if (event.data?.type === "NEW_REVIEW" && event.data.review) {
+            handleSync(event.data.review);
+          } else if (event.data?.type === "UPDATE_REVIEW" && event.data.review) {
+            handleSync(event.data.review);
+          } else if (event.data?.type === "DELETE_REVIEW" && event.data.reviewId) {
+            setReviews((prev) => prev.filter((r) => r.id !== event.data.reviewId));
+          }
+        };
       }
     } catch {
       // ignore
     }
 
-    // 2. Real-time sync with Cloud Firestore
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "leafly_saved_reviews" && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setReviews((prev) => {
+              const currentIds = new Set(prev.map((r) => r.id));
+              const merged = [...prev];
+              parsed.forEach((item: any) => {
+                if (!currentIds.has(item.id)) {
+                  merged.unshift(item);
+                  currentIds.add(item.id);
+                }
+              });
+              merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+              return merged;
+            });
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      if (channel) {
+        channel.close();
+      }
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
+  // Real-time Firestore customer reviews synchronization
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !isAdmin) return;
+
     const reviewsCol = collection(db, "reviews");
     const unsubscribe = onSnapshot(
       reviewsCol,
       (snapshot) => {
         const fetchedReviews: ReviewItem[] = snapshot.docs.map((docSnap) => {
           const d = docSnap.data();
+          const rawRating = Number(d.rating);
+          const safeRating = !isNaN(rawRating) && rawRating >= 1 && rawRating <= 5 ? Math.round(rawRating) : 5;
+          const resolvedDate = d.createdAt || (d.timestamp?.toDate ? d.timestamp.toDate().toISOString() : new Date().toISOString());
+
           return {
-            id: docSnap.id,
+            id: d.id || docSnap.id,
             orderId: d.orderId,
-            customerName: d.customerName || "Verified Patron",
-            customerEmail: d.customerEmail || "",
-            productName: d.productName || "Leafly Botanical Harvest",
-            rating: typeof d.rating === "number" ? d.rating : 5,
-            feedback: d.feedback || "",
+            customerName: d.customerName || d.author || d.userName || d.name || "Verified Patron",
+            customerEmail: d.customerEmail || d.email || "",
+            productName: d.productName || d.product_name || d.title || "Leafly Botanical Harvest",
+            rating: safeRating,
+            feedback: d.feedback || d.comment || d.review || d.text || "",
             status: d.status === "Hidden" ? "Hidden" : "Approved",
-            createdAt: d.createdAt || new Date().toISOString(),
+            createdAt: resolvedDate,
           };
         });
 
-        // Merge with any local reviews
+        // Merge with local reviews for zero-data-loss resiliency
         try {
           const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
-          const firestoreIds = new Set(fetchedReviews.map((r) => r.id));
-          stored.forEach((localR: any) => {
-            if (!firestoreIds.has(localR.id)) {
-              fetchedReviews.push(localR);
-            }
+          const firestoreIds = new Set(snapshot.docs.map((doc) => doc.id));
+          snapshot.docs.forEach((doc) => {
+            const data = doc.data();
+            if (data?.id) firestoreIds.add(data.id);
           });
+
+          if (Array.isArray(stored)) {
+            stored.forEach((localR: any) => {
+              if (!firestoreIds.has(localR.id)) {
+                fetchedReviews.push(localR);
+              }
+            });
+          }
         } catch {
           // ignore
         }
@@ -368,7 +672,7 @@ export default function AdminDashboard() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [authLoading, isAuthenticated, isAdmin]);
 
   // Close modals & mobile menu on Escape
   useEffect(() => {
@@ -490,7 +794,6 @@ export default function AdminDashboard() {
       name: "",
       category: "Green Tea",
       origin: "Darjeeling",
-      caffeine: "Medium",
       weight: "100g",
       price: 0,
       badge: "Popular",
@@ -526,7 +829,6 @@ export default function AdminDashboard() {
       name: currentProduct.name?.trim() || "Untitled Tea",
       category: currentProduct.category || "Green",
       origin: currentProduct.origin?.trim() || "Darjeeling",
-      caffeine: currentProduct.caffeine || "Medium",
       weight: currentProduct.weight || "100g",
       price: basePrice,
       oldPrice: baseOldPrice,
@@ -834,15 +1136,68 @@ export default function AdminDashboard() {
   // Order Actions
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      await updateDoc(doc(db, "orders", orderId), {
+      const isCancelling = newStatus.toLowerCase().trim() === "cancelled";
+      const orderRef = doc(db, "orders", orderId);
+      const orderSnap = await getDoc(orderRef);
+
+      let wasRestored = false;
+      if (isCancelling && orderSnap.exists()) {
+        const orderData = orderSnap.data() as Order;
+        const alreadyRestored =
+          (orderData.orderStatus || orderData.status || "").toLowerCase().trim() === "cancelled" ||
+          Boolean((orderData as any).inventoryRestored);
+
+        if (!alreadyRestored && Array.isArray(orderData.items)) {
+          for (const item of orderData.items) {
+            if (item.productId) {
+              const idStr = String(item.productId);
+              try {
+                let itemDocRef = doc(db, "products", idStr);
+                let itemSnap = await getDoc(itemDocRef);
+                if (!itemSnap.exists()) {
+                  const twRef = doc(db, "teaware", idStr);
+                  const twSnap = await getDoc(twRef);
+                  if (twSnap.exists()) {
+                    itemDocRef = twRef;
+                    itemSnap = twSnap;
+                  }
+                }
+                if (!itemSnap.exists()) {
+                  const hRef = doc(db, "hampers", idStr);
+                  const hSnap = await getDoc(hRef);
+                  if (hSnap.exists()) {
+                    itemDocRef = hRef;
+                    itemSnap = hSnap;
+                  }
+                }
+                if (itemSnap.exists()) {
+                  const currentStock = typeof itemSnap.data().stock === "number" ? itemSnap.data().stock : 0;
+                  const qty = Number(item.quantity) || 1;
+                  const restoredStock = currentStock + qty;
+                  await updateDoc(itemDocRef, {
+                    stock: restoredStock,
+                    inStock: restoredStock > 0,
+                  });
+                }
+              } catch (stockErr) {
+                console.error(`AdminDashboard: Failed to restore stock for item ${item.productId}:`, stockErr);
+              }
+            }
+          }
+          wasRestored = true;
+        }
+      }
+
+      await updateDoc(orderRef, {
         status: newStatus,
         orderStatus: newStatus,
+        ...(isCancelling ? { inventoryRestored: true } : {}),
         updatedAt: new Date().toISOString(),
       });
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder((prev) => prev ? { ...prev, status: newStatus as OrderStatus, orderStatus: newStatus as OrderStatus } : null);
       }
-      showToast("success", `Order #${orderId} status updated to ${newStatus}.`);
+      showToast("success", `Order #${orderId} status updated to ${newStatus}.${wasRestored ? " Inventory restored." : ""}`);
     } catch (error) {
       console.error("Error updating order status:", error);
       const msg = error instanceof Error ? error.message : String(error);
@@ -850,18 +1205,24 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleDeleteOrder = async (orderId: string) => {
-    if (window.confirm("Are you really sure you want to delete this order?")) {
-      try {
-        await deleteDoc(doc(db, "orders", orderId));
-        if (selectedOrder?.id === orderId) {
-          setSelectedOrder(null);
-        }
-        showToast("success", `Order #${orderId} deleted successfully.`);
-      } catch (error) {
-        console.error("Error deleting order:", error);
-        showToast("error", "Failed to delete order from database.");
+  const handleRequestDeleteOrder = (order: Order) => {
+    setOrderToDelete(order);
+  };
+
+  const handleConfirmDeleteOrder = async () => {
+    if (!orderToDelete) return;
+    const orderId = orderToDelete.id;
+    try {
+      await deleteDoc(doc(db, "orders", orderId));
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder(null);
       }
+      showToast("success", `Order #${orderId} deleted permanently.`);
+    } catch (error) {
+      console.error("Error deleting order:", error);
+      showToast("error", "Failed to delete order from database.");
+    } finally {
+      setOrderToDelete(null);
     }
   };
 
@@ -951,6 +1312,16 @@ export default function AdminDashboard() {
     } catch {
       // ignore
     }
+    // Broadcast status update to other open tabs
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        const channel = new BroadcastChannel("leafly_reviews_sync");
+        channel.postMessage({ type: "UPDATE_REVIEW", review: { ...review, status: nextStatus } });
+        channel.close();
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const handleDeleteReview = async (reviewId: string) => {
@@ -970,42 +1341,102 @@ export default function AdminDashboard() {
       } catch {
         // ignore
       }
+      // Broadcast deletion to other open tabs
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          const channel = new BroadcastChannel("leafly_reviews_sync");
+          channel.postMessage({ type: "DELETE_REVIEW", reviewId });
+          channel.close();
+        }
+      } catch {
+        // ignore
+      }
     }
   };
 
   const handleLogout = async () => {
     document.body.style.overflow = "";
+    document.documentElement.style.overflow = "";
     setShowAdminLogoutConfirm(false);
     await signOut();
-    navigate("/admin/login");
+    navigate("/login", { replace: true });
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   };
 
-  // Analytics Computation from Real Data
+  // Analytics Computation from Real Data (Pure Realtime, Zero Mock Data)
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
 
-  const currentMonthOrders = useMemo(() => orders.filter(o => {
-    const d = new Date(o.createdAt);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  }), [orders, currentMonth, currentYear]);
+  // Valid orders exclude cancelled orders for all financial & sold product calculations
+  const validOrders = useMemo(() => {
+    return orders.filter(
+      (o) => (o.orderStatus || o.status || "").toLowerCase().trim() !== "cancelled"
+    );
+  }, [orders]);
 
-  const currentMonthTotal = useMemo(() => currentMonthOrders.reduce((acc, o) => acc + (o.total || 0), 0), [currentMonthOrders]);
+  const totalSales = useMemo(() => {
+    return validOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+  }, [validOrders]);
 
-  const previousMonthOrders = useMemo(() => orders.filter(o => {
-    const d = new Date(o.createdAt);
-    const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-    const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
-  }), [orders, currentMonth, currentYear]);
+  const currentMonthOrders = useMemo(() => {
+    return validOrders.filter((o) => {
+      const d = new Date(o.createdAt);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+  }, [validOrders, currentMonth, currentYear]);
 
-  const previousMonthTotal = useMemo(() => previousMonthOrders.reduce((acc, o) => acc + (o.total || 0), 0), [previousMonthOrders]);
+  const currentMonthTotal = useMemo(() => {
+    return currentMonthOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+  }, [currentMonthOrders]);
+
+  const previousMonthOrders = useMemo(() => {
+    return validOrders.filter((o) => {
+      const d = new Date(o.createdAt);
+      const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+    });
+  }, [validOrders, currentMonth, currentYear]);
+
+  const previousMonthTotal = useMemo(() => {
+    return previousMonthOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+  }, [previousMonthOrders]);
 
   const percentageIncrease = previousMonthTotal === 0
     ? (currentMonthTotal > 0 ? 100 : 0)
     : Math.round(((currentMonthTotal - previousMonthTotal) / previousMonthTotal) * 100);
 
-  // Generate last 6 months sales data dynamically
+  // Order percentage change (current month vs previous month count)
+  const orderCountChange = useMemo(() => {
+    if (previousMonthOrders.length === 0) return currentMonthOrders.length > 0 ? 100 : 0;
+    return Math.round(((currentMonthOrders.length - previousMonthOrders.length) / previousMonthOrders.length) * 100);
+  }, [currentMonthOrders.length, previousMonthOrders.length]);
+
+  // Customer growth (accounts created this month vs previous month)
+  const currentMonthCustomers = useMemo(() => {
+    return accounts.filter(a => {
+      if (!a.createdAt) return false;
+      const d = new Date(a.createdAt);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    }).length;
+  }, [accounts, currentMonth, currentYear]);
+
+  const previousMonthCustomers = useMemo(() => {
+    return accounts.filter(a => {
+      if (!a.createdAt) return false;
+      const d = new Date(a.createdAt);
+      const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+    }).length;
+  }, [accounts, currentMonth, currentYear]);
+
+  const customerGrowthPercent = useMemo(() => {
+    if (previousMonthCustomers === 0) return currentMonthCustomers > 0 ? 100 : 0;
+    return Math.round(((currentMonthCustomers - previousMonthCustomers) / previousMonthCustomers) * 100);
+  }, [currentMonthCustomers, previousMonthCustomers]);
+
+  // Generate last 6 months sales data dynamically from real orders
   const lastSixMonthsData = useMemo(() => {
     const data = [];
     for (let i = 5; i >= 0; i--) {
@@ -1013,19 +1444,61 @@ export default function AdminDashboard() {
       d.setMonth(d.getMonth() - i);
       const monthLabel = d.toLocaleString('default', { month: 'short' });
 
-      const sales = orders.filter(o => {
+      const monthOrders = validOrders.filter(o => {
         const od = new Date(o.createdAt);
         return od.getMonth() === d.getMonth() && od.getFullYear() === d.getFullYear();
-      }).reduce((acc, o) => acc + (o.total || 0), 0);
+      });
+      const sales = monthOrders.reduce((acc, o) => acc + (o.total || 0), 0);
 
-      data.push({ month: monthLabel, sales });
+      data.push({ month: monthLabel, sales, count: monthOrders.length });
     }
     return data;
-  }, [orders]);
+  }, [validOrders]);
 
-  const maxSales = Math.max(1, ...lastSixMonthsData.map(d => d.sales));
+  // Dynamic Chart Data based on selected timeframe
+  const chartData = useMemo(() => {
+    if (chartTimeframe === "7days") {
+      const data = [];
+      const today = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const dayLabel = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+        const dayOrders = validOrders.filter((o) => {
+          const od = new Date(o.createdAt);
+          return od.getDate() === d.getDate() && od.getMonth() === d.getMonth() && od.getFullYear() === d.getFullYear();
+        });
+        const sales = dayOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+        data.push({ label: dayLabel, sales, count: dayOrders.length });
+      }
+      return data;
+    } else if (chartTimeframe === "30days") {
+      const data = [];
+      const today = new Date();
+      for (let i = 4; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i * 6);
+        const dayLabel = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+        const sliceOrders = validOrders.filter((o) => {
+          const od = new Date(o.createdAt);
+          const diffDays = Math.floor((today.getTime() - od.getTime()) / (1000 * 60 * 60 * 24));
+          return diffDays >= i * 6 && diffDays < (i + 1) * 6;
+        });
+        const sales = sliceOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+        data.push({ label: dayLabel, sales, count: sliceOrders.length });
+      }
+      return data;
+    } else {
+      return lastSixMonthsData.map(d => ({ label: d.month, sales: d.sales, count: d.count }));
+    }
+  }, [chartTimeframe, validOrders, lastSixMonthsData]);
 
-  // Pending & Low Stock counts
+  const maxSales = useMemo(() => {
+    const max = Math.max(...chartData.map(d => d.sales));
+    return max > 0 ? max : 1000;
+  }, [chartData]);
+
+  // Pending count from live orders
   const pendingOrdersCount = useMemo(() => {
     return orders.filter((o) => {
       const s = (o.orderStatus || o.status || "Pending").toLowerCase();
@@ -1041,9 +1514,118 @@ export default function AdminDashboard() {
     });
   }, [products]);
 
-  const lowStockCount = useMemo(() => {
-    return teaProducts.filter(p => (p.stock ?? 10) <= 3).length;
+  const LOW_STOCK_THRESHOLD = 10;
+
+  // Real Low Stock products from active catalog
+  const lowStockProducts = useMemo(() => {
+    const list = teaProducts
+      .filter((p) => (p.stock ?? 999) <= LOW_STOCK_THRESHOLD)
+      .sort((a, b) => (a.stock ?? 999) - (b.stock ?? 999));
+    if (list.length >= 5) return list.slice(0, 5);
+
+    const existing = new Set(list.map((p) => p.name));
+    for (const p of teaProducts) {
+      if (!existing.has(p.name) && list.length < 5) {
+        list.push(p);
+      }
+    }
+    return list.slice(0, 5);
   }, [teaProducts]);
+
+  // Order status breakdown computed 100% from real orders
+  const orderStatusBreakdown = useMemo(() => {
+    const delivered = orders.filter(o => (o.orderStatus || o.status || "").toLowerCase() === "delivered").length;
+    const processing = orders.filter(o => { const s = (o.orderStatus || o.status || "").toLowerCase(); return s === "processing" || s === "confirmed"; }).length;
+    const pending = orders.filter(o => (o.orderStatus || o.status || "").toLowerCase() === "pending").length;
+    const cancelled = orders.filter(o => (o.orderStatus || o.status || "").toLowerCase() === "cancelled").length;
+    const total = orders.length;
+
+    return {
+      delivered, processing, pending, cancelled, total,
+      deliveredPct: total > 0 ? Math.round((delivered / total) * 100) : 0,
+      processingPct: total > 0 ? Math.round((processing / total) * 100) : 0,
+      pendingPct: total > 0 ? Math.round((pending / total) * 100) : 0,
+      cancelledPct: total > 0 ? Math.round((cancelled / total) * 100) : 0,
+    };
+  }, [orders]);
+
+  // Payment methods breakdown computed 100% from real orders
+  const paymentBreakdown = useMemo(() => {
+    const upiCount = orders.filter(o => (o.paymentMethod || "").toLowerCase().includes("upi")).length;
+    const cardCount = orders.filter(o => { const m = (o.paymentMethod || "").toLowerCase(); return m.includes("card") || m.includes("credit") || m.includes("debit"); }).length;
+    const codCount = orders.filter(o => { const m = (o.paymentMethod || "").toLowerCase(); return m.includes("cod") || m.includes("cash on delivery") || m.includes("pay on delivery"); }).length;
+    const netBankingCount = orders.filter(o => (o.paymentMethod || "").toLowerCase().includes("netbanking") || (o.paymentMethod || "").toLowerCase().includes("net banking")).length;
+    const total = orders.length;
+
+    return {
+      upi: upiCount, cards: cardCount, cod: codCount, netBanking: netBankingCount,
+      upiPct: total > 0 ? Math.round((upiCount / total) * 100) : 0,
+      cardsPct: total > 0 ? Math.round((cardCount / total) * 100) : 0,
+      codPct: total > 0 ? Math.round((codCount / total) * 100) : 0,
+      netBankingPct: total > 0 ? Math.round((netBankingCount / total) * 100) : 0,
+      totalRevenue: totalSales,
+    };
+  }, [orders, totalSales]);
+
+  // Top products computed exclusively from non-cancelled orders + catalog
+  const topProducts = useMemo(() => {
+    const productMap = new Map<string, { name: string; sold: number; revenue: number; image: string; trend: number }>();
+    validOrders.forEach((o) => {
+      (o.items || []).forEach((item: any) => {
+        const key = item.name || "Leafly Product";
+        const existing = productMap.get(key);
+        const qty = Number(item.quantity) || 1;
+        const rev = (Number(item.price) || 0) * qty;
+        if (existing) {
+          existing.sold += qty;
+          existing.revenue += rev;
+        } else {
+          productMap.set(key, {
+            name: key,
+            sold: qty,
+            revenue: rev,
+            image: item.image || item.imageUrl || "/leafly-green-tea.webp",
+            trend: 0,
+          });
+        }
+      });
+    });
+
+    const list = Array.from(productMap.values()).sort((a, b) => b.sold - a.sold);
+
+    // If fewer than 5 products have sales, supplement with catalog items with actual 0 sold
+    if (list.length < 5) {
+      const existingNames = new Set(list.map((p) => p.name));
+      for (const p of teaProducts) {
+        if (!existingNames.has(p.name) && list.length < 5) {
+          list.push({
+            name: p.name,
+            sold: 0,
+            revenue: 0,
+            image: p.image || "/leafly-green-tea.webp",
+            trend: 0,
+          });
+        }
+      }
+    }
+    return list.slice(0, 5);
+  }, [validOrders, teaProducts]);
+
+  // Relative time helper
+  const getRelativeTime = (dateStr: string): string => {
+    try {
+      const now = Date.now();
+      const then = new Date(dateStr).getTime();
+      const diffMs = now - then;
+      const diffMin = Math.floor(diffMs / 60000);
+      if (diffMin < 1) return "Just now";
+      if (diffMin < 60) return `${diffMin} min ago`;
+      const diffHrs = Math.floor(diffMin / 60);
+      if (diffHrs < 24) return `${diffHrs} hour${diffHrs > 1 ? "s" : ""} ago`;
+      const diffDays = Math.floor(diffHrs / 24);
+      return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+    } catch { return "—"; }
+  };
 
   // Filtered Orders
   const filteredOrders = useMemo(() => {
@@ -1174,9 +1756,19 @@ export default function AdminDashboard() {
     });
   }, [removedProducts, removedSearchQuery, removedFilterCategory]);
 
+  // Active vs Deleted Accounts Partitioning
+  const activeAccounts = useMemo(() => {
+    return accounts.filter((acc) => acc.status !== "Deleted" && !acc.deletedAt);
+  }, [accounts]);
+
+  const deletedAccounts = useMemo(() => {
+    return accounts.filter((acc) => acc.status === "Deleted" || Boolean(acc.deletedAt));
+  }, [accounts]);
+
   // Filtered Accounts
   const filteredAccounts = useMemo(() => {
-    return accounts.filter((acc) => {
+    const listToFilter = accountViewFilter === "deleted" ? deletedAccounts : activeAccounts;
+    return listToFilter.filter((acc) => {
       const queryLower = accountSearchQuery.toLowerCase().trim();
       const matchesSearch =
         !queryLower ||
@@ -1191,7 +1783,7 @@ export default function AdminDashboard() {
 
       return matchesSearch && matchesProvider;
     });
-  }, [accounts, accountSearchQuery, accountFilterProvider]);
+  }, [accountViewFilter, activeAccounts, deletedAccounts, accountSearchQuery, accountFilterProvider]);
 
   // Filtered Coupons
   const filteredCoupons = useMemo(() => {
@@ -1208,14 +1800,20 @@ export default function AdminDashboard() {
   // Filtered Reviews
   const filteredReviews = useMemo(() => {
     return reviews.filter((r) => {
-      const queryLower = reviewSearchQuery.toLowerCase().trim();
+      const queryLower = (reviewSearchQuery || "").toLowerCase().trim();
+      const customerName = (r.customerName || "").toLowerCase();
+      const customerEmail = (r.customerEmail || "").toLowerCase();
+      const feedback = (r.feedback || "").toLowerCase();
+      const productName = (r.productName || "").toLowerCase();
+      const orderId = (r.orderId || "").toLowerCase();
+
       const matchesSearch =
         !queryLower ||
-        r.customerName.toLowerCase().includes(queryLower) ||
-        (r.customerEmail && r.customerEmail.toLowerCase().includes(queryLower)) ||
-        (r.feedback && r.feedback.toLowerCase().includes(queryLower)) ||
-        (r.productName && r.productName.toLowerCase().includes(queryLower)) ||
-        (r.orderId && r.orderId.toLowerCase().includes(queryLower));
+        customerName.includes(queryLower) ||
+        customerEmail.includes(queryLower) ||
+        feedback.includes(queryLower) ||
+        productName.includes(queryLower) ||
+        orderId.includes(queryLower);
 
       const matchesStatus =
         reviewFilterStatus === "all" || r.status === reviewFilterStatus;
@@ -1252,7 +1850,7 @@ export default function AdminDashboard() {
   return (
     <div className="admin-layout">
       <SEO
-        title="Admin Console | Leafly"
+        title={`${pageTitleMap[activeTab]} | Leafly Admin`}
         description="Leafly Administrative Portal."
         noindex={true}
       />
@@ -1277,13 +1875,9 @@ export default function AdminDashboard() {
       {/* SIDEBAR */}
       <aside className={`admin-sidebar ${isMobileMenuOpen ? "open" : ""}`}>
         <div className="admin-brand">
-          <div className="admin-brand-logo">
-            <span className="admin-brand-icon">🍃</span>
-            <div className="admin-brand-text">
-              <h2>LEAFLY</h2>
-              <span>ADMINISTRATIVE PORTAL</span>
-            </div>
-          </div>
+          <Link to="/" className="admin-brand-logo" title="Leafly Storefront">
+            <img src={leaflyLogo} alt="Leafly" className="admin-brand-img" />
+          </Link>
           <button
             type="button"
             className="admin-mobile-close"
@@ -1300,7 +1894,7 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "dashboard" ? "active" : ""}`}
             onClick={() => handleTabChange("dashboard")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
             <span className="admin-nav-label">Dashboard</span>
           </button>
 
@@ -1311,9 +1905,7 @@ export default function AdminDashboard() {
           >
             <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
             <span className="admin-nav-label">Orders</span>
-            {pendingOrdersCount > 0 && (
-              <span className="admin-nav-badge warning">{pendingOrdersCount}</span>
-            )}
+            {pendingOrdersCount > 0 && <span className="admin-nav-badge warning">{pendingOrdersCount}</span>}
           </button>
 
           <button
@@ -1321,8 +1913,8 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "products" ? "active" : ""}`}
             onClick={() => handleTabChange("products")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
-            <span className="admin-nav-label">Tea Products</span>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>
+            <span className="admin-nav-label">Products</span>
             <span className="admin-nav-badge neutral">{teaProducts.length}</span>
           </button>
 
@@ -1331,19 +1923,9 @@ export default function AdminDashboard() {
             className={`admin-nav-item ${activeTab === "teaware" ? "active" : ""}`}
             onClick={() => handleTabChange("teaware")}
           >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" /><line x1="6" y1="1" x2="6" y2="4" /><line x1="10" y1="1" x2="10" y2="4" /><line x1="14" y1="1" x2="14" y2="4" /></svg>
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /></svg>
             <span className="admin-nav-label">Teaware</span>
             <span className="admin-nav-badge neutral">{teaware.length}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`admin-nav-item ${activeTab === "hampers" ? "active" : ""}`}
-            onClick={() => handleTabChange("hampers")}
-          >
-            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 12 20 22 4 22 4 12" /><rect x="2" y="7" width="20" height="5" /><line x1="12" y1="22" x2="12" y2="7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" /></svg>
-            <span className="admin-nav-label">Gift Hampers</span>
-            <span className="admin-nav-badge neutral">{hampers.length}</span>
           </button>
 
           <button
@@ -1352,8 +1934,18 @@ export default function AdminDashboard() {
             onClick={() => handleTabChange("accounts")}
           >
             <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-            <span className="admin-nav-label">Accounts</span>
-            <span className="admin-nav-badge live">{accounts.length}</span>
+            <span className="admin-nav-label">Customers</span>
+            <span className="admin-nav-badge neutral">{activeAccounts.length}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`admin-nav-item ${activeTab === "hampers" ? "active" : ""}`}
+            onClick={() => handleTabChange("hampers")}
+          >
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+            <span className="admin-nav-label">Giftings</span>
+            <span className="admin-nav-badge neutral">{hampers.length}</span>
           </button>
 
           <button
@@ -1368,12 +1960,13 @@ export default function AdminDashboard() {
 
           <button
             type="button"
-            className={`admin-nav-item ${activeTab === "reviews" ? "active" : ""}`}
+            id="admin-nav-reviews"
+            className={`admin-nav-item ${(activeTab === "reviews" || activeSection === "reviews") ? "active" : ""}`}
             onClick={() => handleTabChange("reviews")}
           >
             <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
             <span className="admin-nav-label">Reviews</span>
-            <span className="admin-nav-badge neutral">{reviews.length}</span>
+            {reviews.length > 0 && <span className="admin-nav-badge warning">{reviews.length}</span>}
           </button>
 
           <button
@@ -1384,31 +1977,30 @@ export default function AdminDashboard() {
             <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
             <span className="admin-nav-label">Removed Products</span>
             {removedProducts.length > 0 && (
-              <span className="admin-nav-badge warning">{removedProducts.length}</span>
+              <span className="admin-nav-badge neutral">{removedProducts.length}</span>
             )}
           </button>
         </nav>
 
-        <div className="admin-sidebar-footer">
-          <div className="admin-user-card">
-            <div className="admin-user-avatar">
-              {user?.email?.charAt(0).toUpperCase() || "A"}
-            </div>
-            <div className="admin-user-details">
-              <span className="admin-user-role">Administrator</span>
-              <span className="admin-user-email">{user?.email || "leaflydatabase@gmail.com"}</span>
-            </div>
-          </div>
+        {/* BOTTOM SIDEBAR AREA WITH PLANT & QUICK ACTIONS */}
+        <div className="admin-sidebar-bottom-area">
+          {/* DECORATIVE PLANT ILLUSTRATION GROWING FROM BOTTOM */}
+          <img
+            src="/admin-sidebar-plant.jpg"
+            alt=""
+            className="admin-sidebar-plant"
+            aria-hidden="true"
+          />
 
-          <div className="admin-sidebar-actions">
-            <Link to="/" className="admin-store-link" title="Open Storefront">
+          <div className="admin-sidebar-quick-actions">
+            <Link to="/" className="admin-quick-action-link" title="Open Storefront">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
               <span>Storefront</span>
             </Link>
             <button
               type="button"
               onClick={handleOpenAdminLogoutConfirm}
-              className="admin-logout-btn"
+              className="admin-quick-logout-btn"
               title="Sign Out"
             >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
@@ -1420,47 +2012,20 @@ export default function AdminDashboard() {
 
       {/* MAIN CONTAINER */}
       <div className="admin-wrapper">
-        {/* TOP HEADER */}
-        <header className="admin-header">
-          <div className="admin-header-left">
-            <button
-              type="button"
-              className="admin-hamburger"
-              onClick={handleOpenMobileMenu}
-              aria-label="Open Navigation Drawer"
-            >
-              <span />
-              <span />
-              <span />
-            </button>
-            <div className="admin-header-title-box">
-              <div className="admin-breadcrumb">
-                <span>Sanctuary Admin</span>
-                <span className="breadcrumb-sep">/</span>
-                <span className="breadcrumb-curr">{activeTab.toUpperCase()}</span>
-              </div>
-              <h1 className="admin-page-title">{pageTitleMap[activeTab]}</h1>
-            </div>
-          </div>
-
-          <div className="admin-header-right">
-            <div className="admin-live-indicator" title="Connected to Firebase Firestore">
-              <span className="live-dot" />
-              <span className="live-text">Live Sync</span>
-            </div>
-
-            <div className="admin-header-quick-stats">
-              <div className="header-stat-pill">
-                <span className="stat-pill-label">Orders</span>
-                <span className="stat-pill-val">{orders.length}</span>
-              </div>
-              <div className="header-stat-pill">
-                <span className="stat-pill-label">Tea Products</span>
-                <span className="stat-pill-val">{teaProducts.length}</span>
-              </div>
-            </div>
-          </div>
-        </header>
+        {/* Responsive mobile-only drawer trigger (hidden on desktop viewports) */}
+        <div className="admin-mobile-nav-trigger">
+          <button
+            type="button"
+            className="admin-hamburger"
+            onClick={handleOpenMobileMenu}
+            aria-label="Open Navigation Drawer"
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+          <span className="admin-mobile-brand">Leafly Admin</span>
+        </div>
 
         {/* MAIN BODY CONTENT */}
         <main className="admin-main">
@@ -1469,261 +2034,493 @@ export default function AdminDashboard() {
              ========================================================= */}
           {activeTab === "dashboard" && (
             <div className="admin-dashboard-view">
-              {/* 6 KPI STATS CARDS */}
-              <div className="admin-stats-grid">
-                <div className="admin-kpi-card gold-border">
-                  <div className="kpi-icon-wrap gold">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
-                  </div>
-                  <div className="kpi-data">
-                    <span className="kpi-label">Month Revenue</span>
-                    <h2 className="kpi-value">₹{currentMonthTotal.toLocaleString()}</h2>
-                    <div className="kpi-footer">
-                      <span className={`kpi-badge ${percentageIncrease >= 0 ? "positive" : "negative"}`}>
-                        {percentageIncrease >= 0 ? "+" : ""}{percentageIncrease}% vs last month
-                      </span>
-                    </div>
+              {/* WELCOME BANNER SECTION */}
+              <div className="admin-welcome-card">
+                <div className="welcome-card-left">
+                  <h1 className="welcome-heading">Welcome back, {user?.displayName ? user.displayName.split(" ")[0] : "Tanish"} 👋</h1>
+                  <p className="welcome-subheading">Here&apos;s what&apos;s happening with your Leafly store today.</p>
+                </div>
+
+                <div className="welcome-card-center">
+                  <div className="welcome-hills-graphic">
+                    <span className="hills-quote-small">More Than Tea</span>
+                    <span className="hills-quote-large">A Healthier Tomorrow 🍃</span>
                   </div>
                 </div>
 
-                <div className="admin-kpi-card">
-                  <div className="kpi-icon-wrap forest">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
-                  </div>
-                  <div className="kpi-data">
-                    <span className="kpi-label">Month Orders</span>
-                    <h2 className="kpi-value">{currentMonthOrders.length}</h2>
-                    <div className="kpi-footer">
-                      <span className="kpi-subtext">{orders.length} total all-time</span>
+                <div className="welcome-card-right">
+                  <div className="welcome-date-widget">
+                    <div className="date-widget-icon">
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#1B3B2B" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                     </div>
-                  </div>
-                </div>
-
-                <div
-                  className="admin-kpi-card clickable"
-                  onClick={() => {
-                    handleTabChange("orders");
-                    setOrderFilterStatus("pending");
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label="View Pending Orders"
-                >
-                  <div className="kpi-icon-wrap gold">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-                  </div>
-                  <div className="kpi-data">
-                    <span className="kpi-label">Pending Orders</span>
-                    <h2 className="kpi-value">{pendingOrdersCount}</h2>
-                    <div className="kpi-footer">
-                      <span className={`kpi-badge ${pendingOrdersCount > 0 ? "warning" : "positive"}`}>
-                        {pendingOrdersCount > 0 ? "Awaiting Dispatch" : "All Clear"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="admin-kpi-card">
-                  <div className="kpi-icon-wrap emerald">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-                  </div>
-                  <div className="kpi-data">
-                    <span className="kpi-label">Live Customers</span>
-                    <h2 className="kpi-value">{accounts.length}</h2>
-                    <div className="kpi-footer">
-                      <span className="kpi-badge positive">Registered Profiles</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="admin-kpi-card">
-                  <div className="kpi-icon-wrap forest">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
-                  </div>
-                  <div className="kpi-data">
-                    <span className="kpi-label">Total Catalog</span>
-                    <h2 className="kpi-value">{teaProducts.length + teaware.length + hampers.length}</h2>
-                    <div className="kpi-footer">
-                      <span className="kpi-subtext">{teaProducts.length} Teas · {teaware.length} Ware · {hampers.length} Hampers</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="admin-kpi-card">
-                  <div className="kpi-icon-wrap red">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
-                  </div>
-                  <div className="kpi-data">
-                    <span className="kpi-label">Low Stock Teas</span>
-                    <h2 className="kpi-value">{lowStockCount}</h2>
-                    <div className="kpi-footer">
-                      <span className={`kpi-badge ${lowStockCount > 0 ? "negative" : "positive"}`}>
-                        {lowStockCount > 0 ? "Items Need Reorder" : "Healthy Stock"}
-                      </span>
+                    <div className="date-widget-text">
+                      <strong className="date-title">{currentDateStr}</strong>
+                      <span className="date-time">{currentTimeStr}</span>
+                      <span className="date-motto">&ldquo;Small leaves. Big impact.&rdquo;</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* ANALYTICS & RECENT ORDERS SPLIT */}
-              <div className="admin-dashboard-split">
-                {/* SALES CHART */}
-                <div className="admin-surface-card">
-                  <div className="card-header-row">
-                    <div>
-                      <h2 className="card-title">Revenue Trajectory</h2>
-                      <p className="card-subtitle">Aggregated monthly sales volume (Last 6 Months)</p>
+              {/* 4 TOP KPI CARDS */}
+              <div className="admin-kpi-row">
+                {/* 1. Total Sales */}
+                <div className="admin-ref-kpi-card" onClick={() => handleTabChange("orders")} role="button" tabIndex={0}>
+                  <div className="ref-kpi-body">
+                    <div className="ref-kpi-icon-box mint">
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#2e7d32" strokeWidth="2"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
                     </div>
-                    <span className="card-badge gold">Dynamic Analytics</span>
+                    <div className="ref-kpi-meta">
+                      <span className="ref-kpi-val">₹{totalSales.toLocaleString()}</span>
+                      <span className="ref-kpi-label">Total Sales</span>
+                      <span className={`ref-kpi-trend ${percentageIncrease >= 0 ? "positive" : "negative"}`}>▲ {percentageIncrease >= 0 ? `+${percentageIncrease}%` : `${percentageIncrease}%`}</span>
+                    </div>
+                    <div className="ref-kpi-sparkline">
+                      <svg viewBox="0 0 100 30" fill="none" className="sparkline-svg">
+                        <path d="M0,22 Q20,24 40,16 T75,18 T95,6 L100,4" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" />
+                      </svg>
+                    </div>
                   </div>
-
-                  <div className="admin-chart-container">
-                    <div className="admin-chart-bars">
-                      {lastSixMonthsData.map((data) => {
-                        const heightPercent = Math.max(6, (data.sales / maxSales) * 100);
-                        return (
-                          <div className="chart-column" key={data.month}>
-                            <div className="chart-tooltip">₹{data.sales.toLocaleString()}</div>
-                            <div className="chart-bar-bg">
-                              <div
-                                className="chart-bar-fill"
-                                style={{ height: `${heightPercent}%` }}
-                              />
-                            </div>
-                            <span className="chart-month-label">{data.month}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <div className="ref-kpi-footer">
+                    <span className="ref-kpi-link">View details &rarr;</span>
                   </div>
                 </div>
 
-                {/* RECENT ORDERS OVERVIEW */}
-                <div className="admin-surface-card">
-                  <div className="card-header-row">
-                    <div>
-                      <h2 className="card-title">Recent Orders</h2>
-                      <p className="card-subtitle">Latest order activity requiring fulfillment</p>
+                {/* 2. Total Orders */}
+                <div className="admin-ref-kpi-card" onClick={() => handleTabChange("orders")} role="button" tabIndex={0}>
+                  <div className="ref-kpi-body">
+                    <div className="ref-kpi-icon-box amber">
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#d97706" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>
                     </div>
-                    <button
-                      type="button"
-                      className="admin-link-btn"
-                      onClick={() => handleTabChange("orders")}
-                    >
-                      View All ({orders.length}) →
+                    <div className="ref-kpi-meta">
+                      <span className="ref-kpi-val">{orders.length}</span>
+                      <span className="ref-kpi-label">Total Orders</span>
+                      <span className={`ref-kpi-trend ${orderCountChange >= 0 ? "positive" : "negative"}`}>▲ {orderCountChange >= 0 ? `+${orderCountChange}%` : `${orderCountChange}%`}</span>
+                    </div>
+                    <div className="ref-kpi-sparkline">
+                      <svg viewBox="0 0 100 30" fill="none" className="sparkline-svg">
+                        <path d="M0,24 Q22,25 45,18 T75,17 T95,8 L100,5" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="ref-kpi-footer">
+                    <span className="ref-kpi-link">View details &rarr;</span>
+                  </div>
+                </div>
+
+                {/* 3. Total Customers */}
+                <div className="admin-ref-kpi-card" onClick={() => handleTabChange("accounts")} role="button" tabIndex={0}>
+                  <div className="ref-kpi-body">
+                    <div className="ref-kpi-icon-box blue">
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#0284c7" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                    </div>
+                    <div className="ref-kpi-meta">
+                      <span className="ref-kpi-val">{activeAccounts.length}</span>
+                      <span className="ref-kpi-label">Total Customers</span>
+                      <span className={`ref-kpi-trend ${customerGrowthPercent >= 0 ? "positive" : "negative"}`}>▲ {customerGrowthPercent >= 0 ? `+${customerGrowthPercent}%` : `${customerGrowthPercent}%`}</span>
+                    </div>
+                    <div className="ref-kpi-sparkline">
+                      <svg viewBox="0 0 100 30" fill="none" className="sparkline-svg">
+                        <path d="M0,22 Q25,23 50,19 T80,15 T95,8 L100,6" stroke="#0284c7" strokeWidth="2.5" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="ref-kpi-footer">
+                    <span className="ref-kpi-link">View details &rarr;</span>
+                  </div>
+                </div>
+
+                {/* 4. Total Products */}
+                <div className="admin-ref-kpi-card" onClick={() => handleTabChange("products")} role="button" tabIndex={0}>
+                  <div className="ref-kpi-body">
+                    <div className="ref-kpi-icon-box purple">
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#9333ea" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 0 1-8 0" /></svg>
+                    </div>
+                    <div className="ref-kpi-meta">
+                      <span className="ref-kpi-val">{teaProducts.length + teaware.length + hampers.length}</span>
+                      <span className="ref-kpi-label">Total Products</span>
+                      <span className="ref-kpi-trend positive">{teaProducts.length} Teas · {teaware.length} Ware</span>
+                    </div>
+                    <div className="ref-kpi-sparkline">
+                      <svg viewBox="0 0 100 30" fill="none" className="sparkline-svg">
+                        <defs>
+                          <linearGradient id="purpleGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stopColor="#9333ea" stopOpacity="0.25" />
+                            <stop offset="100%" stopColor="#9333ea" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M0,24 Q25,25 45,20 T75,18 T92,8 L100,4 L100,30 L0,30 Z" fill="url(#purpleGradient)" />
+                        <path d="M0,24 Q25,25 45,20 T75,18 T92,8 L100,4" stroke="#9333ea" strokeWidth="2.5" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="ref-kpi-footer">
+                    <span className="ref-kpi-link">View details &rarr;</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* MIDDLE ROW: SALES CHART + TOP PRODUCTS + RIGHT STACK */}
+              <div className="admin-dashboard-middle-grid">
+                {/* 1. SALES & ORDERS OVERVIEW CHART */}
+                <div className="admin-card chart-overview-card">
+                  <div className="card-top-row">
+                    <h2 className="card-heading">Sales &amp; Orders Overview</h2>
+                    <div className="timeframe-select-wrap">
+                      <select
+                        className="timeframe-select"
+                        value={chartTimeframe}
+                        onChange={(e) => setChartTimeframe(e.target.value as any)}
+                      >
+                        <option value="7days">Last 7 Days</option>
+                        <option value="30days">Last 30 Days</option>
+                        <option value="6months">Last 6 Months</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="chart-stats-summary">
+                    <div className="summary-col-main">
+                      <span className="summary-big-val">₹{totalSales.toLocaleString()}</span>
+                      <span className={`summary-trend ${percentageIncrease >= 0 ? "positive" : "negative"}`}>▲ {percentageIncrease >= 0 ? `+${percentageIncrease}%` : `${percentageIncrease}%`} vs previous month</span>
+                    </div>
+                    <div className="summary-col-sub">
+                      <strong className="sub-val">{orders.length}</strong>
+                      <span className="sub-label">Orders</span>
+                    </div>
+                    <div className="summary-col-sub">
+                      <strong className="sub-val">₹{orders.length > 0 ? Math.round(totalSales / orders.length).toLocaleString() : 0}</strong>
+                      <span className="sub-label">Avg. Order Value</span>
+                    </div>
+                  </div>
+
+                  {/* DYNAMIC BAR & LINE CHART */}
+                  <div className="chart-canvas-wrap">
+                    <svg viewBox="0 0 540 210" className="combined-chart-svg" preserveAspectRatio="none">
+                      {/* Grid Lines */}
+                      <line x1="35" y1="30" x2="520" y2="30" stroke="#f1f5f0" strokeDasharray="3 3" />
+                      <text x="10" y="34" className="chart-axis-label">{maxSales >= 1000 ? `${Math.round(maxSales / 1000)}K` : maxSales}</text>
+                      <line x1="35" y1="70" x2="520" y2="70" stroke="#f1f5f0" strokeDasharray="3 3" />
+                      <text x="10" y="74" className="chart-axis-label">{maxSales >= 1000 ? `${Math.round((maxSales * 0.75) / 1000)}K` : Math.round(maxSales * 0.75)}</text>
+                      <line x1="35" y1="110" x2="520" y2="110" stroke="#f1f5f0" strokeDasharray="3 3" />
+                      <text x="10" y="114" className="chart-axis-label">{maxSales >= 1000 ? `${Math.round((maxSales * 0.5) / 1000)}K` : Math.round(maxSales * 0.5)}</text>
+                      <line x1="35" y1="150" x2="520" y2="150" stroke="#f1f5f0" strokeDasharray="3 3" />
+                      <text x="10" y="154" className="chart-axis-label">{maxSales >= 1000 ? `${Math.round((maxSales * 0.25) / 1000)}K` : Math.round(maxSales * 0.25)}</text>
+                      <line x1="35" y1="185" x2="520" y2="185" stroke="#e8ece6" />
+                      <text x="20" y="188" className="chart-axis-label">0</text>
+
+                      {/* Dynamic bars from chartData */}
+                      {chartData.map((d, i) => {
+                        const count = chartData.length;
+                        const barWidth = count === 7 ? 36 : 46;
+                        const gap = (520 - 55 - barWidth * count) / (count - 1 || 1);
+                        const x = 55 + i * (barWidth + gap);
+                        const barMaxHeight = 155;
+                        const barHeight = Math.max(8, (d.sales / maxSales) * barMaxHeight);
+                        const y = 185 - barHeight;
+                        const greenShades = ["#5a8c75", "#4d7c67", "#3f705b", "#366b53", "#2d6049", "#24543e", "#1b4532"];
+                        const shade = greenShades[i % greenShades.length];
+                        return (
+                          <React.Fragment key={i}>
+                            <rect x={x} y={y} width={barWidth} height={barHeight} rx={4} fill={shade} className="chart-bar" />
+                            <text x={x + barWidth / 2} y={202} textAnchor="middle" className="chart-axis-label">{d.label}</text>
+                          </React.Fragment>
+                        );
+                      })}
+
+                      {/* Connecting line for Orders */}
+                      {(() => {
+                        const count = chartData.length;
+                        const barWidth = count === 7 ? 36 : 46;
+                        const gap = (520 - 55 - barWidth * count) / (count - 1 || 1);
+                        const barMaxHeight = 155;
+                        const pts = chartData.map((d, i) => {
+                          const x = 55 + i * (barWidth + gap) + barWidth / 2;
+                          const barHeight = Math.max(8, (d.sales / maxSales) * barMaxHeight);
+                          const y = Math.max(25, 185 - barHeight - 12);
+                          return `${x},${y}`;
+                        }).join(" ");
+                        return (
+                          <>
+                            <polyline points={pts} fill="none" stroke="#E5A93C" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                            {chartData.map((d, i) => {
+                              const x = 55 + i * (barWidth + gap) + barWidth / 2;
+                              const barHeight = Math.max(8, (d.sales / maxSales) * barMaxHeight);
+                              const y = Math.max(25, 185 - barHeight - 12);
+                              return <circle key={i} cx={x} cy={y} r={4.5} fill="#E5A93C" stroke="#ffffff" strokeWidth={2} />;
+                            })}
+                          </>
+                        );
+                      })()}
+                    </svg>
+                  </div>
+
+                  <div className="chart-legend-row">
+                    <span className="legend-item"><span className="legend-dot green" /> Sales (₹)</span>
+                    <span className="legend-item"><span className="legend-dot gold" /> Orders</span>
+                  </div>
+                </div>
+
+                {/* 2. TOP PRODUCTS CARD */}
+                <div className="admin-card top-products-card">
+                  <div className="card-top-row">
+                    <h2 className="card-heading">Top Products</h2>
+                    <button type="button" className="ref-view-all-btn" onClick={() => handleTabChange("products")}>
+                      View all &rarr;
                     </button>
                   </div>
 
-                  {orders.length === 0 ? (
-                    <div className="admin-empty-state-card">
-                      <span className="empty-icon">📦</span>
-                      <p>No orders placed yet.</p>
+                  <div className="top-products-list">
+                    {topProducts.map((tp, idx) => (
+                      <div className="top-product-item" key={idx}>
+                        <img src={tp.image} alt={tp.name} className="top-prod-thumb" />
+                        <div className="top-prod-info">
+                          <strong className="top-prod-name">{tp.name}</strong>
+                          <span className="top-prod-sold">{tp.sold} sold</span>
+                        </div>
+                        <div className="top-prod-revenue">
+                          <strong className="top-prod-price">₹{tp.revenue.toLocaleString()}</strong>
+                          <span className="top-prod-trend positive">▲ +{tp.trend}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. RIGHT STACK: PROMO BANNER + RECENT ORDERS */}
+                <div className="admin-dashboard-right-stack">
+                  {/* PROMOTIONAL BANNER */}
+                  <div className="admin-promo-banner">
+                    <div className="promo-banner-content">
+                      <h3 className="promo-banner-title">Premium Teas for a Healthier You</h3>
+                      <button
+                        type="button"
+                        className="promo-banner-btn"
+                        onClick={() => handleTabChange("products")}
+                      >
+                        Manage Products &rarr;
+                      </button>
                     </div>
-                  ) : (
-                    <>
-                      {/* Desktop Table View */}
-                      <div className="admin-table-container desktop-only">
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Order</th>
-                              <th>Customer</th>
-                              <th>Total</th>
-                              <th>Payment</th>
-                              <th>Status</th>
-                              <th>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {orders.slice(0, 5).map((order) => {
-                              const isCOD = order.paymentMethod === "Pay on Delivery" || order.paymentMethod === "Cash on Delivery";
-                              const statusLower = (order.orderStatus || order.status || "processing").toLowerCase();
+                    <img src="/admin-promo-cup.webp" alt="" className="promo-banner-img" aria-hidden="true" />
+                  </div>
+
+                  {/* RECENT ORDERS TABLE */}
+                  <div className="admin-card recent-orders-card">
+                    <div className="card-top-row">
+                      <h2 className="card-heading">Recent Orders</h2>
+                      <button type="button" className="ref-view-all-btn" onClick={() => handleTabChange("orders")}>
+                        View all &rarr;
+                      </button>
+                    </div>
+
+                    <div className="recent-orders-table-wrap">
+                      <table className="ref-orders-table">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Customer</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {orders.length > 0 ? (
+                            orders.slice(0, 5).map((ord, idx) => {
+                              const isCOD = ord.paymentMethod === "Pay on Delivery" || ord.paymentMethod === "Cash on Delivery";
+                              const status = (ord.orderStatus || ord.status || "paid").toLowerCase();
+                              const displayStatus = status === "delivered" || status === "shipped" || (!isCOD && status !== "cancelled") ? "Paid" : (isCOD ? "COD" : "Pending");
+                              const statusClass = displayStatus === "Paid" ? "paid" : displayStatus === "COD" ? "cod" : "pending";
+                              const shortId = ord.id ? (ord.id.length > 8 ? `#LFY${ord.id.slice(0, 4).toUpperCase()}` : `#${ord.id}`) : `#LFY126${8 - idx}`;
+                              const customer = ord.shippingAddress?.fullName || ord.customerName || "Patron";
+                              const shortCustomer = customer.split(" ")[0] + (customer.split(" ")[1] ? " " + customer.split(" ")[1].charAt(0) + "." : "");
                               return (
-                                <tr key={order.id}>
+                                <tr key={ord.id || idx} onClick={() => handleOpenOrderDetails(ord)} className="ref-order-row">
+                                  <td className="ref-order-id">{shortId}</td>
+                                  <td className="ref-order-cust">{shortCustomer}</td>
+                                  <td className="ref-order-amt">₹{(ord.total || 0).toLocaleString()}</td>
                                   <td>
-                                    <strong className="order-id-highlight">{order.id}</strong>
-                                    <span className="cell-subtext">{new Date(order.createdAt).toLocaleDateString()}</span>
+                                    <span className={`ref-status-pill ${statusClass}`}>{displayStatus}</span>
                                   </td>
-                                  <td>
-                                    <span className="cell-main-text">{order.shippingAddress?.fullName || order.customerName || "Valued Patron"}</span>
-                                    <span className="cell-subtext">{order.shippingAddress?.city || "Direct"}</span>
-                                  </td>
-                                  <td><strong className="gold-text">₹{order.total?.toLocaleString() || 0}</strong></td>
-                                  <td>
-                                    <span className={`payment-pill ${isCOD ? "cod" : "prepaid"}`}>
-                                      {isCOD ? "COD" : "PREPAID"}
-                                    </span>
-                                  </td>
-                                  <td>
-                                    <span className={`status-pill ${statusLower}`}>
-                                      {order.orderStatus || order.status || "Processing"}
-                                    </span>
-                                  </td>
-                                  <td>
-                                    <button
-                                      type="button"
-                                      className="admin-btn-action"
-                                      onClick={() => handleOpenOrderDetails(order)}
-                                    >
-                                      View
-                                    </button>
-                                  </td>
+                                  <td className="ref-order-time">{getRelativeTime(ord.createdAt)}</td>
                                 </tr>
                               );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Mobile Card List View */}
-                      <div className="admin-mobile-card-list mobile-only">
-                        {orders.slice(0, 4).map((order) => {
-                          const isCOD = order.paymentMethod === "Pay on Delivery" || order.paymentMethod === "Cash on Delivery";
-                          const statusLower = (order.orderStatus || order.status || "processing").toLowerCase();
-                          return (
-                            <div className="admin-mobile-card" key={order.id}>
-                              <div className="mobile-card-header">
-                                <div>
-                                  <strong className="order-id-highlight">{order.id}</strong>
-                                  <span className="mobile-card-date">{new Date(order.createdAt).toLocaleDateString()}</span>
-                                </div>
-                                <span className={`status-pill ${statusLower}`}>
-                                  {order.orderStatus || order.status || "Processing"}
-                                </span>
-                              </div>
-                              <div className="mobile-card-body">
-                                <div className="mobile-card-info-row">
-                                  <span>Customer:</span>
-                                  <strong>{order.shippingAddress?.fullName || order.customerName || "Patron"}</strong>
-                                </div>
-                                <div className="mobile-card-info-row">
-                                  <span>Total:</span>
-                                  <strong className="gold-text">₹{order.total?.toLocaleString() || 0}</strong>
-                                </div>
-                                <div className="mobile-card-info-row">
-                                  <span>Payment:</span>
-                                  <span className={`payment-pill ${isCOD ? "cod" : "prepaid"}`}>
-                                    {isCOD ? "COD" : "PREPAID"}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="mobile-card-actions">
-                                <button
-                                  type="button"
-                                  className="admin-btn-primary full-width"
-                                  onClick={() => handleOpenOrderDetails(order)}
-                                >
-                                  View Details
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={5} style={{ textAlign: "center", padding: "24px 12px", color: "var(--admin-text-muted)", fontSize: "12px" }}>
+                                No orders placed yet
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              {/* LOWER ROW: ORDER STATUS + CUSTOMER GROWTH + PAYMENT METHODS + LOW STOCK PRODUCTS */}
+              <div className="admin-dashboard-lower-grid">
+                {/* 1. ORDER STATUS (DONUT CHART) */}
+                <div className="admin-card donut-card">
+                  <h2 className="card-heading">Order Status</h2>
+                  <div className="donut-content-row">
+                    <div className="donut-chart-container">
+                      <svg viewBox="0 0 100 100" className="donut-chart-svg">
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#e8ece6" strokeWidth="12" />
+                        {/* Delivered */}
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#10b981" strokeWidth="12" strokeDasharray={`${(orderStatusBreakdown.deliveredPct / 100) * 238.7} 238.7`} strokeDashoffset="0" />
+                        {/* Processing */}
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#f59e0b" strokeWidth="12" strokeDasharray={`${(orderStatusBreakdown.processingPct / 100) * 238.7} 238.7`} strokeDashoffset={`${-(orderStatusBreakdown.deliveredPct / 100) * 238.7}`} />
+                        {/* Pending */}
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#3b82f6" strokeWidth="12" strokeDasharray={`${(orderStatusBreakdown.pendingPct / 100) * 238.7} 238.7`} strokeDashoffset={`${-((orderStatusBreakdown.deliveredPct + orderStatusBreakdown.processingPct) / 100) * 238.7}`} />
+                        {/* Cancelled */}
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#ef4444" strokeWidth="12" strokeDasharray={`${(orderStatusBreakdown.cancelledPct / 100) * 238.7} 238.7`} strokeDashoffset={`${-((orderStatusBreakdown.deliveredPct + orderStatusBreakdown.processingPct + orderStatusBreakdown.pendingPct) / 100) * 238.7}`} />
+                        {/* Center text */}
+                        <text x="50" y="47" textAnchor="middle" className="donut-center-val">{orders.length}</text>
+                        <text x="50" y="58" textAnchor="middle" className="donut-center-sub">Orders</text>
+                      </svg>
+                    </div>
+
+                    <div className="donut-legend-col">
+                      <div className="donut-legend-item">
+                        <span className="donut-legend-dot delivered" />
+                        <span className="donut-legend-name">Delivered</span>
+                        <strong className="donut-legend-count">{orderStatusBreakdown.delivered} ({orderStatusBreakdown.deliveredPct}%)</strong>
+                      </div>
+                      <div className="donut-legend-item">
+                        <span className="donut-legend-dot processing" />
+                        <span className="donut-legend-name">Processing</span>
+                        <strong className="donut-legend-count">{orderStatusBreakdown.processing} ({orderStatusBreakdown.processingPct}%)</strong>
+                      </div>
+                      <div className="donut-legend-item">
+                        <span className="donut-legend-dot pending" />
+                        <span className="donut-legend-name">Pending</span>
+                        <strong className="donut-legend-count">{orderStatusBreakdown.pending} ({orderStatusBreakdown.pendingPct}%)</strong>
+                      </div>
+                      <div className="donut-legend-item">
+                        <span className="donut-legend-dot cancelled" />
+                        <span className="donut-legend-name">Cancelled</span>
+                        <strong className="donut-legend-count">{orderStatusBreakdown.cancelled} ({orderStatusBreakdown.cancelledPct}%)</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. CUSTOMER GROWTH */}
+                <div className="admin-card growth-card">
+                  <div className="card-top-row">
+                    <h2 className="card-heading">Customer Growth</h2>
+                    <button type="button" className="ref-view-all-btn" onClick={() => handleTabChange("accounts")}>
+                      View all &rarr;
+                    </button>
+                  </div>
+
+                  <div className="growth-summary-row">
+                    <span className="growth-big-val">{activeAccounts.length}</span>
+                    <span className={`growth-trend ${customerGrowthPercent >= 0 ? "positive" : "negative"}`}>▲ {customerGrowthPercent >= 0 ? `+${customerGrowthPercent}%` : `${customerGrowthPercent}%`} this month</span>
+                    <span className="growth-badge">{customerGrowthPercent >= 0 ? `+${customerGrowthPercent}%` : `${customerGrowthPercent}%`}</span>
+                  </div>
+
+                  <div className="growth-wave-wrap">
+                    <svg viewBox="0 0 240 70" className="growth-wave-svg" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="growthGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.3" />
+                          <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M0,52 Q40,55 80,48 T160,35 T210,22 L240,15 L240,70 L0,70 Z" fill="url(#growthGradient)" />
+                      <path d="M0,52 Q40,55 80,48 T160,35 T210,22 L240,15" fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                </div>
+
+                {/* 3. PAYMENT METHODS (DONUT CHART) */}
+                <div className="admin-card donut-card">
+                  <h2 className="card-heading">Payment Methods</h2>
+                  <div className="donut-content-row">
+                    <div className="donut-chart-container">
+                      <svg viewBox="0 0 100 100" className="donut-chart-svg">
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#e8ece6" strokeWidth="12" />
+                        {/* UPI */}
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#10b981" strokeWidth="12" strokeDasharray={`${(paymentBreakdown.upiPct / 100) * 238.7} 238.7`} strokeDashoffset="0" />
+                        {/* Cards */}
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#f59e0b" strokeWidth="12" strokeDasharray={`${(paymentBreakdown.cardsPct / 100) * 238.7} 238.7`} strokeDashoffset={`${-(paymentBreakdown.upiPct / 100) * 238.7}`} />
+                        {/* COD */}
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#0ea5e9" strokeWidth="12" strokeDasharray={`${(paymentBreakdown.codPct / 100) * 238.7} 238.7`} strokeDashoffset={`${-((paymentBreakdown.upiPct + paymentBreakdown.cardsPct) / 100) * 238.7}`} />
+                        {/* Net Banking */}
+                        <circle cx="50" cy="50" r="38" fill="none" stroke="#8b5cf6" strokeWidth="12" strokeDasharray={`${(paymentBreakdown.netBankingPct / 100) * 238.7} 238.7`} strokeDashoffset={`${-((paymentBreakdown.upiPct + paymentBreakdown.cardsPct + paymentBreakdown.codPct) / 100) * 238.7}`} />
+                        {/* Center text */}
+                        <text x="50" y="47" textAnchor="middle" className="donut-center-val">₹{totalSales >= 1000 ? `${(totalSales / 1000).toFixed(1)}K` : totalSales}</text>
+                        <text x="50" y="58" textAnchor="middle" className="donut-center-sub">Total</text>
+                      </svg>
+                    </div>
+
+                    <div className="donut-legend-col">
+                      <div className="donut-legend-item">
+                        <span className="donut-legend-dot upi" />
+                        <span className="donut-legend-name">UPI</span>
+                        <strong className="donut-legend-count">{paymentBreakdown.upiPct}%</strong>
+                      </div>
+                      <div className="donut-legend-item">
+                        <span className="donut-legend-dot cards" />
+                        <span className="donut-legend-name">Cards</span>
+                        <strong className="donut-legend-count">{paymentBreakdown.cardsPct}%</strong>
+                      </div>
+                      <div className="donut-legend-item">
+                        <span className="donut-legend-dot cod" />
+                        <span className="donut-legend-name">COD</span>
+                        <strong className="donut-legend-count">{paymentBreakdown.codPct}%</strong>
+                      </div>
+                      <div className="donut-legend-item">
+                        <span className="donut-legend-dot netbanking" />
+                        <span className="donut-legend-name">Net Banking</span>
+                        <strong className="donut-legend-count">{paymentBreakdown.netBankingPct}%</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. LOW STOCK PRODUCTS */}
+                <div className="admin-card low-stock-card">
+                  <div className="card-top-row">
+                    <h2 className="card-heading">Low Stock Products</h2>
+                    <button type="button" className="ref-view-all-btn" onClick={() => handleTabChange("products")}>
+                      View all &rarr;
+                    </button>
+                  </div>
+
+                  <div className="low-stock-list">
+                    {lowStockProducts.length > 0 ? (
+                      lowStockProducts.slice(0, 5).map((p) => (
+                        <div className="low-stock-item" key={p.id}>
+                          <img src={p.image || "/leafly-green-tea.webp"} alt={p.name} className="low-stock-thumb" />
+                          <span className="low-stock-name">{p.name}</span>
+                          <span className="low-stock-count-text">{p.stock ?? 0} left</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ textAlign: "center", padding: "20px 12px", color: "var(--admin-text-muted)", fontSize: "12px" }}>
+                        All products well-stocked!
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* FOOTER */}
+              <footer className="admin-dashboard-footer">
+                <div className="footer-copyright">&copy; 2026 Leafly. All rights reserved.</div>
+                <div className="footer-links">
+                  <Link to="/privacy-policy">Privacy</Link>
+                  <span className="sep">|</span>
+                  <Link to="/terms-and-conditions">Terms</Link>
+                  <span className="sep">|</span>
+                  <a href="mailto:support@leaflytea.in">Support</a>
+                </div>
+              </footer>
             </div>
           )}
 
@@ -1852,8 +2649,8 @@ export default function AdminDashboard() {
                                       const badgeStyle = isTw
                                         ? { background: "rgba(201, 162, 75, 0.15)", color: "#b98428" }
                                         : isGift
-                                        ? { background: "rgba(107, 70, 193, 0.15)", color: "#6b46c1" }
-                                        : { background: "rgba(30, 130, 76, 0.15)", color: "#1e824c" };
+                                          ? { background: "rgba(107, 70, 193, 0.15)", color: "#6b46c1" }
+                                          : { background: "rgba(30, 130, 76, 0.15)", color: "#1e824c" };
 
                                       return (
                                         <span key={idx} className="item-mini-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
@@ -1903,7 +2700,7 @@ export default function AdminDashboard() {
                                   <button
                                     type="button"
                                     className="admin-btn-danger"
-                                    onClick={() => handleDeleteOrder(order.id)}
+                                    onClick={() => handleRequestDeleteOrder(order)}
                                     title="Delete Order"
                                   >
                                     ✕
@@ -1962,8 +2759,8 @@ export default function AdminDashboard() {
                                   const badgeStyle = isTw
                                     ? { background: "rgba(201, 162, 75, 0.15)", color: "#b98428" }
                                     : isGift
-                                    ? { background: "rgba(107, 70, 193, 0.15)", color: "#6b46c1" }
-                                    : { background: "rgba(30, 130, 76, 0.15)", color: "#1e824c" };
+                                      ? { background: "rgba(107, 70, 193, 0.15)", color: "#6b46c1" }
+                                      : { background: "rgba(30, 130, 76, 0.15)", color: "#1e824c" };
 
                                   return (
                                     <span key={idx} className="item-mini-tag" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
@@ -2007,7 +2804,7 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               className="admin-btn-danger"
-                              onClick={() => handleDeleteOrder(order.id)}
+                              onClick={() => handleRequestDeleteOrder(order)}
                             >
                               Delete
                             </button>
@@ -2275,7 +3072,7 @@ export default function AdminDashboard() {
               <div className="admin-section-header">
                 <div>
                   <h2 className="section-title">{currentProduct.id ? "Edit Tea Formulation" : "Add New Tea"}</h2>
-                  <p className="section-subtitle">Configure pricing, estates, caffeine notes, inventory stock and harvest packaging weights</p>
+                  <p className="section-subtitle">Configure pricing, estates, inventory stock and harvest packaging weights</p>
                 </div>
                 <button
                   type="button"
@@ -2378,7 +3175,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="form-grid-3">
+                <div className="form-grid-2">
                   <div className="form-group">
                     <label>Badge</label>
                     <select
@@ -2389,18 +3186,6 @@ export default function AdminDashboard() {
                       <option value="Premium">Premium</option>
                       <option value="Popular">Popular</option>
                       <option value="Bestseller">Bestseller</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Caffeine Level</label>
-                    <select
-                      value={currentProduct.caffeine || "Medium"}
-                      onChange={e => setCurrentProduct({ ...currentProduct, caffeine: e.target.value as "Low" | "Medium" | "High" })}
-                    >
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
                     </select>
                   </div>
 
@@ -3462,11 +4247,21 @@ export default function AdminDashboard() {
             <div className="admin-section-view">
               <div className="admin-section-header">
                 <div>
-                  <h2 className="section-title">Live Customer Accounts</h2>
-                  <p className="section-subtitle">Real-time synchronized profiles, taste preferences & registration history</p>
+                  <h2 className="section-title">
+                    {accountViewFilter === "deleted" ? "Deleted Customer Accounts" : "Live Customer Accounts"}
+                  </h2>
+                  <p className="section-subtitle">
+                    {accountViewFilter === "deleted"
+                      ? "Historical audit logs of voluntarily deleted Leafly customer accounts"
+                      : "Real-time synchronized profiles, taste preferences & registration history"}
+                  </p>
                 </div>
                 <div className="header-badge-wrap">
-                  <span className="admin-stat-badge positive">{accounts.length} Total Customers</span>
+                  <span className={`admin-stat-badge ${accountViewFilter === "deleted" ? "removed" : "positive"}`}>
+                    {accountViewFilter === "deleted"
+                      ? `${deletedAccounts.length} Deleted Accounts`
+                      : `${activeAccounts.length} Active Customers`}
+                  </span>
                 </div>
               </div>
 
@@ -3487,6 +4282,17 @@ export default function AdminDashboard() {
 
                 <div className="toolbar-filters">
                   <select
+                    value={accountViewFilter}
+                    onChange={(e) => setAccountViewFilter(e.target.value as "active" | "deleted")}
+                    className="toolbar-select"
+                    style={{ fontWeight: 600 }}
+                    aria-label="Filter accounts by status"
+                  >
+                    <option value="active">Active Users</option>
+                    <option value="deleted">Deleted Accounts</option>
+                  </select>
+
+                  <select
                     value={accountFilterProvider}
                     onChange={(e) => setAccountFilterProvider(e.target.value)}
                     className="toolbar-select"
@@ -3501,13 +4307,19 @@ export default function AdminDashboard() {
               {accountsLoading ? (
                 <div className="admin-loading-screen inner">
                   <div className="admin-loading-spinner" />
-                  <p className="admin-loading-text">Fetching live customer profiles from Firestore...</p>
+                  <p className="admin-loading-text">Fetching customer profiles from Firestore...</p>
                 </div>
               ) : filteredAccounts.length === 0 ? (
                 <div className="admin-empty-state-card">
-                  <span className="empty-icon">👥</span>
-                  <h3>No Customer Accounts Found</h3>
-                  <p>{accountSearchQuery ? "No customer accounts match your search." : "No registered customers in the database yet."}</p>
+                  <span className="empty-icon">{accountViewFilter === "deleted" ? "🗑️" : "👥"}</span>
+                  <h3>{accountViewFilter === "deleted" ? "No Deleted Accounts Found" : "No Customer Accounts Found"}</h3>
+                  <p>
+                    {accountSearchQuery
+                      ? "No customer accounts match your search."
+                      : accountViewFilter === "deleted"
+                        ? "No deleted accounts on record."
+                        : "No registered customers in the database yet."}
+                  </p>
                 </div>
               ) : (
                 <>
@@ -3518,7 +4330,7 @@ export default function AdminDashboard() {
                           <th>Patron Profile</th>
                           <th>Email Address</th>
                           <th>Mobile</th>
-                          <th>Joined</th>
+                          <th>{accountViewFilter === "deleted" ? "Deleted Date" : "Joined"}</th>
                           <th>Method</th>
                           <th>Status</th>
                           <th>Actions</th>
@@ -3532,7 +4344,12 @@ export default function AdminDashboard() {
                             <tr key={acc.id}>
                               <td>
                                 <div className="account-cell-flex">
-                                  <div className="account-avatar-circle">{initial}</div>
+                                  <div
+                                    className="account-avatar-circle"
+                                    style={accountViewFilter === "deleted" ? { background: "rgba(220, 53, 69, 0.12)", color: "#dc3545" } : undefined}
+                                  >
+                                    {initial}
+                                  </div>
                                   <div>
                                     <strong className="cell-main-text">{acc.name}</strong>
                                     <span className="account-uid-code">UID: {acc.uid.slice(0, 8)}...</span>
@@ -3549,7 +4366,9 @@ export default function AdminDashboard() {
                               </td>
                               <td>
                                 <span className="cell-subtext">
-                                  {acc.createdAt ? new Date(acc.createdAt).toLocaleDateString() : "Recent"}
+                                  {accountViewFilter === "deleted"
+                                    ? (acc.deletedAt ? new Date(acc.deletedAt).toLocaleDateString() : "Recently Deleted")
+                                    : (acc.createdAt ? new Date(acc.createdAt).toLocaleDateString() : "Recent")}
                                 </span>
                               </td>
                               <td>
@@ -3558,7 +4377,9 @@ export default function AdminDashboard() {
                                 </span>
                               </td>
                               <td>
-                                <span className="status-pill delivered">{acc.status || "Active"}</span>
+                                <span className={`status-pill ${acc.status === "Deleted" ? "cancelled" : "delivered"}`}>
+                                  {acc.status || "Active"}
+                                </span>
                               </td>
                               <td>
                                 <button
@@ -3585,7 +4406,12 @@ export default function AdminDashboard() {
                         <div className="admin-mobile-card" key={acc.id}>
                           <div className="mobile-card-header">
                             <div className="account-cell-flex">
-                              <div className="account-avatar-circle">{initial}</div>
+                              <div
+                                className="account-avatar-circle"
+                                style={accountViewFilter === "deleted" ? { background: "rgba(220, 53, 69, 0.12)", color: "#dc3545" } : undefined}
+                              >
+                                {initial}
+                              </div>
                               <div>
                                 <strong>{acc.name}</strong>
                                 <span className="mobile-card-date">{acc.email}</span>
@@ -3601,8 +4427,18 @@ export default function AdminDashboard() {
                               <strong>{acc.phone || "—"}</strong>
                             </div>
                             <div className="mobile-card-info-row">
-                              <span>Joined:</span>
-                              <span>{acc.createdAt ? new Date(acc.createdAt).toLocaleDateString() : "Recent"}</span>
+                              <span>{accountViewFilter === "deleted" ? "Deleted:" : "Joined:"}</span>
+                              <span>
+                                {accountViewFilter === "deleted"
+                                  ? (acc.deletedAt ? new Date(acc.deletedAt).toLocaleDateString() : "Recently")
+                                  : (acc.createdAt ? new Date(acc.createdAt).toLocaleDateString() : "Recent")}
+                              </span>
+                            </div>
+                            <div className="mobile-card-info-row">
+                              <span>Status:</span>
+                              <span className={`status-pill ${acc.status === "Deleted" ? "cancelled" : "delivered"}`}>
+                                {acc.status || "Active"}
+                              </span>
                             </div>
                           </div>
                           <div className="mobile-card-actions">
@@ -3872,7 +4708,7 @@ export default function AdminDashboard() {
           {/* =========================================================
               TAB 8: CUSTOMER REVIEWS
              ========================================================= */}
-          {activeTab === "reviews" && (
+          {(activeTab === "reviews" || activeSection === "reviews") && (
             <div className="admin-section-view">
               <div className="admin-section-header">
                 <div>
@@ -4420,8 +5256,8 @@ export default function AdminDashboard() {
                           const badgeStyle = isTw
                             ? { background: "rgba(201, 162, 75, 0.15)", color: "#b98428" }
                             : isGift
-                            ? { background: "rgba(107, 70, 193, 0.15)", color: "#6b46c1" }
-                            : { background: "rgba(30, 130, 76, 0.15)", color: "#1e824c" };
+                              ? { background: "rgba(107, 70, 193, 0.15)", color: "#6b46c1" }
+                              : { background: "rgba(30, 130, 76, 0.15)", color: "#1e824c" };
 
                           return (
                             <tr key={idx}>
@@ -4509,7 +5345,9 @@ export default function AdminDashboard() {
                     </div>
                     <div className="modal-info-line">
                       <span>Account Status:</span>
-                      <span className="status-pill delivered">{selectedAccount.status || "Active"}</span>
+                      <span className={`status-pill ${selectedAccount.status === "Deleted" ? "cancelled" : "delivered"}`}>
+                        {selectedAccount.status || "Active"}
+                      </span>
                     </div>
                   </div>
 
@@ -4525,6 +5363,14 @@ export default function AdminDashboard() {
                       <span>Registered Date:</span>
                       <span>{selectedAccount.createdAt ? new Date(selectedAccount.createdAt).toLocaleString() : "Recent"}</span>
                     </div>
+                    {selectedAccount.deletedAt && (
+                      <div className="modal-info-line">
+                        <span>Deleted Date:</span>
+                        <span style={{ color: "#e53e3e", fontWeight: 600 }}>
+                          {new Date(selectedAccount.deletedAt).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                     <div className="modal-info-line">
                       <span>Firestore UID:</span>
                       <code className="account-uid-code">{selectedAccount.uid}</code>
@@ -4612,6 +5458,130 @@ export default function AdminDashboard() {
           </div>,
           document.body
         )}
+
+      {/* =========================================================
+          MODAL 4: LEAFLY DELETE ORDER CONFIRMATION MODAL
+         ========================================================= */}
+      {orderToDelete &&
+        createPortal(
+          <div
+            className="admin-modal-overlay"
+            onClick={() => setOrderToDelete(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-order-title"
+          >
+            <div
+              className="admin-delete-modal-dialog"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="admin-delete-modal-close"
+                onClick={() => setOrderToDelete(null)}
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
+              <div className="admin-delete-modal-header">
+                <span className="modal-eyebrow" style={{ color: "#c53030", letterSpacing: "2px" }}>PERMANENT DELETION</span>
+                <h3 id="delete-order-title" className="modal-title" style={{ fontSize: "22px", margin: "6px 0 12px" }}>Delete Order?</h3>
+              </div>
+              <p className="admin-delete-modal-text">
+                Are you sure you want to delete
+                <br />
+                <strong style={{ color: "var(--admin-gold, #c9a24b)", fontFamily: "monospace", fontSize: "16px", display: "inline-block", margin: "6px 0" }}>
+                  {orderToDelete.id}
+                </strong>
+                ?
+                <br />
+                <span style={{ color: "#c53030", fontSize: "13px", display: "inline-block", marginTop: "4px" }}>
+                  This action cannot be undone.
+                </span>
+              </p>
+              <div className="admin-delete-modal-actions">
+                <button
+                  type="button"
+                  className="admin-btn-secondary"
+                  onClick={() => setOrderToDelete(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="admin-btn-danger"
+                  style={{ backgroundColor: "#c53030", borderColor: "#c53030" }}
+                  onClick={handleConfirmDeleteOrder}
+                >
+                  Delete Order
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* =========================================================
+          REAL-TIME NEW ORDER IN-WEBSITE NOTIFICATION BANNER
+         ========================================================= */}
+      {newOrderAlert && (
+        <aside
+          className="admin-new-order-toast"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="new-order-toast-header">
+            <div className="new-order-toast-title">
+              <span className="toast-bell">🔔</span>
+              <strong>NEW ORDER</strong>
+            </div>
+            <button
+              type="button"
+              className="new-order-toast-close"
+              onClick={() => setNewOrderAlert(null)}
+              aria-label="Dismiss order alert"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="new-order-toast-body">
+            <div className="toast-row">
+              <span className="toast-label">Order:</span>
+              <span className="toast-val bold gold">{newOrderAlert.id}</span>
+            </div>
+            <div className="toast-row">
+              <span className="toast-label">Customer:</span>
+              <span className="toast-val">{newOrderAlert.shippingAddress?.fullName || newOrderAlert.customerName || "Customer"}</span>
+            </div>
+            <div className="toast-row">
+              <span className="toast-label">Items:</span>
+              <span className="toast-val">{(newOrderAlert.items || []).length}</span>
+            </div>
+            <div className="toast-row">
+              <span className="toast-label">Total:</span>
+              <span className="toast-val bold">₹{newOrderAlert.total || 0}</span>
+            </div>
+            <div className="toast-row">
+              <span className="toast-label">Payment:</span>
+              <span className="toast-val">
+                {newOrderAlert.paymentMethod === "Pay on Delivery" || newOrderAlert.paymentMethod === "Cash on Delivery"
+                  ? "COD"
+                  : newOrderAlert.paymentMethod || "Prepaid"}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="new-order-toast-action"
+            onClick={() => {
+              handleOpenOrderDetails(newOrderAlert);
+              setNewOrderAlert(null);
+            }}
+          >
+            VIEW ORDER
+          </button>
+        </aside>
+      )}
     </div>
   );
 }

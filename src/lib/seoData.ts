@@ -3,7 +3,7 @@ import { type TeawareItem } from "../data/teaware";
 
 export const SITE_URL = (
   (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, "") ||
-  "https://leafly.vercel.app"
+  "https://leaflytea.in"
 );
 
 export const DEFAULT_OG_IMAGE = `${SITE_URL}/leafly-logo.webp`;

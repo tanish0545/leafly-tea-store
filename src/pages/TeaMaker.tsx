@@ -802,7 +802,6 @@ export default function TeaMaker() {
         name: "Natural Green Tea",
         category: "Green Tea",
         origin: "Darjeeling",
-        caffeine: "Medium",
         price: 699,
         image: "/leafly-green-tea.webp",
       }
@@ -1260,7 +1259,7 @@ export default function TeaMaker() {
                         </div>
 
                         <div className="tm-tea-card-content">
-                          <p className="tm-tea-origin">✦ {p.origin || "Darjeeling"} · {p.caffeine || "Medium"} Caffeine</p>
+                          <p className="tm-tea-origin">✦ {p.origin || "Darjeeling"}</p>
                           <h3 className="tm-tea-name">{p.name}</h3>
                           <p className="tm-tea-desc">
                             {p.description || "Hand-plucked tender orthodox leaves crafted for balanced aromatics."}

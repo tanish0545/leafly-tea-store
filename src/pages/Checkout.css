@@ -430,6 +430,87 @@ select.leafly-auth-select[aria-invalid="true"] {
   box-sizing: border-box;
 }
 
+.payment-secure-badge {
+  font-family: Inter, Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #1b5e20;
+  background: rgba(46, 125, 50, 0.12);
+  border: 1px solid rgba(46, 125, 50, 0.35);
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  max-width: fit-content !important;
+  box-sizing: border-box;
+}
+
+.checkout-online-message {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(11, 43, 30, 0.04);
+  border: 1.5px solid rgba(201, 162, 75, 0.35);
+  color: #0b2b1e;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.checkout-online-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.checkout-flow-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(201, 162, 75, 0.2);
+  font-size: 12px;
+  color: #2c4a3b;
+}
+
+.checkout-flow-hint-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.checkout-hint-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.checkout-payment-logos {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.checkout-payment-logo-pill {
+  font-size: 10px;
+  font-weight: 700;
+  color: #5c4314;
+  background: #f4ede0;
+  border: 1px solid rgba(201, 162, 75, 0.3);
+  border-radius: 4px;
+  padding: 2px 7px;
+  letter-spacing: 0.4px;
+}
+
 .checkout-cod-message {
   padding: 14px 16px;
   border-radius: 12px;
@@ -439,6 +520,7 @@ select.leafly-auth-select[aria-invalid="true"] {
   font-size: 12.5px;
   line-height: 1.5;
 }
+
 
 .checkout-summary-items {
   display: flex;
@@ -535,10 +617,54 @@ select.leafly-auth-select[aria-invalid="true"] {
   padding-top: 8px;
 }
 
+/* FLOATING QUICK-COMMERCE FREE-DELIVERY BADGE */
+.checkout-floating-delivery-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  margin-top: 14px;
+  margin-bottom: 2px;
+  background: linear-gradient(135deg, #fbf7ee 0%, #f5ecd8 100%);
+  border: 1px solid rgba(201, 162, 75, 0.45);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(201, 162, 75, 0.14);
+  animation: badgeSlideIn 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+@keyframes badgeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.checkout-floating-badge-icon {
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.checkout-floating-badge-text {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #5c4314;
+  letter-spacing: 0.2px;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .checkout-button-container {
   position: relative;
   width: 100%;
-  margin-top: 18px;
+  margin-top: 12px;
   overflow: visible;
 }
 

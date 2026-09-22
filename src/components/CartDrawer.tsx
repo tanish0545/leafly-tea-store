@@ -158,9 +158,6 @@ export default function CartDrawer() {
 
                       <span className="leafly-cart-variant-meta">
                         <strong className="leafly-variant-badge">{item.variant || item.weight || "1 Unit"}</strong>
-                        {item.product.caffeine && item.product.caffeine !== "None" && item.product.caffeine !== "Teaware" && item.product.caffeine !== "Varied" ? (
-                          <> · {item.product.caffeine} caffeine</>
-                        ) : null}
                       </span>
 
                       {isItemUnavailable && (

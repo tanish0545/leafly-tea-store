@@ -755,11 +755,6 @@
   color: #ffffff;
 }
 
-.card-floating-badge.badge-caffeine-free {
-  background: #5c3b77;
-  color: #ffffff;
-}
-
 .card-floating-badge.badge-popular {
   background: #214336;
   color: #ffffff;
@@ -1539,11 +1534,109 @@
    13. FLOATING CART & BACK TO TOP
    ========================================================= */
 
-.floating-cart {
+.shop-floating-container {
   position: fixed;
   bottom: 28px;
   right: 28px;
   z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.shop-floating-container > * {
+  pointer-events: auto;
+}
+
+.floating-delivery-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #fffdf8 0%, #faf4e8 100%);
+  border: 1px solid rgba(197, 151, 59, 0.45);
+  border-radius: 9999px;
+  color: #0b2b1e;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgba(11, 43, 30, 0.12), 0 2px 6px rgba(197, 151, 59, 0.15);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+              box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+              background 0.25s ease,
+              border-color 0.25s ease;
+  animation: leaflyPillEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  white-space: nowrap;
+}
+
+.floating-delivery-pill:hover {
+  transform: translateY(-2px);
+  border-color: #c5973b;
+  box-shadow: 0 8px 24px rgba(11, 43, 30, 0.18), 0 3px 8px rgba(197, 151, 59, 0.25);
+  background: linear-gradient(135deg, #ffffff 0%, #f7ecd7 100%);
+}
+
+.floating-delivery-pill .delivery-icon {
+  font-size: 15px;
+  line-height: 1;
+  display: inline-block;
+  animation: leaflyDeliveryWiggle 3.2s infinite ease-in-out;
+}
+
+.floating-delivery-pill .delivery-text {
+  font-family: inherit;
+  letter-spacing: 0.1px;
+}
+
+.floating-delivery-pill.unlocked {
+  background: linear-gradient(135deg, #0b2b1e 0%, #174a35 100%);
+  border-color: #c5973b;
+  color: #f7ecd7;
+  box-shadow: 0 8px 24px rgba(11, 43, 30, 0.3), 0 0 0 1px rgba(197, 151, 59, 0.35);
+}
+
+.floating-delivery-pill.unlocked .delivery-text {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.floating-delivery-pill.unlocked .delivery-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #c5973b;
+  color: #0b2b1e;
+  font-size: 11px;
+  font-weight: 900;
+  margin-left: 2px;
+}
+
+@keyframes leaflyPillEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes leaflyDeliveryWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  12% { transform: rotate(-5deg); }
+  24% { transform: rotate(4deg); }
+  36% { transform: rotate(0deg); }
+}
+
+.floating-cart {
+  position: static;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1557,6 +1650,7 @@
   box-shadow: 0 8px 24px rgba(11, 43, 30, 0.35);
   cursor: pointer;
   transition: transform 0.2s ease, background-color 0.2s ease;
+  animation: leaflyPillEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .floating-cart:hover {
@@ -1575,7 +1669,7 @@
 
 .back-to-top {
   position: fixed;
-  bottom: 90px;
+  bottom: 140px;
   right: 32px;
   z-index: 99;
   width: 44px;
@@ -1784,15 +1878,29 @@
     gap: 16px;
   }
 
+  .shop-floating-container {
+    bottom: 18px;
+    right: 14px;
+    gap: 8px;
+  }
+
+  .floating-delivery-pill {
+    padding: 7px 13px;
+    font-size: 11.5px;
+    max-width: calc(100vw - 28px);
+  }
+
+  .floating-delivery-pill .delivery-icon {
+    font-size: 13px;
+  }
+
   .floating-cart {
-    bottom: 20px;
-    right: 16px;
     padding: 10px 16px;
     font-size: 13px;
   }
 
   .back-to-top {
-    bottom: 74px;
+    bottom: 125px;
     right: 18px;
     width: 38px;
     height: 38px;

@@ -87,7 +87,6 @@ export default function Teaware() {
         name: item.name,
         category: "teaware",
         origin: item.material || "Artisan Craft",
-        caffeine: "Teaware",
         weight: item.capacity || "1 Unit",
         price: Number(item.price) || 0,
         oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
@@ -116,7 +115,6 @@ export default function Teaware() {
         name: item.name,
         category: "teaware",
         origin: item.material || "Artisan Craft",
-        caffeine: "Teaware",
         weight: item.capacity || "1 Unit",
         price: Number(item.price) || 0,
         oldPrice: item.oldPrice ? Number(item.oldPrice) : undefined,
@@ -289,7 +287,19 @@ export default function Teaware() {
                       toggleWishlist(item);
                     }}
                   >
-                    {isWishlisted ? "♥" : "♡"}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill={isWishlisted ? "#e53e3e" : "none"}
+                      stroke={isWishlisted ? "#e53e3e" : "#0b2b1e"}
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                    </svg>
                   </button>
                 </div>
 

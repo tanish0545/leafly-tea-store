@@ -69,6 +69,11 @@ export default function Signup() {
       return;
     }
 
+    if (!/[!@#$%^&*(),.?":{}|<>\-_=+[\]\\]/.test(password)) {
+      setErrorMessage("Password must contain at least one special character (e.g. !@#$%^&*).");
+      return;
+    }
+
     if (!favoriteTea.trim()) {
       setErrorMessage("Please select your favorite tea for your sanctuary security question.");
       return;
@@ -262,8 +267,13 @@ export default function Signup() {
                       id="signup-password"
                       type={showPassword ? "text" : "password"}
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••••••"
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (errorMessage && (errorMessage.includes("Password") || errorMessage.includes("password"))) {
+                          setErrorMessage(null);
+                        }
+                      }}
+                      placeholder="Enter your password"
                       autoComplete="new-password"
                       required
                       disabled={isLoading}
@@ -296,7 +306,12 @@ export default function Signup() {
                       id="signup-security-tea"
                       className="leafly-auth-select"
                       value={favoriteTea}
-                      onChange={(e) => setFavoriteTea(e.target.value)}
+                      onChange={(e) => {
+                        setFavoriteTea(e.target.value);
+                        if (errorMessage && errorMessage.includes("favorite tea")) {
+                          setErrorMessage(null);
+                        }
+                      }}
                       disabled={isLoading}
                       required
                     >

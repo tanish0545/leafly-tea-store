@@ -86,7 +86,6 @@ export function isTeawareItem(
 ): boolean {
   if (!product) return false;
   const pCat = (product.category || "").toLowerCase();
-  const pCaff = (product.caffeine || "").toLowerCase();
   const pId = String(product.id);
 
   if (
@@ -95,8 +94,7 @@ export function isTeawareItem(
     pCat === "teapots" ||
     pCat === "tea cups" ||
     pCat === "serving & trays" ||
-    pCat === "storage & accessories" ||
-    pCaff === "teaware"
+    pCat === "storage & accessories"
   ) {
     return true;
   }

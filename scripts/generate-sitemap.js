@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const BASE_URL = process.env.VITE_SITE_URL || "https://leafly.vercel.app";
+const BASE_URL = (process.env.VITE_SITE_URL || "https://leaflytea.in").replace(/\/$/, "");
 const TODAY = new Date().toISOString().split("T")[0];
 
 // Extract tea product IDs from src/data/products.ts

@@ -44,13 +44,9 @@ export interface ContactResponse {
   error?: string;
 }
 
-export interface OrderNotificationPayload {
-  id: string;
-  customerName: string;
-  email?: string;
-  phone?: string;
-  total: number;
-}
+import type { OrderEmailData } from "./emailTemplates";
+
+export type OrderNotificationPayload = OrderEmailData;
 
 /**
  * Helper to execute backend serverless API call with a fallback
@@ -258,4 +254,56 @@ export const ApiService = {
       return { success: false, error: err instanceof Error ? err.message : "Failed to send welcome email" };
     }
   },
+
+  /**
+   * Initializes Cashfree Order session via serverless API
+   */
+  async createCashfreeOrder(payload: {
+    orderId: string;
+    customerId?: string;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    items: Array<{ productId?: string | number; name?: string; price: number; quantity: number }>;
+    subtotal: number;
+    deliveryFee: number;
+    discount?: number;
+    couponCode?: string;
+    total: number;
+    origin?: string;
+  }): Promise<{
+    success: boolean;
+    orderId: string;
+    paymentSessionId: string;
+    orderAmount: number;
+    orderCurrency: string;
+    error?: string;
+  }> {
+    return postApi("/api/cashfree-create-order", payload as unknown as Record<string, unknown>);
+  },
+
+  /**
+   * Authoritatively verifies payment status with Cashfree via serverless API
+   */
+  async verifyCashfreePayment(orderId: string, customerData?: { email?: string; name?: string }): Promise<{
+    success: boolean;
+    verified: boolean;
+    orderStatus: string;
+    paymentStatus: string;
+    paymentId?: string;
+    paymentMethod?: string;
+    orderAmount?: number;
+    orderCurrency?: string;
+    rawStatus?: string;
+    message?: string;
+    error?: string;
+  }> {
+    return postApi("/api/cashfree-verify", {
+      orderId,
+      customerEmail: customerData?.email,
+      customerName: customerData?.name,
+    });
+  },
 };
+
+

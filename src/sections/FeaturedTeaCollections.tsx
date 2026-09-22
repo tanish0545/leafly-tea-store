@@ -4,14 +4,16 @@ import "./FeaturedTeaCollections.css";
 const teas = [
   {
     name: "Natural Green Tea",
+    slug: "natural-green-tea",
     category: "01 · SIGNATURE COLLECTION",
-    subtitle: "FRESH & LUCATE",
+    subtitle: "FRESH & DELICATE",
     description:
       "Fresh, vibrant leaves with a naturally delicate character. A clean and refreshing cup created for quiet mornings and mindful moments.",
     image: "/leafly-green-tea.webp",
   },
   {
     name: "Golden Dusk Black Tea + Chamomile",
+    slug: "golden-dusk-black-tea-chamomile",
     category: "02 · DELICATE COLLECTION",
     subtitle: "PURE & DELICATE",
     description:
@@ -20,6 +22,7 @@ const teas = [
   },
   {
     name: "Premium Oolong Black Tea",
+    slug: "premium-oolong-black-tea",
     category: "03 · CLASSIC COLLECTION",
     subtitle: "RICH & BOLD",
     description:
@@ -28,6 +31,7 @@ const teas = [
   },
   {
     name: "Red Oolong Tea",
+    slug: "red-oolong-tea",
     category: "04 · ARTISAN COLLECTION",
     subtitle: "COMPLEX & REFINED",
     description:
@@ -90,7 +94,7 @@ export default function FeaturedTeaCollections() {
 
               {/* Image */}
 
-              <div className="featured-tea-image">
+              <Link to={`/shop/${tea.slug}`} className="featured-tea-image" aria-label={`View ${tea.name}`}>
 
                 <img
                   src={tea.image}
@@ -103,7 +107,7 @@ export default function FeaturedTeaCollections() {
 
                 <div className="featured-tea-image-shade" />
 
-              </div>
+              </Link>
 
 
               {/* Content */}
@@ -115,7 +119,9 @@ export default function FeaturedTeaCollections() {
                 </p>
 
                 <h3>
-                  {tea.name}
+                  <Link to={`/shop/${tea.slug}`} style={{ color: "inherit", textDecoration: "none" }}>
+                    {tea.name}
+                  </Link>
                 </h3>
 
                 <p className="featured-tea-subtitle">
@@ -127,11 +133,11 @@ export default function FeaturedTeaCollections() {
                 </p>
 
                 <Link
-                  to="/tea-collections"
+                  to={`/shop/${tea.slug}`}
                   className="featured-tea-link"
                 >
                   <span>
-                    EXPLORE COLLECTION
+                    VIEW TEA DETAILS
                   </span>
 
                   <strong aria-hidden="true">

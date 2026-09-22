@@ -1,15 +1,9 @@
 import { collection, addDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { ApiService } from "./apiClient";
-import { getOrderConfirmationCustomerEmail } from "./emailTemplates";
+import { getOrderConfirmationCustomerEmail, type OrderEmailData } from "./emailTemplates";
 
-type OrderDetails = {
-  id: string;
-  customerName: string;
-  email?: string;
-  phone?: string;
-  total: number;
-};
+type OrderDetails = OrderEmailData;
 
 export const NotificationService = {
   /**

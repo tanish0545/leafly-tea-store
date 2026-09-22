@@ -14,7 +14,10 @@ import { COUNTRIES_LIST, INDIAN_STATES_AND_CITIES } from "../data/indianLocation
 import { auth, db } from "../lib/firebase";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { NotificationService } from "../lib/notifications";
+import { ApiService } from "../lib/apiClient";
+import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
 import { useCoupons } from "../context/CouponContext";
+import CashfreePaymentLogos from "../components/CashfreePaymentLogos";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import "./Checkout.css";
@@ -127,10 +130,76 @@ export default function Checkout() {
     }
   }, [currentUser, firebaseUser, email, phone]);
 
-  const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express">("standard");
-  const [paymentMethod, setPaymentMethod] = useState<"upi" | "card" | "cod">("cod");
+  const [paymentMethod, setPaymentMethod] = useState<"cashfree" | "cod">("cashfree");
+  const [paymentLoadingText, setPaymentLoadingText] = useState("");
   const [saveAddress, setSaveAddress] = useState(true);
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
+
+  // Location detection and map preview state (TC-22)
+  const [isLocating, setIsLocating] = useState(false);
+  const [showMapPreview, setShowMapPreview] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<string | null>(null);
+
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus("Geolocation is not supported by your browser.");
+      return;
+    }
+    setIsLocating(true);
+    setLocationStatus("Locating delivery coordinates...");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const addr = data.address || {};
+            const detectedPincode = addr.postcode || "";
+            const detectedCity = addr.city || addr.town || addr.village || addr.county || "";
+            const detectedState = addr.state || "";
+            const detectedRoad = [addr.house_number, addr.road, addr.suburb].filter(Boolean).join(", ");
+
+            setShippingAddress((prev) => ({
+              ...prev,
+              addressLine1: detectedRoad || prev.addressLine1,
+              city: detectedCity || prev.city,
+              state: detectedState || prev.state,
+              postalCode: detectedPincode || prev.postalCode,
+              country: addr.country || prev.country || "India",
+            }));
+            setShowMapPreview(true);
+            setLocationStatus("Location detected successfully.");
+            setErrors((prev) => {
+              const next = { ...prev };
+              delete next.postalCode;
+              delete next.city;
+              delete next.state;
+              delete next.addressLine1;
+              return next;
+            });
+          } else {
+            setShowMapPreview(true);
+            setLocationStatus("GPS coordinates detected.");
+          }
+        } catch {
+          setShowMapPreview(true);
+          setLocationStatus("GPS coordinates detected.");
+        } finally {
+          setIsLocating(false);
+          setTimeout(() => setLocationStatus(null), 4000);
+        }
+      },
+      (err) => {
+        setIsLocating(false);
+        setLocationStatus("Unable to retrieve location: " + err.message);
+        setTimeout(() => setLocationStatus(null), 4000);
+      },
+      { timeout: 10000, maximumAge: 60000 }
+    );
+  };
 
   // Order submission feedback state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -268,12 +337,18 @@ export default function Checkout() {
       state: newState,
       city: defaultCities[0] || "",
     }));
+    setErrors((prev) => {
+      if (!prev.state) return prev;
+      const next = { ...prev };
+      delete next.state;
+      return next;
+    });
   };
 
   const deliveryFee = useMemo(() => {
     if (items.length === 0) return 0;
-    return deliveryMethod === "express" ? 59 : 0;
-  }, [deliveryMethod, items.length]);
+    return subtotal >= 500 ? 0 : 50;
+  }, [items.length, subtotal]);
 
   const discountAmount = useMemo(() => {
     if (!appliedCoupon) return 0;
@@ -322,6 +397,23 @@ export default function Checkout() {
       ...current,
       [field]: value,
     }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.submit;
+      if (field === "postalCode") {
+        const clean = value.trim();
+        if (shippingAddress.country === "India") {
+          if (/^[1-9][0-9]{5}$/.test(clean)) {
+            delete next.postalCode;
+          }
+        } else if (clean.length >= 4) {
+          delete next.postalCode;
+        }
+      } else if (prev[field]) {
+        delete next[field];
+      }
+      return next;
+    });
   };
 
   const validateCheckout = () => {
@@ -415,28 +507,16 @@ export default function Checkout() {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const finishOrder = async (
+  // Creates initial pending order for online payments before opening Cashfree gateway
+  const createInitialOnlineOrder = async (
     orderId: string,
     orderTotal: number,
     orderSubtotal: number,
-    orderDeliveryFee: number,
-    razorpayPaymentId?: string
-  ) => {
-    const resolvedPaymentMethod =
-      paymentMethod === "card"
-        ? "Debit / Credit Card / NetBanking"
-        : paymentMethod === "upi"
-          ? "UPI"
-          : "Pay on Delivery";
-
-    const isPaidOnline = Boolean(razorpayPaymentId) || resolvedPaymentMethod !== "Pay on Delivery";
-
+    orderDeliveryFee: number
+  ): Promise<Order> => {
     const currentUid = auth.currentUser?.uid || currentUser?.uid;
     if (!currentUid) {
-      setIsProcessing(false);
-      setIsBursting(false);
-      setErrors({ submit: "Authentication session expired. Please sign in to complete your order." });
-      return;
+      throw new Error("Authentication session expired. Please sign in to complete your order.");
     }
 
     const order: Order = {
@@ -454,8 +534,8 @@ export default function Checkout() {
       ).toLowerCase(),
       customerPhone: phone.trim() || currentUser?.phone || undefined,
       createdAt: new Date().toISOString(),
-      status: resolvedPaymentMethod === "Pay on Delivery" ? "Confirmed" : "Processing",
-      orderStatus: resolvedPaymentMethod === "Pay on Delivery" ? "Confirmed" : "Processing",
+      status: "Processing",
+      orderStatus: "Processing",
       items: items.map((item) => ({
         id: item.id || `${item.product.id}-${item.variant}`,
         productId: item.product.id,
@@ -472,11 +552,10 @@ export default function Checkout() {
       couponCode: appliedCoupon ? appliedCoupon.code : undefined,
       deliveryFee: orderDeliveryFee,
       total: orderTotal,
-      deliveryMethod:
-        deliveryMethod === "express" ? "Express Delivery" : "Standard Delivery",
+      deliveryMethod: orderSubtotal >= 500 ? "Free Delivery" : "Standard Delivery",
       deliveryInstructions: deliveryInstructions.trim() || undefined,
-      paymentMethod: resolvedPaymentMethod,
-      paymentStatus: resolvedPaymentMethod === "Pay on Delivery" ? "Pay on Delivery" : isPaidOnline ? "Paid" : "Pending",
+      paymentMethod: "Cashfree Online Payment",
+      paymentStatus: "Pending",
       shippingAddress: {
         fullName: shippingAddress.fullName.trim(),
         addressLine1: shippingAddress.addressLine1.trim(),
@@ -517,7 +596,157 @@ export default function Checkout() {
       }
     }
 
-    // Persist order to Firestore and decrement stock in real-time
+    // Persist initial order to Firestore
+    const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
+    await setDoc(doc(db, "orders", order.id), cleanOrder);
+
+    if (appliedCoupon) {
+      try {
+        await markCouponUsed(appliedCoupon.code);
+      } catch (couponErr) {
+        console.warn("Could not mark coupon as used:", couponErr);
+      }
+    }
+
+    // Decrement stock in real-time
+    for (const item of order.items) {
+      if (item.productId) {
+        const idStr = String(item.productId);
+        try {
+          let docRef = doc(db, "products", idStr);
+          let snap = await getDoc(docRef);
+          if (!snap.exists()) {
+            const twRef = doc(db, "teaware", idStr);
+            const twSnap = await getDoc(twRef);
+            if (twSnap.exists()) {
+              docRef = twRef;
+              snap = twSnap;
+            }
+          }
+          if (!snap.exists()) {
+            const hRef = doc(db, "hampers", idStr);
+            const hSnap = await getDoc(hRef);
+            if (hSnap.exists()) {
+              docRef = hRef;
+              snap = hSnap;
+            }
+          }
+          if (snap.exists()) {
+            const currentStock = typeof snap.data().stock === "number" ? snap.data().stock : 10;
+            const newStock = Math.max(0, currentStock - item.quantity);
+            await updateDoc(docRef, {
+              stock: newStock,
+              inStock: newStock > 0,
+            });
+          }
+        } catch (stockError) {
+          console.error(`Failed to update stock for item ${item.productId}:`, stockError);
+        }
+      }
+    }
+
+    addOrder(order);
+    try {
+      sessionStorage.setItem("leafly_last_order", JSON.stringify(order));
+    } catch {
+      // ignore
+    }
+
+    return order;
+  };
+
+  // Complete Cash on Delivery flow
+  const finishOrder = async (
+    orderId: string,
+    orderTotal: number,
+    orderSubtotal: number,
+    orderDeliveryFee: number
+  ) => {
+    const currentUid = auth.currentUser?.uid || currentUser?.uid;
+    if (!currentUid) {
+      setIsProcessing(false);
+      setIsBursting(false);
+      setErrors({ submit: "Authentication session expired. Please sign in to complete your order." });
+      return;
+    }
+
+    const order: Order = {
+      id: orderId,
+      userId: currentUid,
+      customerId: currentUid,
+      customerName: shippingAddress.fullName.trim(),
+      customerEmail: (
+        resolvedAuthEmail ||
+        email.trim() ||
+        currentUser?.email ||
+        firebaseUser?.email ||
+        auth.currentUser?.email ||
+        ""
+      ).toLowerCase(),
+      customerPhone: phone.trim() || currentUser?.phone || undefined,
+      createdAt: new Date().toISOString(),
+      status: "Confirmed",
+      orderStatus: "Confirmed",
+      items: items.map((item) => ({
+        id: item.id || `${item.product.id}-${item.variant}`,
+        productId: item.product.id,
+        name: item.product.name,
+        variant: item.variant || item.weight,
+        weight: item.weight || item.variant,
+        image: item.product.image,
+        price: item.price,
+        quantity: item.quantity,
+        category: item.product.category,
+      })),
+      subtotal: orderSubtotal,
+      discount: discountAmount,
+      couponCode: appliedCoupon ? appliedCoupon.code : undefined,
+      deliveryFee: orderDeliveryFee,
+      total: orderTotal,
+      deliveryMethod: orderSubtotal >= 500 ? "Free Delivery" : "Standard Delivery",
+      deliveryInstructions: deliveryInstructions.trim() || undefined,
+      paymentMethod: "Pay on Delivery",
+      paymentStatus: "Pay on Delivery",
+      shippingAddress: {
+        fullName: shippingAddress.fullName.trim(),
+        addressLine1: shippingAddress.addressLine1.trim(),
+        addressLine2: shippingAddress.addressLine2.trim(),
+        city: shippingAddress.city.trim(),
+        state: shippingAddress.state.trim(),
+        postalCode: shippingAddress.postalCode.trim(),
+        country: shippingAddress.country.trim(),
+      },
+    };
+
+    if (saveAddress && currentUid) {
+      const storageKey = getSavedAddressesKey(currentUid);
+      if (storageKey) {
+        const savedAddresses = readSavedAddresses(currentUid);
+        const nextSaved = [
+          {
+            fullName: order.shippingAddress.fullName,
+            addressLine1: order.shippingAddress.addressLine1,
+            addressLine2: order.shippingAddress.addressLine2,
+            city: order.shippingAddress.city,
+            state: order.shippingAddress.state,
+            postalCode: order.shippingAddress.postalCode,
+            country: order.shippingAddress.country,
+          },
+          ...savedAddresses.filter(
+            (address) =>
+              !(
+                address.fullName === order.shippingAddress.fullName &&
+                address.addressLine1 === order.shippingAddress.addressLine1 &&
+                address.city === order.shippingAddress.city &&
+                address.postalCode === order.shippingAddress.postalCode
+              )
+          ),
+        ].slice(0, 5);
+
+        localStorage.setItem(storageKey, JSON.stringify(nextSaved));
+      }
+    }
+
     try {
       const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
       await setDoc(doc(db, "orders", order.id), cleanOrder);
@@ -532,13 +761,9 @@ export default function Checkout() {
       for (const item of order.items) {
         if (item.productId) {
           const idStr = String(item.productId);
-
           try {
-            // Check unified products collection first
             let docRef = doc(db, "products", idStr);
             let snap = await getDoc(docRef);
-
-            // Backward-compatibility fallback for legacy standalone collections
             if (!snap.exists()) {
               const twRef = doc(db, "teaware", idStr);
               const twSnap = await getDoc(twRef);
@@ -555,7 +780,6 @@ export default function Checkout() {
                 snap = hSnap;
               }
             }
-
             if (snap.exists()) {
               const currentStock = typeof snap.data().stock === "number" ? snap.data().stock : 10;
               const newStock = Math.max(0, currentStock - item.quantity);
@@ -570,7 +794,6 @@ export default function Checkout() {
         }
       }
 
-      // Add to context (which handles saving to Firestore)
       await addOrder(order);
 
       // Trigger Notifications (Fire and Forget)
@@ -579,7 +802,22 @@ export default function Checkout() {
         customerName: order.shippingAddress.fullName,
         email: order.customerEmail,
         phone: order.customerPhone || "",
-        total: order.total
+        total: order.total,
+        subtotal: order.subtotal,
+        deliveryFee: order.deliveryFee,
+        discount: order.discount,
+        couponCode: order.couponCode || undefined,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        shippingAddress: order.shippingAddress,
+        items: order.items.map((i) => ({
+          name: i.name,
+          variant: i.variant,
+          weight: i.weight,
+          quantity: i.quantity,
+          price: i.price,
+        })),
+        createdAt: order.createdAt,
       });
 
       NotificationService.sendOrderConfirmationSMS({
@@ -587,24 +825,22 @@ export default function Checkout() {
         customerName: order.shippingAddress.fullName,
         email: order.customerEmail,
         phone: order.customerPhone || "",
-        total: order.total
+        total: order.total,
       });
 
-      // Store order persistently for /order-success and reviews
       try {
         sessionStorage.setItem("leafly_last_order", JSON.stringify(order));
       } catch {
-        // ignore storage quota errors
+        // ignore
       }
 
-      // Seamlessly navigate to order confirmation.
-      // Cart clearing is handled on OrderSuccess mount so Checkout
-      // never flashes an empty-cart state.
       orderCompletedRef.current = true;
-      navigate("/order-success");
-
+      navigate("/order-success", { replace: true });
     } catch (error) {
       console.error("Error saving order to Firestore:", error);
+      setIsProcessing(false);
+      setIsBursting(false);
+      setErrors({ submit: "Failed to place order. Please check your connection and try again." });
     }
   };
 
@@ -631,11 +867,16 @@ export default function Checkout() {
 
     // Live inventory verification across products, teaware, and hampers before placing order
     setIsProcessing(true);
+    setPaymentLoadingText(
+      paymentMethod === "cashfree"
+        ? "VERIFYING HARVEST AVAILABILITY..."
+        : "BREWING YOUR RITUAL..."
+    );
+
     let outOfStockItemName = "";
 
     for (const item of items) {
       if (item.product?.id) {
-        // First check local product stock flags
         if (item.product.inStock === false || (typeof item.product.stock === "number" && item.product.stock <= 0)) {
           outOfStockItemName = item.product.name || "Item";
           break;
@@ -650,8 +891,7 @@ export default function Checkout() {
           cat === "tea cups" ||
           cat === "serving & trays" ||
           cat === "storage & accessories" ||
-          cat.includes("teaware") ||
-          item.product.caffeine === "Teaware";
+          cat.includes("teaware");
 
         if (isTeaware) {
           preferredCol = "teaware";
@@ -662,7 +902,6 @@ export default function Checkout() {
         try {
           let snap = await getDoc(doc(db, preferredCol, pId));
 
-          // Fallback probe across other collections
           if (!snap.exists() && preferredCol !== "teaware") {
             const twSnap = await getDoc(doc(db, "teaware", pId));
             if (twSnap.exists()) snap = twSnap;
@@ -693,6 +932,7 @@ export default function Checkout() {
 
     if (outOfStockItemName) {
       setIsProcessing(false);
+      setPaymentLoadingText("");
       setErrors((prev) => ({
         ...prev,
         submit: `This item is currently unavailable: "${outOfStockItemName}". Please remove it from your cart to proceed.`,
@@ -702,25 +942,159 @@ export default function Checkout() {
 
     const orderId = generateOrderId();
 
-    const finalizeOrder = async (razorpayPaymentId?: string) => {
-      await finishOrder(
+    // ==========================================
+    // 1. CASH ON DELIVERY (COD) FLOW
+    // ==========================================
+    if (paymentMethod === "cod") {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.payment;
+        return next;
+      });
+      setIsBursting(true);
+      await finishOrder(orderId, total, subtotal, deliveryFee);
+      return;
+    }
+
+    // ==========================================
+    // 2. CASHFREE ONLINE PAYMENT FLOW
+    // ==========================================
+    try {
+      setPaymentLoadingText("INITIALIZING SECURE CHECKOUT...");
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.payment;
+        return next;
+      });
+
+      // Step A: Save initial order in Firestore with "Processing" & "Pending"
+      const initialOrder = await createInitialOnlineOrder(
         orderId,
         total,
         subtotal,
-        deliveryFee,
-        razorpayPaymentId
+        deliveryFee
       );
-    };
 
-    // Pay on Delivery (Cash / UPI) active flow
-    setErrors((prev) => {
-      const next = { ...prev };
-      delete next.payment;
-      return next;
-    });
-    setIsBursting(true);
-    await finalizeOrder();
+      // Step B: Call backend API to create Cashfree order & session
+      setPaymentLoadingText("CONNECTING TO CASHFREE GATEWAY...");
+      const cfResponse = await ApiService.createCashfreeOrder({
+        orderId,
+        customerId: initialOrder.userId,
+        customerName: shippingAddress.fullName.trim(),
+        customerEmail: initialOrder.customerEmail || "",
+        customerPhone: phone.trim(),
+        items: items.map((i) => ({
+          productId: i.product.id,
+          name: i.product.name,
+          price: i.price,
+          quantity: i.quantity,
+        })),
+        subtotal,
+        deliveryFee,
+        discount: discountAmount,
+        couponCode: appliedCoupon?.code,
+        total,
+        origin: window.location.origin,
+      });
+
+      if (!cfResponse || !cfResponse.paymentSessionId) {
+        throw new Error(
+          cfResponse?.error ||
+            "Unable to start secure payment session. Please retry or choose Pay on Delivery."
+        );
+      }
+
+      // Step C: Initialize Cashfree Web SDK
+      setPaymentLoadingText("OPENING SECURE PAYMENT...");
+      const cashfreeMode =
+        (import.meta.env.VITE_CASHFREE_ENV || "sandbox").toLowerCase() === "production"
+          ? "production"
+          : "sandbox";
+
+      const cashfree = await loadCashfree({
+        mode: cashfreeMode,
+      });
+
+      if (!cashfree) {
+        throw new Error(
+          "Unable to load Cashfree payment interface. Please check your network connection."
+        );
+      }
+
+      // Step D: Open Cashfree Hosted Checkout
+      // - Mobile: redirectTarget: "_self" activates native UPI Intent app switching (Google Pay, PhonePe, Paytm, etc.)
+      // - Desktop: redirectTarget: "_modal" activates the luxury in-page Cashfree modal with "Scan & Pay with any UPI app" + QR code & Cards/NetBanking
+      const isMobileDevice =
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        ) || window.innerWidth < 768;
+
+      const redirectTarget = isMobileDevice ? "_self" : "_modal";
+
+      const checkoutResult = await cashfree.checkout({
+        paymentSessionId: cfResponse.paymentSessionId,
+        redirectTarget,
+      });
+
+      // If redirected (_self on mobile), the browser navigates to Cashfree and will return to return_url
+      if (checkoutResult?.redirect) {
+        return;
+      }
+
+      // Step E: Modal resolved — Verify payment server-side
+      setPaymentLoadingText("VERIFYING PAYMENT STATUS WITH CASHFREE...");
+      const verifyResult = await ApiService.verifyCashfreePayment(orderId, {
+        email: initialOrder.customerEmail,
+        name: shippingAddress.fullName.trim(),
+      });
+
+      if (verifyResult.verified) {
+        // Payment verified authoritatively by server!
+        const confirmedOrder: Order = {
+          ...initialOrder,
+          status: "Confirmed",
+          orderStatus: "Confirmed",
+          paymentStatus: "Paid",
+          paymentId: verifyResult.paymentId || undefined,
+          paymentMethod: verifyResult.paymentMethod || "Cashfree Online Payment",
+        };
+
+        addOrder(confirmedOrder);
+        try {
+          sessionStorage.setItem("leafly_last_order", JSON.stringify(confirmedOrder));
+        } catch {
+          // ignore
+        }
+
+        orderCompletedRef.current = true;
+        setIsBursting(true);
+        navigate("/order-success", { replace: true });
+      } else {
+        // User dismissed the modal without paying, or payment failed
+        console.warn("[Cashfree Notice] Payment not verified or incomplete:", checkoutResult);
+        setIsProcessing(false);
+        setPaymentLoadingText("");
+        setErrors((prev) => ({
+          ...prev,
+          payment:
+            verifyResult.message ||
+            "Payment was not completed. You can retry payment whenever you're ready, or choose Pay on Delivery.",
+        }));
+      }
+    } catch (paymentErr) {
+      console.error("[Cashfree Flow Error]:", paymentErr);
+      setIsProcessing(false);
+      setPaymentLoadingText("");
+      setErrors((prev) => ({
+        ...prev,
+        payment:
+          paymentErr instanceof Error
+            ? paymentErr.message
+            : "An error occurred while connecting to Cashfree. Please retry or choose Pay on Delivery.",
+      }));
+    }
   };
+
 
   if (items.length === 0 && !isProcessing && !orderCompletedRef.current) {
     return (
@@ -790,11 +1164,22 @@ export default function Checkout() {
 
             <div className="checkout-field-grid two-up">
               <label className="checkout-field">
-                <span>Email {resolvedAuthEmail ? "(Tied to your verified account)" : ""}</span>
+                <span>
+                  Email <span style={{ color: "#c53030" }}>*</span> {resolvedAuthEmail ? "(Tied to your verified account)" : ""}
+                </span>
                 <input
                   type="email"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    if (errors.email) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.email;
+                        return next;
+                      });
+                    }
+                  }}
                   readOnly={Boolean(resolvedAuthEmail)}
                   style={resolvedAuthEmail ? { backgroundColor: "#f3efe6", cursor: "not-allowed" } : undefined}
                   aria-invalid={Boolean(errors.email)}
@@ -816,13 +1201,63 @@ export default function Checkout() {
           </div>
 
           <div className="checkout-card">
-            <div className="checkout-card-header">
+            <div className="checkout-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
               <p>DELIVERY ADDRESS</p>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={handleDetectLocation}
+                  disabled={isLocating}
+                  className="checkout-location-btn"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(201, 162, 75, 0.12)",
+                    border: "1px solid rgba(201, 162, 75, 0.35)",
+                    color: "#8c6823",
+                    padding: "4px 10px",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                  title="Detect your current delivery address automatically"
+                >
+                  <span aria-hidden="true">📍</span>
+                  {isLocating ? "Detecting..." : "Use Current Location"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMapPreview((prev) => !prev)}
+                  className="checkout-map-toggle-btn"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    background: showMapPreview ? "#0b2b1e" : "transparent",
+                    border: "1px solid rgba(11, 43, 30, 0.2)",
+                    color: showMapPreview ? "#ffffff" : "#0b2b1e",
+                    padding: "4px 10px",
+                    borderRadius: "6px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  🗺️ {showMapPreview ? "Hide Map" : "View Map"}
+                </button>
+              </div>
             </div>
+            {locationStatus && (
+              <p style={{ margin: "4px 0 10px", fontSize: "11.5px", color: "#8c6823" }}>{locationStatus}</p>
+            )}
 
             <div className="checkout-field-grid">
               <label className="checkout-field full-width">
-                <span>Full Name</span>
+                <span>
+                  Full Name <span style={{ color: "#c53030" }}>*</span>
+                </span>
                 <input
                   type="text"
                   value={shippingAddress.fullName}
@@ -833,7 +1268,9 @@ export default function Checkout() {
               </label>
 
               <label className="checkout-field full-width">
-                <span>Address Line 1</span>
+                <span>
+                  Address Line 1 <span style={{ color: "#c53030" }}>*</span>
+                </span>
                 <input
                   type="text"
                   value={shippingAddress.addressLine1}
@@ -844,7 +1281,7 @@ export default function Checkout() {
               </label>
 
               <label className="checkout-field full-width">
-                <span>Address Line 2</span>
+                <span>Address Line 2 (Optional)</span>
                 <input
                   type="text"
                   value={shippingAddress.addressLine2}
@@ -853,7 +1290,9 @@ export default function Checkout() {
               </label>
 
               <label className="checkout-field">
-                <span>Country</span>
+                <span>
+                  Country <span style={{ color: "#c53030" }}>*</span>
+                </span>
                 <select
                   className="checkout-select"
                   value={shippingAddress.country}
@@ -868,7 +1307,9 @@ export default function Checkout() {
               </label>
 
               <label className="checkout-field">
-                <span>State / Province</span>
+                <span>
+                  State / Province <span style={{ color: "#c53030" }}>*</span>
+                </span>
                 {shippingAddress.country === "India" ? (
                   <select
                     className="checkout-select"
@@ -887,13 +1328,16 @@ export default function Checkout() {
                     value={shippingAddress.state}
                     onChange={(event) => updateAddressField("state", event.target.value)}
                     aria-invalid={Boolean(errors.state)}
-                  />
+                  >
+                  </input>
                 )}
                 {errors.state && <small>{errors.state}</small>}
               </label>
 
               <label className="checkout-field">
-                <span>City</span>
+                <span>
+                  City <span style={{ color: "#c53030" }}>*</span>
+                </span>
                 {shippingAddress.country === "India" && availableCities.length > 0 ? (
                   <select
                     className="checkout-select"
@@ -918,7 +1362,9 @@ export default function Checkout() {
               </label>
 
               <label className="checkout-field">
-                <span>Postal Code</span>
+                <span>
+                  Postal Code <span style={{ color: "#c53030" }}>*</span>
+                </span>
                 <input
                   type="text"
                   placeholder="e.g. 400001"
@@ -940,6 +1386,23 @@ export default function Checkout() {
               </label>
             </div>
 
+            {showMapPreview && (
+              <div className="checkout-map-container" style={{ marginTop: "16px", borderRadius: "10px", overflow: "hidden", border: "1px solid rgba(11, 43, 30, 0.12)" }}>
+                <div style={{ padding: "8px 12px", background: "rgba(11, 43, 30, 0.04)", fontSize: "11px", color: "#0b2b1e", fontWeight: 600, display: "flex", justifyContent: "space-between" }}>
+                  <span>Delivery Location Preview: {[shippingAddress.addressLine1, shippingAddress.city, shippingAddress.state, shippingAddress.postalCode, shippingAddress.country].filter(Boolean).join(", ") || "India"}</span>
+                  <span style={{ color: "#c9a24b" }}>● Live Map</span>
+                </div>
+                <iframe
+                  title="Delivery Location Map"
+                  width="100%"
+                  height="200"
+                  style={{ border: 0, display: "block" }}
+                  loading="lazy"
+                  src={`https://maps.google.com/maps?q=${encodeURIComponent([shippingAddress.addressLine1, shippingAddress.city, shippingAddress.state, shippingAddress.postalCode, shippingAddress.country].filter(Boolean).join(", ") || "India")}&output=embed`}
+                />
+              </div>
+            )}
+
             <label className="checkout-check-row">
               <input
                 type="checkbox"
@@ -950,39 +1413,7 @@ export default function Checkout() {
             </label>
           </div>
 
-          <div className="checkout-card">
-            <div className="checkout-card-header">
-              <p>DELIVERY METHOD</p>
-            </div>
 
-            <div className="checkout-option-list">
-              <label className={`checkout-option ${deliveryMethod === "standard" ? "selected" : ""}`}>
-                <input
-                  type="radio"
-                  name="deliveryMethod"
-                  checked={deliveryMethod === "standard"}
-                  onChange={() => setDeliveryMethod("standard")}
-                />
-                <span className="checkout-delivery-option-row">
-                  <strong>STANDARD DELIVERY</strong>
-                  <small>Free</small>
-                </span>
-              </label>
-
-              <label className={`checkout-option ${deliveryMethod === "express" ? "selected" : ""}`}>
-                <input
-                  type="radio"
-                  name="deliveryMethod"
-                  checked={deliveryMethod === "express"}
-                  onChange={() => setDeliveryMethod("express")}
-                />
-                <span className="checkout-delivery-option-row">
-                  <strong>EXPRESS DELIVERY</strong>
-                  <small>₹59</small>
-                </span>
-              </label>
-            </div>
-          </div>
 
           <div className="checkout-card">
             <div className="checkout-card-header">
@@ -990,51 +1421,64 @@ export default function Checkout() {
             </div>
 
             <div className="checkout-option-list payment-options" role="radiogroup" aria-label="Payment Method Selection">
-              {/* 1. UPI Option - Disabled & Coming Soon */}
-              <div className="checkout-option disabled" aria-disabled="true" title="UPI payments are coming soon.">
+              {/* 1. Cashfree Online Payment (Cards, UPI, NetBanking) - Active & Selectable */}
+              <label className={`checkout-option ${paymentMethod === "cashfree" ? "selected" : ""}`}>
                 <input
                   type="radio"
                   name="paymentMethod"
-                  value="upi"
-                  checked={false}
-                  disabled
-                  tabIndex={-1}
-                  aria-hidden="true"
+                  value="cashfree"
+                  checked={paymentMethod === "cashfree"}
+                  onChange={() => {
+                    setPaymentMethod("cashfree");
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.payment;
+                      return next;
+                    });
+                  }}
+                  aria-label="Cashfree Online Payment (Cards, UPI, NetBanking)"
                 />
                 <div className="checkout-option-content">
                   <div className="checkout-option-header-row">
-                    <strong className="checkout-option-title">UPI</strong>
-                    <span className="payment-coming-soon-badge">COMING SOON</span>
+                    <strong className="checkout-option-title">ONLINE PAYMENT (UPI, Cards, NetBanking)</strong>
+                    <span className="payment-secure-badge">SECURE · INSTANT</span>
                   </div>
                   <p className="checkout-option-desc">
-                    Pay using UPI apps like Google Pay, PhonePe, Paytm, BHIM, etc.
+                    Pay securely via UPI (Google Pay, PhonePe, Paytm, BHIM, Amazon Pay), Enter UPI ID (yourname@upi), Cards, or NetBanking.
                   </p>
+                  <CashfreePaymentLogos />
                 </div>
-              </div>
+              </label>
 
-              {/* 2. Card / Netbanking Option - Disabled & Coming Soon */}
-              <div className="checkout-option disabled" aria-disabled="true" title="Card and Netbanking payments are coming soon.">
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="card"
-                  checked={false}
-                  disabled
-                  tabIndex={-1}
-                  aria-hidden="true"
-                />
-                <div className="checkout-option-content">
-                  <div className="checkout-option-header-row">
-                    <strong className="checkout-option-title">DEBIT CARD / CREDIT CARD / NETBANKING</strong>
-                    <span className="payment-coming-soon-badge">COMING SOON</span>
+              {paymentMethod === "cashfree" && (
+                <div className="checkout-online-message">
+                  <div className="checkout-online-badge-row">
+                    <span>🔒 <strong>100% Encrypted & Instant Checkout</strong> powered by Cashfree Payments</span>
                   </div>
-                  <p className="checkout-option-desc">
-                    Pay securely using your card or net banking
-                  </p>
+                  <div className="checkout-flow-hints">
+                    <div className="checkout-flow-hint-item">
+                      <span className="checkout-hint-icon">📱</span>
+                      <div>
+                        <strong>Mobile UPI Apps:</strong> Instant handoff to your installed UPI app (Google Pay, PhonePe, Paytm, BHIM, Amazon Pay).
+                      </div>
+                    </div>
+                    <div className="checkout-flow-hint-item">
+                      <span className="checkout-hint-icon">🆔</span>
+                      <div>
+                        <strong>Pay using UPI ID:</strong> Enter your VPA (e.g. <em>yourname@upi</em>) in the Cashfree payment screen to approve on any app.
+                      </div>
+                    </div>
+                    <div className="checkout-flow-hint-item">
+                      <span className="checkout-hint-icon">🖥️</span>
+                      <div>
+                        <strong>Desktop Web:</strong> Scan & Pay QR with any mobile UPI app, or pay directly via Cards & 50+ NetBanking partners.
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* 3. Pay on Delivery (Cash / UPI) - Active & Selectable */}
+              {/* 2. Pay on Delivery (Cash / UPI) - Active & Selectable */}
               <label className={`checkout-option ${paymentMethod === "cod" ? "selected" : ""}`}>
                 <input
                   type="radio"
@@ -1067,6 +1511,7 @@ export default function Checkout() {
                 </div>
               )}
             </div>
+
           </div>
         </section>
 
@@ -1177,21 +1622,35 @@ export default function Checkout() {
           {errors.submit && <p className="checkout-inline-error">{errors.submit}</p>}
           {errors.payment && <p className="checkout-inline-error">{errors.payment}</p>}
 
+          {/* FLOATING FREE DELIVERY PROMOTIONAL PILL BADGE */}
+          <div className="checkout-floating-delivery-badge" role="status" aria-live="polite">
+            <span className="checkout-floating-badge-icon" aria-hidden="true">🛵</span>
+            <span className="checkout-floating-badge-text">
+              {items.length === 0 || subtotal === 0
+                ? "Shop for at least ₹500 to get FREE delivery"
+                : subtotal < 500
+                  ? `Add ₹${500 - subtotal} more to get FREE delivery`
+                  : "FREE delivery unlocked!"}
+            </span>
+          </div>
+
           <div className="checkout-button-container">
             <button
               type="button"
               className={`checkout-primary-button ${isProcessing ? "brewing" : ""} ${isBursting ? "bursting" : ""}`}
               disabled={isProcessing || items.length === 0}
-              aria-label={isProcessing ? "Brewing ritual..." : "Place order"}
+              aria-label={isProcessing ? (paymentLoadingText || "Processing...") : (paymentMethod === "cashfree" ? "Proceed to secure payment" : "Place order")}
               onClick={handlePlaceOrder}
             >
               {isProcessing ? (
                 <span className="checkout-brewing-content">
                   <span className="checkout-teapot-icon" aria-hidden="true">🫖</span>
-                  BREWING YOUR RITUAL...
+                  {paymentLoadingText || "BREWING YOUR RITUAL..."}
                 </span>
+              ) : paymentMethod === "cashfree" ? (
+                "PROCEED TO SECURE PAYMENT"
               ) : (
-                "PLACE ORDER"
+                "PLACE ORDER (COD)"
               )}
             </button>
 

@@ -22,7 +22,16 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(() => {
+    return (location.state as { message?: string })?.message || null;
+  });
+
+  useEffect(() => {
+    const msg = (location.state as { message?: string })?.message;
+    if (msg) {
+      setSuccessMessage(msg);
+    }
+  }, [location.state]);
 
   // Forgot Password Modal State
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -279,7 +288,7 @@ export default function Login() {
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••••••"
+                      placeholder="Enter your password"
                       autoComplete="current-password"
                       required
                       disabled={isLoading}

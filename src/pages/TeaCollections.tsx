@@ -15,7 +15,7 @@ type TeaCollection = {
   subtitle: string;
   description: string;
   character: string;
-  caffeine: string;
+  processing: string;
   origin: string;
   image: string;
 };
@@ -28,7 +28,7 @@ const collections: TeaCollection[] = [
     description:
       "Fresh, expressive teas with delicate vegetal notes, clean finishes and a naturally uplifting character.",
     character: "Fresh & vegetal",
-    caffeine: "Medium",
+    processing: "Orthodox Whole Leaf",
     origin: "Darjeeling",
     image: "/leafly-green-tea.webp",
   },
@@ -39,7 +39,7 @@ const collections: TeaCollection[] = [
     description:
       "Rich, comforting black teas with soothing chamomile warmth, deep character and a smooth evening finish.",
     character: "Bold & comforting",
-    caffeine: "Medium",
+    processing: "Orthodox Whole Leaf",
     origin: "Darjeeling",
     image: "/leafly-white-tea.webp",
   },
@@ -50,7 +50,7 @@ const collections: TeaCollection[] = [
     description:
       "Partially oxidised artisan harvests including Red Oolong and premium Darjeeling selections.",
     character: "Floral & layered",
-    caffeine: "Medium",
+    processing: "Artisan Semi-Oxidised",
     origin: "Darjeeling",
     image: "/leafly-oolong-tea.webp",
   },
@@ -306,9 +306,9 @@ export default function TeaCollections() {
               </div>
 
               <div>
-                <span>CAFFEINE</span>
+                <span>PROCESSING</span>
                 <strong>
-                  {active.caffeine}
+                  {active.processing}
                 </strong>
               </div>
 

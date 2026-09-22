@@ -11,7 +11,7 @@ import {
 import type { Order, OrderItem, OrderStatus, ShippingAddress } from "../types/contracts";
 import { useAuth } from "./AuthContext";
 import { db } from "../lib/firebase";
-import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 
 export type { Order, OrderItem, OrderStatus, ShippingAddress };
 
@@ -142,10 +142,16 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     latestOrderRef.current = null;
   };
 
-  const cancelOrder = async (orderId: string) => {
-    const target = orders.find((o) => o.id === orderId);
-    if (target?.createdAt) {
-      const orderTime = new Date(target.createdAt).getTime();
+  const cancelOrder = async (orderId: string, _couponCode?: string | null) => {
+    const orderRef = doc(db, "orders", orderId);
+    const orderSnap = await getDoc(orderRef);
+    if (!orderSnap.exists()) {
+      throw new Error("Order not found.");
+    }
+    const orderData = orderSnap.data() as Order;
+
+    if (orderData.createdAt) {
+      const orderTime = new Date(orderData.createdAt).getTime();
       const now = Date.now();
       const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
       if (!isNaN(orderTime) && now - orderTime > TWO_HOURS_MS) {
@@ -155,12 +161,71 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // Double-cancellation protection: Only restore inventory once
+    const alreadyRestored =
+      (orderData.orderStatus || orderData.status || "").toLowerCase().trim() === "cancelled" ||
+      Boolean((orderData as any).inventoryRestored);
+
+    if (!alreadyRestored && Array.isArray(orderData.items)) {
+      for (const item of orderData.items) {
+        if (item.productId) {
+          const idStr = String(item.productId);
+          try {
+            let itemDocRef = doc(db, "products", idStr);
+            let itemSnap = await getDoc(itemDocRef);
+            if (!itemSnap.exists()) {
+              const twRef = doc(db, "teaware", idStr);
+              const twSnap = await getDoc(twRef);
+              if (twSnap.exists()) {
+                itemDocRef = twRef;
+                itemSnap = twSnap;
+              }
+            }
+            if (!itemSnap.exists()) {
+              const hRef = doc(db, "hampers", idStr);
+              const hSnap = await getDoc(hRef);
+              if (hSnap.exists()) {
+                itemDocRef = hRef;
+                itemSnap = hSnap;
+              }
+            }
+            if (itemSnap.exists()) {
+              const currentStock = typeof itemSnap.data().stock === "number" ? itemSnap.data().stock : 0;
+              const qty = Number(item.quantity) || 1;
+              const restoredStock = currentStock + qty;
+              await updateDoc(itemDocRef, {
+                stock: restoredStock,
+                inStock: restoredStock > 0,
+              });
+            }
+          } catch (stockErr) {
+            console.error(`OrderContext: Failed to restore stock for item ${item.productId}:`, stockErr);
+          }
+        }
+      }
+    }
+
     try {
-      await updateDoc(doc(db, "orders", orderId), {
+      const nowIso = new Date().toISOString();
+      await updateDoc(orderRef, {
         status: "Cancelled",
         orderStatus: "Cancelled",
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
       });
+
+      // Optimistically update local state immediately so user sees Cancelled without delay
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                status: "Cancelled",
+                orderStatus: "Cancelled",
+                updatedAt: nowIso,
+              }
+            : o
+        )
+      );
     } catch (error) {
       console.error("OrderContext: Firestore cancellation error:", error);
       throw error;

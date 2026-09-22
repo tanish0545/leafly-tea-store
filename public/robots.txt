@@ -16,4 +16,4 @@ Disallow: /order-success
 Disallow: /reset-password
 
 # Canonical XML Sitemap
-Sitemap: https://leafly.vercel.app/sitemap.xml
+Sitemap: https://leaflytea.in/sitemap.xml

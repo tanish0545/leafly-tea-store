@@ -10,8 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cashfreepayments/cashfree-js": "^1.0.7",
     "@tailwindcss/vite": "^4.3.3",
     "firebase": "^12.18.0",
+    "firebase-admin": "^14.4.0",
     "nodemailer": "^9.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useOrderContext } from "../context/OrderContext";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, setDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
 import type { Order } from "../types/contracts";
+import { ApiService } from "../lib/apiClient";
 import DeliveryAnimation from "../components/DeliveryAnimation";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
@@ -19,6 +20,9 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
 
 export default function OrderSuccess() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlOrderId = searchParams.get("order_id");
+
   const { latestOrder } = useOrderContext();
   const { clearCart } = useCart();
   const { currentUser, firebaseUser } = useAuth();
@@ -28,7 +32,13 @@ export default function OrderSuccess() {
     if (typeof window !== "undefined") {
       try {
         const stored = sessionStorage.getItem("leafly_last_order");
-        if (stored) return JSON.parse(stored) as Order;
+        if (stored) {
+          const parsed = JSON.parse(stored) as Order;
+          // If URL order ID matches stored order, use it immediately
+          if (!urlOrderId || parsed.id === urlOrderId) {
+            return parsed;
+          }
+        }
       } catch {
         // ignore storage errors
       }
@@ -36,12 +46,25 @@ export default function OrderSuccess() {
     return null;
   });
 
+  const [isVerifying, setIsVerifying] = useState<boolean>(() => {
+    return Boolean(
+      urlOrderId &&
+        (!persistedOrder ||
+          persistedOrder.id !== urlOrderId ||
+          persistedOrder.paymentStatus !== "Paid")
+    );
+  });
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+
   const order = latestOrder || persistedOrder;
 
-  // Clear cart on mount cleanly - ensures Checkout never rendered empty-cart flash
+  // Clear cart cleanly once confirmed — ensures Checkout never rendered empty-cart flash
   useEffect(() => {
-    clearCart();
-  }, [clearCart]);
+    // If arriving from Cashfree redirect URL, cart is cleared in verifyAndLoadOrder upon verified status
+    if (!urlOrderId) {
+      clearCart();
+    }
+  }, [urlOrderId, clearCart]);
 
   // Synchronize latestOrder into sessionStorage
   useEffect(() => {
@@ -55,6 +78,64 @@ export default function OrderSuccess() {
     }
   }, [latestOrder]);
 
+  // Handle return from Cashfree redirect URL (when order_id query param is present)
+  useEffect(() => {
+    if (!urlOrderId) return;
+
+    let isMounted = true;
+
+    async function verifyAndLoadOrder() {
+      try {
+        setIsVerifying(true);
+        setVerificationError(null);
+
+        // 1. Verify with backend serverless API
+        const verifyRes = await ApiService.verifyCashfreePayment(urlOrderId!);
+
+        if (!isMounted) return;
+
+        if (verifyRes.verified) {
+          // 2. Fetch updated order record from Firestore
+          const snap = await getDoc(doc(db, "orders", urlOrderId!));
+          if (snap.exists() && isMounted) {
+            const fetched = { id: snap.id, ...snap.data() } as Order;
+            setPersistedOrder(fetched);
+            sessionStorage.setItem("leafly_last_order", JSON.stringify(fetched));
+          } else if (isMounted) {
+            // Fallback order from sessionStorage or state
+            setPersistedOrder((prev) =>
+              prev ? { ...prev, status: "Confirmed", orderStatus: "Confirmed", paymentStatus: "Paid" } : null
+            );
+          }
+          clearCart();
+        } else {
+          // If payment was not verified or cancelled
+          setVerificationError(
+            verifyRes.message ||
+              "Your payment could not be verified by Cashfree. If money was debited from your account, it will be refunded by your bank within 3-5 business days."
+          );
+        }
+      } catch (err) {
+        console.warn("[OrderSuccess] Payment verification notice:", err);
+        if (isMounted) {
+          setVerificationError(
+            "An error occurred while confirming your payment with Cashfree. Please check your order history."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsVerifying(false);
+        }
+      }
+    }
+
+    verifyAndLoadOrder();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [urlOrderId, clearCart]);
+
   const [rating, setRating] = useState<number>(5);
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [feedback, setFeedback] = useState("");
@@ -63,8 +144,8 @@ export default function OrderSuccess() {
     if (typeof window !== "undefined") {
       try {
         const stored = sessionStorage.getItem("leafly_last_order");
-        const orderId = latestOrder?.id || (stored ? JSON.parse(stored)?.id : null);
-        if (orderId && sessionStorage.getItem(`leafly_review_${orderId}`) === "true") {
+        const activeOrderId = latestOrder?.id || (stored ? JSON.parse(stored)?.id : null);
+        if (activeOrderId && sessionStorage.getItem(`leafly_review_${activeOrderId}`) === "true") {
           return true;
         }
       } catch {
@@ -107,7 +188,6 @@ export default function OrderSuccess() {
       createdAt: new Date().toISOString(),
     };
 
-    // Save to localStorage for instant patron & admin visibility
     try {
       const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
       stored.unshift(reviewPayload);
@@ -118,17 +198,84 @@ export default function OrderSuccess() {
     }
 
     try {
-      await addDoc(collection(db, "reviews"), {
+      await setDoc(doc(db, "reviews", reviewPayload.id), {
         ...reviewPayload,
         timestamp: serverTimestamp(),
       });
     } catch (err) {
-      console.warn("Could not save review to Firestore; persisted locally:", err);
+      try {
+        await addDoc(collection(db, "reviews"), {
+          ...reviewPayload,
+          timestamp: serverTimestamp(),
+        });
+      } catch (innerErr) {
+        console.warn("Could not save review to Firestore; persisted locally:", innerErr);
+      }
     } finally {
+      // Broadcast new review to other active tabs (Admin Dashboard, etc.)
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          const channel = new BroadcastChannel("leafly_reviews_sync");
+          channel.postMessage({ type: "NEW_REVIEW", review: reviewPayload });
+          channel.close();
+        }
+      } catch {
+        // ignore
+      }
+
       setIsSubmitting(false);
       setIsSubmitted(true);
     }
   };
+
+  // Loading state while verifying payment with Cashfree
+  if (isVerifying) {
+    return (
+      <main className="order-success-page order-success-verifying">
+        <SEO
+          title="Verifying Payment | Leafly"
+          description="Verifying your payment with Cashfree."
+          noindex={true}
+        />
+        <div className="order-success-ambient-glow" aria-hidden="true" />
+        <div className="order-success-card" style={{ textAlign: "center", padding: "48px 24px" }}>
+          <div style={{ fontSize: "40px", marginBottom: "16px", animation: "spin 2s linear infinite" }}>🫖</div>
+          <p className="order-success-eyebrow">CASHFREE VERIFICATION</p>
+          <h1 style={{ fontSize: "24px", marginBottom: "8px" }}>CONFIRMING YOUR PAYMENT...</h1>
+          <p style={{ color: "#6a7b72" }}>Please wait while we authoritatively verify your payment with Cashfree.</p>
+        </div>
+        <Footer />
+      </main>
+    );
+  }
+
+  // Error state if payment verification failed
+  if (verificationError) {
+    return (
+      <main className="order-success-page order-success-empty">
+        <SEO
+          title="Payment Unconfirmed | Leafly"
+          description="Your payment could not be confirmed."
+          noindex={true}
+        />
+        <div className="order-success-ambient-glow" aria-hidden="true" />
+        <div className="order-success-card">
+          <p className="order-success-eyebrow">PAYMENT NOTICE</p>
+          <h1 style={{ color: "#c53030" }}>PAYMENT UNCONFIRMED</h1>
+          <p>{verificationError}</p>
+          <div className="order-success-actions" style={{ marginTop: "24px" }}>
+            <button type="button" className="order-success-primary" onClick={() => navigate("/checkout")}>
+              RETURN TO CHECKOUT
+            </button>
+            <button type="button" className="order-success-secondary" onClick={() => navigate("/orders")}>
+              VIEW MY ORDERS
+            </button>
+          </div>
+        </div>
+        <Footer />
+      </main>
+    );
+  }
 
   if (!order) {
     return (
@@ -146,6 +293,7 @@ export default function OrderSuccess() {
       </main>
     );
   }
+
 
   return (
     <main className="order-success-page">

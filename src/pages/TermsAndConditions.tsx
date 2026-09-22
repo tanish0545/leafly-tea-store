@@ -9,7 +9,7 @@ export default function TermsAndConditions() {
     <main className="terms-conditions-page">
       <SEO
         title="Terms & Conditions — Leafly"
-        description="Read Leafly's Terms & Conditions. Store policies, pricing, intellectual property, order fulfillment, and user terms for leafly.vercel.app."
+        description="Read Leafly's Terms & Conditions. Store policies, pricing, intellectual property, order fulfillment, and user terms for leaflytea.in."
         canonicalPath="/terms-and-conditions"
         schema={generateBreadcrumbSchema([
           { name: "Home", url: "/" },

@@ -97,6 +97,7 @@ export default function WishlistDrawer() {
 
     window.setTimeout(() => {
       addToCart(productToAdd);
+      removeFromWishlist(id);
       setAddingId(null);
       setAddedId(id);
 
@@ -233,9 +234,6 @@ export default function WishlistDrawer() {
 
                           <span className="leafly-wishlist-details">
                             {product.weight || "1 Unit"}
-                            {product.caffeine && product.caffeine !== "None" && product.caffeine !== "Teaware" && product.caffeine !== "Varied" ? (
-                              <> · {product.caffeine} caffeine</>
-                            ) : null}
                           </span>
 
                           <div className="leafly-wishlist-item-footer">

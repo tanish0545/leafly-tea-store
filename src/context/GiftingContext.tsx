@@ -64,7 +64,6 @@ export function GiftingProvider({ children }: { children: React.ReactNode }) {
       isRemoved: false,
       origin: hamper.subtitle || "Darjeeling & Indian Terroirs",
       weight: "Gift Box",
-      caffeine: "Varied",
       sku: hamper.sku || `LF-GF-${hamper.id || Date.now()}`,
     };
     return addProduct(prod);
@@ -91,7 +90,6 @@ export function GiftingProvider({ children }: { children: React.ReactNode }) {
       isRemoved: false,
       origin: updatedHamper.subtitle || existing?.origin || "Darjeeling & Indian Terroirs",
       weight: "Gift Box",
-      caffeine: "Varied",
       sku: updatedHamper.sku || existing?.sku || `LF-GF-${updatedHamper.id}`,
     };
     return updateProduct(prod);

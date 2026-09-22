@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import teaRitualTrack from "../assets/tea-ritual.mp3";
+import teaMakerTrack from "../assets/tea-maker-music.mp3";
 import "./TeaRitualSoundscape.css";
 
 export type AudioTrack = {
@@ -16,6 +17,18 @@ const SOUNDSCAPE_PLAYLIST: AudioTrack[] = [
     subtitle: "Gentle Indian instrumental soundscape for quiet steeping",
     src: teaRitualTrack,
   },
+  {
+    title: "Darjeeling Mist Symphony",
+    artist: "Leafly · Flute & Santoor",
+    subtitle: "Harmonious high-mountain melodies for morning clarity",
+    src: teaMakerTrack,
+  },
+  {
+    title: "Dusk Tea Soundscape",
+    artist: "Leafly · Ambient Raga",
+    subtitle: "Calming acoustic frequencies for peaceful evening winding down",
+    src: teaRitualTrack,
+  },
 ];
 
 export default function TeaRitualSoundscape() {
@@ -24,7 +37,7 @@ export default function TeaRitualSoundscape() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.75);
-  const [isLooping, setIsLooping] = useState(true);
+  const [isLooping, setIsLooping] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentTrack = SOUNDSCAPE_PLAYLIST[currentTrackIndex];
@@ -55,6 +68,15 @@ export default function TeaRitualSoundscape() {
     };
   }, [currentTrackIndex, isLooping, volume]);
 
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.load();
+    if (isPlaying) {
+      audio.play().catch(() => setIsPlaying(false));
+    }
+  }, [currentTrackIndex]);
+
   const togglePlay = () => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -74,18 +96,22 @@ export default function TeaRitualSoundscape() {
   };
 
   const handlePrev = () => {
-    setCurrentTrackIndex((prev) =>
-      prev === 0 ? SOUNDSCAPE_PLAYLIST.length - 1 : prev - 1
-    );
-    setIsPlaying(false);
+    const audio = audioRef.current;
+    if (audio && audio.currentTime > 3) {
+      audio.currentTime = 0;
+      setCurrentTime(0);
+      return;
+    }
+    const nextIndex = currentTrackIndex === 0 ? SOUNDSCAPE_PLAYLIST.length - 1 : currentTrackIndex - 1;
+    setCurrentTrackIndex(nextIndex);
+    setCurrentTime(0);
   };
 
-  function handleNext() {
-    setCurrentTrackIndex((prev) =>
-      prev === SOUNDSCAPE_PLAYLIST.length - 1 ? 0 : prev + 1
-    );
-    setIsPlaying(false);
-  }
+  const handleNext = () => {
+    const nextIndex = currentTrackIndex === SOUNDSCAPE_PLAYLIST.length - 1 ? 0 : currentTrackIndex + 1;
+    setCurrentTrackIndex(nextIndex);
+    setCurrentTime(0);
+  };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const targetTime = Number(e.target.value);

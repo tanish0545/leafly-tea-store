@@ -39,31 +39,68 @@ service cloud.firestore {
       allow delete: if isOwner(userId) || isAdmin();
     }
 
+    // 1b. Deleted accounts audit collection:
+    // Customers can create/update their own audit record upon deletion.
+    // Authorized Admins can read and audit all deleted accounts.
+    match /deleted_accounts/{userId} {
+      allow read: if isAdmin();
+      allow create, update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
     // 2. Orders collection:
     // Customers can only create orders that correspond to their authenticated identity.
     // Customers can read their own orders and cancel them.
     // Authorized Admins have full access.
     match /orders/{orderId} {
       allow create: if isAuthenticated() && (
-        request.resource.data.userId == request.auth.uid ||
-        request.resource.data.customerId == request.auth.uid ||
-        request.resource.data.customerEmail == request.auth.token.email ||
+        request.resource.data.get('userId', '') == request.auth.uid ||
+        request.resource.data.get('customerId', '') == request.auth.uid ||
+        request.resource.data.get('uid', '') == request.auth.uid ||
+        request.resource.data.get('userUid', '') == request.auth.uid ||
+        (request.resource.data.get('customerEmail', '') != '' && request.auth.token.email != null && (
+          request.resource.data.customerEmail == request.auth.token.email ||
+          request.resource.data.customerEmail.lower() == request.auth.token.email.lower()
+        )) ||
         isAdmin()
       );
       allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        resource.data.customerId == request.auth.uid ||
-        resource.data.customerEmail == request.auth.token.email ||
+        resource.data.get('userId', '') == request.auth.uid ||
+        resource.data.get('customerId', '') == request.auth.uid ||
+        resource.data.get('uid', '') == request.auth.uid ||
+        resource.data.get('userUid', '') == request.auth.uid ||
+        (resource.data.get('customerEmail', '') != '' && request.auth.token.email != null && (
+          resource.data.customerEmail == request.auth.token.email ||
+          resource.data.customerEmail.lower() == request.auth.token.email.lower()
+        )) ||
         isAdmin()
       );
       allow update: if isAdmin() || (
         isAuthenticated() && (
-          resource.data.userId == request.auth.uid ||
-          resource.data.customerId == request.auth.uid ||
-          resource.data.customerEmail == request.auth.token.email
+          resource.data.get('userId', '') == request.auth.uid ||
+          resource.data.get('customerId', '') == request.auth.uid ||
+          resource.data.get('uid', '') == request.auth.uid ||
+          resource.data.get('userUid', '') == request.auth.uid ||
+          (resource.data.get('customerEmail', '') != '' && request.auth.token.email != null && (
+            resource.data.customerEmail == request.auth.token.email ||
+            resource.data.customerEmail.lower() == request.auth.token.email.lower()
+          ))
         ) && (
-          // Customer can only update status/cancellation fields
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'orderStatus', 'updatedAt'])
+          // Only eligible non-cancelled, non-delivered orders can be cancelled
+          resource.data.get('status', '') != 'Cancelled' &&
+          resource.data.get('orderStatus', '') != 'Cancelled' &&
+          resource.data.get('status', '') != 'Delivered' &&
+          resource.data.get('orderStatus', '') != 'Delivered'
+        ) && (
+          // Customer can ONLY cancel their own order
+          // Payment confirmation fields (paymentStatus, paymentId, cfPaymentId) and confirmed orderStatus
+          // can NEVER be modified directly by customers — only by trusted server verification.
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'orderStatus', 'updatedAt']) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'orderStatus', 'inventoryRestored', 'updatedAt'])
+          ) &&
+          request.resource.data.status == 'Cancelled' &&
+          request.resource.data.orderStatus == 'Cancelled'
         )
       );
       allow delete: if isAdmin();
@@ -107,11 +144,20 @@ service cloud.firestore {
     }
 
     // 7. Reviews collection:
-    // Publicly readable. Customers can submit reviews. Admins can moderate/delete.
+    // Publicly readable so customers can browse verified tasting notes.
+    // Customers can submit their own reviews; Admins have full moderation/deletion rights.
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if true;
-      allow update, delete: if isAdmin();
+      allow create: if isAuthenticated() || isAdmin() || (
+        request.resource.data.get('customerName', '') != ''
+      );
+      allow update, delete: if isAdmin() || (
+        isAuthenticated() && (
+          resource.data.get('userId', '') == request.auth.uid ||
+          (resource.data.get('customerEmail', '') != '' && request.auth.token.email != null &&
+           resource.data.customerEmail.lower() == request.auth.token.email.lower())
+        )
+      );
     }
 
     // 8. Newsletter Subscribers:

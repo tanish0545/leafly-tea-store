@@ -29,7 +29,9 @@ export function getAdminEmail(): string {
 }
 
 export function getFromEmail(): string {
-  return process.env.EMAIL_FROM || DEFAULT_FROM;
+  const rawUser = process.env.GMAIL_USER || process.env.EMAIL_USER || process.env.SMTP_USER;
+  const user = rawUser?.trim();
+  return process.env.EMAIL_FROM || (user ? `"Leafly Tea Co." <${user}>` : DEFAULT_FROM);
 }
 
 let cachedTransporter: nodemailer.Transporter | null = null;
@@ -44,20 +46,30 @@ export function getTransporter(): nodemailer.Transporter | null {
   const rawPass = process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD || process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
   const user = rawUser?.trim();
   const pass = rawPass?.trim();
-  const host = process.env.SMTP_HOST || "smtp.gmail.com";
-  const port = parseInt(process.env.SMTP_PORT || "465", 10);
-  const secure = port === 465;
-
   if (user && pass) {
-    cachedTransporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: {
-        user,
-        pass,
-      },
-    });
+    const isExplicitHost = process.env.SMTP_HOST && process.env.SMTP_HOST !== "smtp.gmail.com";
+    if (!isExplicitHost) {
+      cachedTransporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user,
+          pass,
+        },
+      });
+    } else {
+      const host = process.env.SMTP_HOST;
+      const port = parseInt(process.env.SMTP_PORT || "465", 10);
+      const secure = port === 465;
+      cachedTransporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: {
+          user,
+          pass,
+        },
+      });
+    }
     return cachedTransporter;
   }
 

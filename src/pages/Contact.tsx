@@ -174,11 +174,16 @@ export default function Contact() {
           message: "",
         });
       } else {
-        setSubmitError(res.error || "We couldn't send your message right now. Please try again.");
+        setSubmitError(
+          res.error ||
+            "Unable to submit inquiry. Please check your internet connection or email us directly at leaflydatabase@gmail.com."
+        );
       }
     } catch (err: unknown) {
       console.error("Error submitting contact form:", err);
-      setSubmitError("We couldn't send your message right now. Please check your connection and try again.");
+      setSubmitError(
+        "Unable to submit inquiry. Please check your internet connection or email us directly at leaflydatabase@gmail.com."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -221,8 +226,8 @@ export default function Contact() {
             <article key={item.label} className="contact-card">
               <p className="contact-card-label">{item.label}</p>
               <h2>{item.detail}</h2>
-              {item.label === "EMAIL" ? (
-                <a href={`mailto:${item.value}`} className="contact-link">
+              {item.value.includes("@") ? (
+                <a href={`mailto:${item.value}`} className="contact-link" aria-label={`Email ${item.label}`}>
                   {item.value}
                 </a>
               ) : (
@@ -256,7 +261,7 @@ export default function Contact() {
               </label>
 
               <label className="field">
-                <span>Email * {authEmail ? <span style={{ fontSize: "11px", color: "#a87d22", fontWeight: 600 }}>✦ Verified Account</span> : null}</span>
+                <span>Email * {authEmail ? <span style={{ fontSize: "11px", color: "#a87d22", fontWeight: 600 }}>🔒 Verified Account (Read-only)</span> : null}</span>
                 <input
                   type="email"
                   name="email"
@@ -264,9 +269,15 @@ export default function Contact() {
                   onChange={handleChange}
                   placeholder="name@example.com"
                   readOnly={Boolean(authEmail)}
-                  style={authEmail ? { backgroundColor: "#f3efe6", cursor: "not-allowed" } : undefined}
+                  style={authEmail ? { backgroundColor: "#f3efe6", cursor: "not-allowed", border: "1px dashed rgba(168, 125, 34, 0.4)" } : undefined}
                   aria-invalid={Boolean(errors.email)}
+                  title={authEmail ? "Email is linked to your authenticated sanctuary account" : undefined}
                 />
+                {authEmail && (
+                  <small style={{ color: "#718096", fontSize: "11.5px", marginTop: "3px", display: "block" }}>
+                    Your message will be sent from your verified account email.
+                  </small>
+                )}
                 {errors.email && <small>{errors.email}</small>}
               </label>
             </div>
@@ -311,9 +322,30 @@ export default function Contact() {
             </label>
 
             {submitError && (
-              <p className="contact-field-error" style={{ color: "#e53e3e", fontSize: "14px", marginTop: "10px" }}>
-                {submitError}
-              </p>
+              <div
+                className="contact-field-error"
+                style={{
+                  color: "#c53030",
+                  fontSize: "13.5px",
+                  marginTop: "12px",
+                  padding: "10px 14px",
+                  background: "rgba(197, 48, 48, 0.08)",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(197, 48, 48, 0.2)",
+                  lineHeight: "1.5"
+                }}
+              >
+                {submitError.includes("leaflydatabase@gmail.com") ? (
+                  <span>
+                    Unable to submit inquiry. Please check your internet connection or email us directly at{" "}
+                    <a href="mailto:leaflydatabase@gmail.com" style={{ color: "#b98428", fontWeight: 600, textDecoration: "underline" }}>
+                      leaflydatabase@gmail.com
+                    </a>.
+                  </span>
+                ) : (
+                  <span>{submitError}</span>
+                )}
+              </div>
             )}
 
             <div className="form-actions">

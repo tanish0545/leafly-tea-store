@@ -8,7 +8,9 @@
   position: relative;
   width: 100%;
   min-height: 100vh;
-  padding: 100px 0 60px;
+  display: flex;
+  flex-direction: column;
+  padding: 100px 0 0;
   background-color: #f7f3ec;
   background-image: 
     radial-gradient(circle at 50% 0%, rgba(201, 162, 75, 0.14) 0%, transparent 65%),
@@ -42,7 +44,8 @@
   position: relative;
   z-index: 2;
   width: min(880px, calc(100% - 32px));
-  margin: 0 auto;
+  margin: 0 auto 60px;
+  flex: 1 0 auto;
   padding: 42px 38px 40px;
   background: #ffffff;
   border: 1px solid rgba(11, 43, 30, 0.09);

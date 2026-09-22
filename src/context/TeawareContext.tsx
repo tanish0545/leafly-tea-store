@@ -71,7 +71,6 @@ export function TeawareProvider({ children }: { children: React.ReactNode }) {
       isRemoved: false,
       origin: item.material || "Artisan Craft",
       weight: item.capacity || "1 Unit",
-      caffeine: "None",
       sku: item.sku || `LF-TW-${item.id || Date.now()}`,
     };
     return addProduct(prod);
@@ -101,7 +100,6 @@ export function TeawareProvider({ children }: { children: React.ReactNode }) {
       isRemoved: false,
       origin: updatedItem.material || existing?.origin || "Artisan Craft",
       weight: updatedItem.capacity || existing?.weight || "1 Unit",
-      caffeine: "None",
       sku: updatedItem.sku || existing?.sku || `LF-TW-${updatedItem.id}`,
     };
     return updateProduct(prod);

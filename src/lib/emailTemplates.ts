@@ -137,7 +137,7 @@ export function getNewsletterWelcomeEmail(subscriberEmail: string): { subject: s
     </p>
 
     <div align="center" style="margin: 32px 0 16px;">
-      <a href="https://leafly.vercel.app/shop" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #f7f3ec; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; padding: 14px 30px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD};">
+      <a href="https://leaflytea.in/shop" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #f7f3ec; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; padding: 14px 30px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD};">
         Explore Tea Collections
       </a>
     </div>
@@ -392,12 +392,37 @@ export function getContactAdminNotification(data: ContactEmailData): { subject: 
 // 4. ORDER NOTIFICATION TEMPLATES
 // =========================================================================
 
+export interface OrderEmailItem {
+  name: string;
+  variant?: string;
+  weight?: string;
+  quantity: number;
+  price: number;
+}
+
 export interface OrderEmailData {
   id: string;
   customerName: string;
   email?: string;
   phone?: string;
   total: number;
+  subtotal?: number;
+  deliveryFee?: number;
+  discount?: number;
+  couponCode?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  shippingAddress?: {
+    fullName?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+  };
+  items?: OrderEmailItem[];
+  createdAt?: string;
 }
 
 export function getOrderConfirmationCustomerEmail(data: OrderEmailData): { subject: string; html: string } {
@@ -427,11 +452,11 @@ export function getOrderConfirmationCustomerEmail(data: OrderEmailData): { subje
     </table>
 
     <p style="font-size: 14px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 20px 0 28px;">
-      You can track your order status anytime from your <a href="https://leafly.vercel.app/orders">Leafly Orders Page</a>.
+      You can track your order status anytime from your <a href="https://leaflytea.in/orders">Leafly Orders Page</a>.
     </p>
 
     <div align="center" style="margin: 28px 0 12px;">
-      <a href="https://leafly.vercel.app/orders" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #f7f3ec; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; padding: 12px 28px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD};">
+      <a href="https://leaflytea.in/orders" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #f7f3ec; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; padding: 12px 28px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD};">
         View Order Status
       </a>
     </div>
@@ -444,36 +469,120 @@ export function getOrderConfirmationCustomerEmail(data: OrderEmailData): { subje
 }
 
 export function getOrderAdminNotificationEmail(data: OrderEmailData): { subject: string; html: string } {
-  const subject = `New Order Placed #${data.id} (₹${data.total}) — Leafly`;
+  const subject = `🛍️ New Leafly Order — ${data.id}`;
+
+  const address = data.shippingAddress;
+  const addressText = address
+    ? [
+        address.fullName,
+        address.addressLine1,
+        address.addressLine2,
+        `${address.city || ""}, ${address.state || ""} ${address.postalCode || ""}`,
+        address.country || "India",
+      ]
+        .filter(Boolean)
+        .join(", ")
+    : "—";
+
+  const itemsRows = (data.items && data.items.length > 0)
+    ? data.items
+        .map(
+          (item) => `
+      <tr>
+        <td style="padding: 8px 12px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};">
+          <strong>${item.name}</strong> ${item.variant || item.weight ? `<span style="color: ${LEAFLY_MUTED};">(${item.variant || item.weight})</span>` : ""}
+        </td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT}; text-align: center;">
+          ${item.quantity}
+        </td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT}; text-align: right;">
+          ₹${item.price}
+        </td>
+        <td style="padding: 8px 12px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_GREEN}; text-align: right;">
+          ₹${item.price * item.quantity}
+        </td>
+      </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="4" style="padding: 10px 12px; font-size: 13px; color: ${LEAFLY_MUTED};">Order details available in Admin Dashboard</td></tr>`;
+
+  const orderTime = data.createdAt
+    ? new Date(data.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST"
+    : new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST";
+
   const content = `
     <h2 style="margin: 0 0 16px; font-family: Georgia, serif; font-size: 20px; color: ${LEAFLY_GREEN}; font-weight: normal;">
-      New Customer Order Received
+      🛍️ New Customer Order Received
     </h2>
 
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${LEAFLY_CREAM}; border: 1px solid ${LEAFLY_BORDER}; border-radius: 6px; margin: 16px 0;">
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 120px;">Order ID:</td>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 14px; font-weight: 600; color: ${LEAFLY_GREEN}; font-family: monospace;">#${data.id}</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 140px;">Order ID:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 14px; font-weight: 700; color: ${LEAFLY_GREEN}; font-family: monospace;">${data.id}</td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Customer:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Customer Name:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_TEXT};">${data.customerName}</td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Email:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Customer Email:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};"><a href="mailto:${data.email}">${data.email || "—"}</a></td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Phone:</td>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};">${data.phone || "—"}</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Customer Phone:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};">${data.phone ? `<a href="tel:${data.phone}">${data.phone}</a>` : "—"}</td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Total Amount:</td>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 14px; font-weight: 700; color: ${LEAFLY_GOLD};">₹${data.total}</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Shipping Location:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};">${addressText}</td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_MUTED};">Time:</td>
-        <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_TEXT};">${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Payment Method:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_TEXT};">${data.paymentMethod || "COD"}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Payment Status:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${data.paymentStatus === "Paid" ? "#2e7d32" : "#a07823"};">${data.paymentStatus || "Pending"}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_MUTED};">Order Timestamp:</td>
+        <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_TEXT};">${orderTime}</td>
+      </tr>
+    </table>
+
+    <h3 style="margin: 20px 0 10px; font-family: Georgia, serif; font-size: 16px; color: ${LEAFLY_GREEN};">Products Ordered</h3>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid ${LEAFLY_BORDER}; border-radius: 6px; margin: 0 0 16px; background-color: #ffffff;">
+      <thead>
+        <tr style="background-color: ${LEAFLY_CREAM};">
+          <th style="padding: 8px 12px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 12px; font-weight: 700; color: ${LEAFLY_GREEN}; text-align: left;">Product</th>
+          <th style="padding: 8px 12px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 12px; font-weight: 700; color: ${LEAFLY_GREEN}; text-align: center; width: 50px;">Qty</th>
+          <th style="padding: 8px 12px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 12px; font-weight: 700; color: ${LEAFLY_GREEN}; text-align: right; width: 70px;">Price</th>
+          <th style="padding: 8px 12px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 12px; font-weight: 700; color: ${LEAFLY_GREEN}; text-align: right; width: 80px;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsRows}
+      </tbody>
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${LEAFLY_CREAM}; border: 1px solid ${LEAFLY_BORDER}; border-radius: 6px; margin: 16px 0;">
+      ${typeof data.subtotal === "number" ? `
+      <tr>
+        <td style="padding: 8px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 140px;">Subtotal:</td>
+        <td style="padding: 8px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; text-align: right; color: ${LEAFLY_TEXT};">₹${data.subtotal}</td>
+      </tr>` : ""}
+      ${typeof data.discount === "number" && data.discount > 0 ? `
+      <tr>
+        <td style="padding: 8px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: #c53030; width: 140px;">Discount (${data.couponCode || "Coupon"}):</td>
+        <td style="padding: 8px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; text-align: right; color: #c53030;">-₹${data.discount}</td>
+      </tr>` : ""}
+      <tr>
+        <td style="padding: 8px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 140px;">Delivery Charge:</td>
+        <td style="padding: 8px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; text-align: right; color: ${LEAFLY_TEXT};">${typeof data.deliveryFee === "number" ? (data.deliveryFee === 0 ? "FREE" : `₹${data.deliveryFee}`) : "FREE"}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px 16px; font-size: 15px; font-weight: 700; color: ${LEAFLY_GREEN};">Final Total:</td>
+        <td style="padding: 10px 16px; font-size: 17px; font-weight: 700; text-align: right; color: ${LEAFLY_GOLD};">₹${data.total}</td>
       </tr>
     </table>
   `;
@@ -511,7 +620,7 @@ export function getAccountWelcomeEmail(userName: string, userEmail: string): { s
     </p>
 
     <div align="center" style="margin: 28px 0 12px;">
-      <a href="https://leafly.vercel.app/shop" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #f7f3ec; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; padding: 14px 30px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD};">
+      <a href="https://leaflytea.in/shop" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #f7f3ec; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; padding: 14px 30px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD};">
         Explore Teas &amp; Teaware
       </a>
     </div>

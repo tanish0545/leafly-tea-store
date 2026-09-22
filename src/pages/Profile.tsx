@@ -1,9 +1,14 @@
 import { useMemo, useState, useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { deleteUser } from "firebase/auth";
-import { doc, deleteDoc } from "firebase/firestore";
-import { auth, db } from "../lib/firebase";
+import {
+  deleteUser,
+  reauthenticateWithPopup,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+} from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, googleProvider, db } from "../lib/firebase";
 import { useProducts } from "../context/ProductContext";
 import { useOrderContext } from "../context/OrderContext";
 import { useAuth, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
@@ -94,7 +99,7 @@ const sidebarItems: SidebarItem[] = [
   },
   {
     id: "security",
-    label: "Security",
+    label: "Account Settings",
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 3 5 6v5c0 4.3 2.7 8.1 7 10 4.3-1.9 7-5.7 7-10V6l-7-3Zm0 5.5 3.2 3.2-1.2 1.2-2 2-2-2-1.2-1.2L12 8.5Z" />
@@ -164,8 +169,11 @@ export default function Profile() {
   const { products } = useProducts();
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState("");
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [needsPasswordReauth, setNeedsPasswordReauth] = useState(false);
 
   const dynamicRecommendations = useMemo(() => {
     const targetIds = [1, 2, 3];
@@ -209,45 +217,133 @@ export default function Profile() {
   }, [showDeleteConfirm, isDeletingAccount]);
 
   const handleDeleteAccount = async () => {
+    if (deleteConfirmText.trim() !== "DELETE MY LEAFLY ACCOUNT") {
+      setDeleteAccountError("Please type DELETE MY LEAFLY ACCOUNT exactly to confirm.");
+      return;
+    }
+
     setIsDeletingAccount(true);
     setDeleteAccountError("");
 
     try {
       const currentFbUser = auth.currentUser;
       if (!currentFbUser || !user || currentFbUser.uid !== user.uid) {
-        throw new Error("No authenticated user session found.");
+        throw new Error("No active authenticated user session found.");
       }
 
-      // 1. Delete personal profile document in Firestore
+      const isGoogle =
+        currentFbUser.providerData.some((p) => p.providerId === "google.com") ||
+        user.authProvider === "Google";
+
+      // If previous attempt required password re-auth, verify credentials first
+      if (needsPasswordReauth && reauthPassword.trim() && currentFbUser.email) {
+        try {
+          const credential = EmailAuthProvider.credential(currentFbUser.email, reauthPassword.trim());
+          await reauthenticateWithCredential(currentFbUser, credential);
+        } catch (reauthErr: unknown) {
+          const rErr = reauthErr as { code?: string; message?: string };
+          setDeleteAccountError(
+            rErr?.code === "auth/wrong-password" || rErr?.code === "auth/invalid-credential"
+              ? "Invalid account password. Please enter your correct password to confirm deletion."
+              : rErr?.message || "Re-authentication failed. Please try again."
+          );
+          setIsDeletingAccount(false);
+          return;
+        }
+      }
+
+      // 1. Snapshot and preserve customer account audit record for Admin inspection
+      const resolvedName =
+        user.displayName || user.name || user.fullName || currentFbUser.displayName || "Customer";
+      const resolvedEmail = currentFbUser.email || user.email || "";
+      const resolvedPhone = user.phone || user.phoneNumber || currentFbUser.phoneNumber || null;
+      const resolvedProvider = user.authProvider || (isGoogle ? "Google" : "Email/Password");
+      const resolvedCreatedAt = currentFbUser.metadata?.creationTime
+        ? new Date(currentFbUser.metadata.creationTime).toISOString()
+        : null;
+      const deletedAt = new Date().toISOString();
+
+      const deletedRecord: Record<string, unknown> = {
+        uid: currentFbUser.uid,
+        id: currentFbUser.uid,
+        name: resolvedName,
+        fullName: resolvedName,
+        displayName: resolvedName,
+        email: resolvedEmail,
+        phone: resolvedPhone,
+        authProvider: resolvedProvider,
+        status: "Deleted",
+        isDeleted: true,
+        deletedAt,
+        createdAt: resolvedCreatedAt,
+        favoriteTea: user.favoriteTea || null,
+        preferences: user.preferences || null,
+        updatedAt: deletedAt,
+      };
+
+      // Store in users collection marked as Deleted
       try {
-        await deleteDoc(doc(db, "users", currentFbUser.uid));
+        await setDoc(doc(db, "users", currentFbUser.uid), deletedRecord, { merge: true });
       } catch (docErr) {
-        console.warn("Could not delete firestore user document:", docErr);
+        console.warn("Notice updating user document to Deleted status:", docErr);
       }
 
-      // 2. Delete user account from Firebase Auth
-      await deleteUser(currentFbUser);
+      // Also store in deleted_accounts dedicated audit collection
+      try {
+        await setDoc(doc(db, "deleted_accounts", currentFbUser.uid), deletedRecord, { merge: true });
+      } catch (delColErr) {
+        console.warn("Notice persisting to deleted_accounts collection:", delColErr);
+      }
 
-      // 3. Clear personal user session and sensitive cache
+      // 2. Delete user account from Firebase Auth with re-auth handling
+      try {
+        await deleteUser(currentFbUser);
+      } catch (authErr: unknown) {
+        const fbErr = authErr as { code?: string; message?: string };
+        if (fbErr?.code === "auth/requires-recent-login") {
+          if (isGoogle) {
+            try {
+              await reauthenticateWithPopup(currentFbUser, googleProvider);
+              await deleteUser(currentFbUser);
+            } catch (popupErr: unknown) {
+              setDeleteAccountError("Google re-authentication required. Please sign in again and retry.");
+              setIsDeletingAccount(false);
+              return;
+            }
+          } else {
+            setNeedsPasswordReauth(true);
+            setDeleteAccountError(
+              "For security reasons, deleting your account requires recent authentication. Please enter your password above to confirm deletion."
+            );
+            setIsDeletingAccount(false);
+            return;
+          }
+        } else {
+          throw authErr;
+        }
+      }
+
+      // 3. Clear customer session, cart and cached tokens
       try {
         localStorage.removeItem("leafly-cart-v2");
         localStorage.removeItem(NOTIF_STORAGE_KEY);
       } catch {}
 
-      // 4. Close modal and redirect safely to home
+      try {
+        await logout();
+      } catch {}
+
+      // 4. Close modal and redirect to /login with Leafly-themed success banner
       document.body.style.overflow = "";
       setShowDeleteConfirm(false);
-      navigate("/", { replace: true });
+      navigate("/login", {
+        replace: true,
+        state: { message: "Your Leafly account has been permanently deleted." },
+      });
     } catch (err: unknown) {
       console.error("Account deletion error:", err);
       const fbErr = err as { code?: string; message?: string };
-      if (fbErr?.code === "auth/requires-recent-login") {
-        setDeleteAccountError(
-          "For security reasons, deleting your account requires recent authentication. Please log out, log back in, and try deleting your account again."
-        );
-      } else {
-        setDeleteAccountError(fbErr?.message || "Failed to delete account. Please try again.");
-      }
+      setDeleteAccountError(fbErr?.message || "Failed to delete account. Please try again.");
     } finally {
       setIsDeletingAccount(false);
     }
@@ -310,7 +406,7 @@ export default function Profile() {
         },
         {
           id: "security" as SidebarItemId,
-          label: "Security",
+          label: "Account Settings",
           icon: (
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 3 5 6v5c0 4.3 2.7 8.1 7 10 4.3-1.9 7-5.7 7-10V6l-7-3Zm0 5.5 3.2 3.2-1.2 1.2-2 2-2-2-1.2-1.2L12 8.5Z" />
@@ -424,7 +520,7 @@ export default function Profile() {
     }
 
     if (item.id === "security") {
-      setNotice("Account authentication & session security overview.");
+      setNotice("Manage your account security, authentication & settings.");
       return;
     }
   };
@@ -875,6 +971,19 @@ export default function Profile() {
                 {detailsSaved && !isEditingDetails && (
                   <p className="profile-success-text">Your details have been updated and securely saved.</p>
                 )}
+
+                <div style={{ marginTop: "24px", paddingTop: "18px", borderTop: "1px solid var(--leafly-border, #e6decb)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                  <span style={{ fontSize: "13px", color: "rgba(11, 43, 30, 0.7)" }}>
+                    Looking to manage security credentials, authentication, or delete your account?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleSidebarClick({ id: "security", label: "Account Settings", icon: null })}
+                    style={{ background: "transparent", border: "none", color: "#0b2b1e", fontWeight: 700, fontSize: "13px", textDecoration: "underline", cursor: "pointer", padding: 0 }}
+                  >
+                    Go to Account Settings →
+                  </button>
+                </div>
               </article>
             </section>
           )}
@@ -1013,18 +1122,18 @@ export default function Profile() {
             </section>
           )}
 
-          {/* VIEW: SECURITY */}
+          {/* VIEW: ACCOUNT SETTINGS / SECURITY */}
           {selectedSidebar === "security" && (
             <section className="profile-card profile-security-view">
               <div className="profile-card-header">
                 <div>
                   <p className="profile-card-kicker">AUTHENTICATION & PRIVACY</p>
-                  <h2>ACCOUNT SECURITY</h2>
+                  <h2>ACCOUNT SETTINGS</h2>
                 </div>
                 <span className="profile-security-badge">FIREBASE AUTH</span>
               </div>
               <p className="profile-subtitle">
-                Your account is protected by Firebase Authentication. All data is securely stored in Firestore.
+                Manage your account authentication, data privacy, and security settings.
               </p>
 
               <div className="profile-security-grid">
@@ -1065,10 +1174,10 @@ export default function Profile() {
               <div
                 style={{
                   marginTop: "28px",
-                  padding: "20px 24px",
+                  padding: "22px 24px",
                   background: "rgba(220, 53, 69, 0.04)",
-                  border: "1px solid rgba(220, 53, 69, 0.2)",
-                  borderRadius: "12px",
+                  border: "1px solid rgba(220, 53, 69, 0.25)",
+                  borderRadius: "14px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -1076,22 +1185,28 @@ export default function Profile() {
                   gap: "16px",
                 }}
               >
-                <div>
+                <div style={{ maxWidth: "480px" }}>
                   <h3 style={{ margin: "0 0 4px", color: "#b02a37", fontSize: "16px", fontWeight: 700 }}>
                     Delete Account
                   </h3>
-                  <p style={{ margin: 0, fontSize: "13px", color: "rgba(11, 43, 30, 0.7)", lineHeight: 1.4 }}>
-                    Permanently delete your Leafly profile, saved addresses, and credentials. This action is irreversible.
+                  <p style={{ margin: 0, fontSize: "13px", color: "rgba(11, 43, 30, 0.75)", lineHeight: 1.45 }}>
+                    Permanently delete your Leafly account. Your order history may be retained for business records, but your account will no longer remain active.
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowDeleteConfirm(true)}
+                  onClick={() => {
+                    setDeleteConfirmText("");
+                    setDeleteAccountError("");
+                    setNeedsPasswordReauth(false);
+                    setReauthPassword("");
+                    setShowDeleteConfirm(true);
+                  }}
                   style={{
                     background: "transparent",
-                    border: "1px solid #dc3545",
+                    border: "1.5px solid #dc3545",
                     color: "#dc3545",
-                    padding: "10px 20px",
+                    padding: "10px 22px",
                     borderRadius: "8px",
                     fontWeight: 700,
                     fontSize: "12px",
@@ -1234,8 +1349,7 @@ export default function Profile() {
             onClick={() => !isDeletingAccount && setShowDeleteConfirm(false)}
           >
             <div
-              className="profile-logout-modal"
-              style={{ borderColor: "rgba(220, 53, 69, 0.45)" }}
+              className="profile-delete-modal"
               onClick={(e) => e.stopPropagation()}
             >
               <button
@@ -1247,11 +1361,43 @@ export default function Profile() {
               >
                 ✕
               </button>
-              <p className="profile-card-kicker" style={{ color: "#dc3545" }}>PERMANENT DELETION</p>
-              <h3 style={{ color: "#b02a37" }}>Delete your Leafly account?</h3>
-              <p style={{ margin: 0, fontSize: "14px", color: "rgba(11,43,30,0.75)", lineHeight: 1.5 }}>
-                This action cannot be undone. Your profile details, saved addresses, preferences, and authentication records will be permanently erased.
+              <p className="profile-card-kicker" style={{ color: "#dc3545" }}>ACCOUNT TERMINATION</p>
+              <h3>Delete your Leafly account?</h3>
+              <p className="profile-delete-message">
+                This action will permanently remove your Leafly account. Your order history may be retained for business records, but your account will no longer remain active.
               </p>
+              <p className="profile-delete-prompt">
+                To confirm, type <strong>DELETE MY LEAFLY ACCOUNT</strong> below.
+              </p>
+              <input
+                type="text"
+                className="profile-delete-input"
+                placeholder="DELETE MY LEAFLY ACCOUNT"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                disabled={isDeletingAccount}
+                autoFocus
+                autoComplete="off"
+                spellCheck="false"
+              />
+
+              {needsPasswordReauth && (
+                <div style={{ marginBottom: "1rem" }}>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#0b2b1e", marginBottom: "6px" }}>
+                    Confirm your current password to continue:
+                  </label>
+                  <input
+                    type="password"
+                    className="profile-delete-input"
+                    placeholder="Enter account password"
+                    value={reauthPassword}
+                    onChange={(e) => setReauthPassword(e.target.value)}
+                    disabled={isDeletingAccount}
+                    style={{ marginBottom: 0 }}
+                  />
+                </div>
+              )}
+
               {deleteAccountError && (
                 <div
                   style={{
@@ -1263,28 +1409,29 @@ export default function Profile() {
                     fontSize: "13px",
                     textAlign: "left",
                     lineHeight: 1.4,
+                    marginBottom: "1rem",
                   }}
                 >
                   {deleteAccountError}
                 </div>
               )}
-              <div className="profile-logout-actions" style={{ marginTop: "14px" }}>
+
+              <div className="profile-logout-actions" style={{ marginTop: "10px" }}>
                 <button
                   type="button"
                   className="profile-secondary-button"
                   onClick={() => setShowDeleteConfirm(false)}
                   disabled={isDeletingAccount}
                 >
-                  KEEP ACCOUNT
+                  Cancel
                 </button>
                 <button
                   type="button"
-                  className="profile-primary-button"
-                  style={{ background: "#dc3545", borderColor: "#b02a37", color: "#ffffff" }}
+                  className="profile-primary-button profile-btn-destructive"
                   onClick={handleDeleteAccount}
-                  disabled={isDeletingAccount}
+                  disabled={deleteConfirmText !== "DELETE MY LEAFLY ACCOUNT" || isDeletingAccount || (needsPasswordReauth && !reauthPassword.trim())}
                 >
-                  {isDeletingAccount ? "DELETING..." : "PERMANENTLY DELETE"}
+                  {isDeletingAccount ? "Deleting..." : "Delete Account"}
                 </button>
               </div>
             </div>

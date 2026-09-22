@@ -1,10 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { sendMail, getAdminEmail } from "./lib/mailer";
+import type { Order } from "../src/types/contracts";
 import {
   getOrderConfirmationCustomerEmail,
   getOrderAdminNotificationEmail,
   type OrderEmailData,
+  type OrderEmailItem,
 } from "../src/lib/emailTemplates";
+
+export type OrderNotificationRequest = Partial<Order> & Partial<OrderEmailData>;
 
 export default async function handler(req: IncomingMessage & { body?: unknown }, res: ServerResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -25,27 +29,64 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
   }
 
   try {
-    let body = req.body;
-    if (typeof body === "string") {
+    let rawBody = req.body;
+    if (typeof rawBody === "string") {
       try {
-        body = JSON.parse(body);
+        rawBody = JSON.parse(rawBody);
       } catch {
         // keep
       }
-    } else if (!body) {
+    } else if (!rawBody) {
       const buffers = [];
       for await (const chunk of req) {
         buffers.push(chunk);
       }
       const raw = Buffer.concat(buffers).toString();
-      body = raw ? JSON.parse(raw) : {};
+      try {
+        rawBody = raw ? JSON.parse(raw) : {};
+      } catch {
+        rawBody = {};
+      }
     }
 
-    const id = String(body?.id || "").trim();
-    const customerName = String(body?.customerName || "").trim();
-    const email = String(body?.email || "").trim().toLowerCase();
-    const phone = String(body?.phone || "").trim();
-    const total = Number(body?.total) || 0;
+    const body: OrderNotificationRequest =
+      typeof rawBody === "object" && rawBody !== null
+        ? (rawBody as OrderNotificationRequest)
+        : {};
+
+    const id = String(body.id || "").trim();
+    const customerName = String(body.customerName || body.shippingAddress?.fullName || "").trim();
+    const email = String(body.email || body.customerEmail || "").trim().toLowerCase();
+    const phone = String(body.phone || body.customerPhone || "").trim();
+    const total = Number(body.total) || 0;
+    const subtotal = typeof body.subtotal === "number" ? body.subtotal : undefined;
+    const deliveryFee = typeof body.deliveryFee === "number" ? body.deliveryFee : undefined;
+    const discount = typeof body.discount === "number" ? body.discount : undefined;
+    const couponCode = body.couponCode ? String(body.couponCode) : undefined;
+    const paymentMethod = body.paymentMethod ? String(body.paymentMethod) : undefined;
+    const paymentStatus = body.paymentStatus ? String(body.paymentStatus) : undefined;
+    const shippingAddress =
+      body.shippingAddress && typeof body.shippingAddress === "object"
+        ? {
+            fullName: body.shippingAddress.fullName ? String(body.shippingAddress.fullName) : undefined,
+            addressLine1: body.shippingAddress.addressLine1 ? String(body.shippingAddress.addressLine1) : undefined,
+            addressLine2: body.shippingAddress.addressLine2 ? String(body.shippingAddress.addressLine2) : undefined,
+            city: body.shippingAddress.city ? String(body.shippingAddress.city) : undefined,
+            state: body.shippingAddress.state ? String(body.shippingAddress.state) : undefined,
+            postalCode: body.shippingAddress.postalCode ? String(body.shippingAddress.postalCode) : undefined,
+            country: body.shippingAddress.country ? String(body.shippingAddress.country) : undefined,
+          }
+        : undefined;
+    const items: OrderEmailItem[] | undefined = Array.isArray(body.items)
+      ? body.items.map((item) => ({
+          name: String(item.name || "Item"),
+          variant: item.variant ? String(item.variant) : undefined,
+          weight: item.weight ? String(item.weight) : undefined,
+          quantity: Number(item.quantity) || 1,
+          price: Number(item.price) || 0,
+        }))
+      : undefined;
+    const createdAt = body.createdAt ? String(body.createdAt) : undefined;
 
     if (!id || !customerName) {
       res.statusCode = 400;
@@ -60,6 +101,15 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       email: email || undefined,
       phone: phone || undefined,
       total,
+      subtotal,
+      deliveryFee,
+      discount,
+      couponCode,
+      paymentMethod,
+      paymentStatus,
+      shippingAddress,
+      items,
+      createdAt,
     };
 
     const adminEmail = getAdminEmail();

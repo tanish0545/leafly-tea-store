@@ -21,7 +21,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
   const isAuthorizedAdmin = isAuthenticated && (user?.isAdmin === true || user?.email?.toLowerCase() === adminEmail.toLowerCase());
 
   if (!isAuthorizedAdmin) {
-    return <Navigate to='/admin/login' state={{ from: location }} replace />;
+    return <Navigate to='/login' state={{ from: location }} replace />;
   }
 
   return <>{children}</>;

@@ -34,6 +34,18 @@ function apiDevMiddleware() {
             const mod = await server.ssrLoadModule('./api/welcome.ts');
             return await mod.default(req, res);
           }
+          if (urlPath === '/api/cashfree-create-order') {
+            const mod = await server.ssrLoadModule('./api/cashfree-create-order.ts');
+            return await mod.default(req, res);
+          }
+          if (urlPath === '/api/cashfree-verify') {
+            const mod = await server.ssrLoadModule('./api/cashfree-verify.ts');
+            return await mod.default(req, res);
+          }
+          if (urlPath === '/api/cashfree-webhook') {
+            const mod = await server.ssrLoadModule('./api/cashfree-webhook.ts');
+            return await mod.default(req, res);
+          }
         } catch (err) {
           console.error(`[API Dev Middleware Error on ${urlPath}]:`, err);
           res.statusCode = 500;
@@ -50,10 +62,40 @@ function apiDevMiddleware() {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  // Populate Node process.env with any SMTP credentials from local .env files
-  if (env.GMAIL_USER && !process.env.GMAIL_USER) process.env.GMAIL_USER = env.GMAIL_USER;
-  if (env.GMAIL_APP_PASSWORD && !process.env.GMAIL_APP_PASSWORD) process.env.GMAIL_APP_PASSWORD = env.GMAIL_APP_PASSWORD;
-  if (env.ADMIN_EMAIL && !process.env.ADMIN_EMAIL) process.env.ADMIN_EMAIL = env.ADMIN_EMAIL;
+  // Populate Node process.env with server-only credentials from local .env files
+  const serverEnvKeys = [
+    'GMAIL_USER',
+    'GMAIL_APP_PASSWORD',
+    'ADMIN_EMAIL',
+    'CASHFREE_CLIENT_ID',
+    'CASHFREE_CLIENT_SECRET',
+    'CASHFREE_ENV',
+    'CASHFREE_API_VERSION',
+    'CASHFREE_BASE_URL',
+    'CASHFREE_PAYMENT_METHODS',
+    'CASHFREE_UPI_APP_PRIORITY',
+    'FIREBASE_ADMIN_PROJECT_ID',
+    'FIREBASE_ADMIN_CLIENT_EMAIL',
+    'FIREBASE_ADMIN_PRIVATE_KEY',
+    'FIREBASE_PROJECT_ID',
+    'FIREBASE_CLIENT_EMAIL',
+    'FIREBASE_PRIVATE_KEY',
+    'FIREBASE_SERVICE_ACCOUNT',
+    'FIREBASE_SERVICE_ACCOUNT_KEY',
+    'GOOGLE_APPLICATION_CREDENTIALS',
+  ];
+  for (const key of serverEnvKeys) {
+    if (env[key] && !process.env[key]) {
+      process.env[key] = env[key];
+    }
+  }
+
+  // Prevent background unhandled rejections from crashing the dev server process
+  if (typeof process !== 'undefined' && typeof process.on === 'function') {
+    process.on('unhandledRejection', (reason) => {
+      console.warn('[Server Async Notice - Handled Rejection]:', reason instanceof Error ? reason.message : String(reason));
+    });
+  }
 
   return {
     server: {

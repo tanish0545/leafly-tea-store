@@ -4,7 +4,7 @@ import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../lib/firebase";
-import { collection, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { type Product, type ProductVariantKey, getProductSlug, isProductInStock, getProductImages, getProductAvailableVariants } from "../data/products";
 import { useTeaware } from "../context/TeawareContext";
 import { useGifting } from "../context/GiftingContext";
@@ -60,7 +60,6 @@ export default function ProductDetail() {
           name: teawareItem.name,
           category: "Teaware" as unknown as Product["category"],
           origin: teawareItem.material || "Artisan Craft",
-          caffeine: "Teaware" as unknown as Product["caffeine"],
           weight: teawareItem.capacity || "1 Unit",
           price: Number(teawareItem.price) || 0,
           oldPrice: teawareItem.oldPrice ? Number(teawareItem.oldPrice) : undefined,
@@ -91,7 +90,6 @@ export default function ProductDetail() {
           name: hamperItem.name,
           category: "Gifting" as unknown as Product["category"],
           origin: "Curated Estate Blend",
-          caffeine: "Varied" as unknown as Product["caffeine"],
           weight: "Gift Box",
           price: Number(hamperItem.price) || 0,
           oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
@@ -122,6 +120,7 @@ export default function ProductDetail() {
               (String(p.id) === "2" &&
                 (identifier === "white-tea" ||
                   identifier === "silver-tips-white-tea" ||
+                  identifier === "golden-dusk-black-tea" ||
                   identifier === "golden-dusk-black-tea-chamomile")))
         ) ||
         (teawareItem
@@ -130,7 +129,6 @@ export default function ProductDetail() {
               name: teawareItem.name,
               category: "Teaware" as unknown as Product["category"],
               origin: teawareItem.material || "Artisan Craft",
-              caffeine: "Teaware" as unknown as Product["caffeine"],
               weight: teawareItem.capacity || "1 Unit",
               price: Number(teawareItem.price) || 0,
               oldPrice: teawareItem.oldPrice ? Number(teawareItem.oldPrice) : undefined,
@@ -161,7 +159,6 @@ export default function ProductDetail() {
               name: hamperItem.name,
               category: "Gifting" as unknown as Product["category"],
               origin: "Curated Estate Blend",
-              caffeine: "Varied" as unknown as Product["caffeine"],
               weight: "Gift Box",
               price: Number(hamperItem.price) || 0,
               oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
@@ -242,6 +239,9 @@ export default function ProductDetail() {
       currentPrice,
       currentOldPrice
     );
+    if (wishlisted) {
+      removeFromWishlist(product.id);
+    }
     setAddingToCart(false);
     setAddedToCart(true);
 
@@ -257,6 +257,9 @@ export default function ProductDetail() {
       currentPrice,
       currentOldPrice
     );
+    if (wishlisted) {
+      removeFromWishlist(product.id);
+    }
     navigate("/checkout");
   };
 
@@ -289,24 +292,58 @@ export default function ProductDetail() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (!product?.id) return;
-    const targetIdStr = String(product.id);
+    if (!product) return;
+
+    const isMatch = (r: any) => {
+      if (!product) return false;
+      const targetId = String(product.id || "").trim().toLowerCase();
+      const targetSlug = getProductSlug(product).trim().toLowerCase();
+      const targetName = (product.name || "").trim().toLowerCase();
+
+      // Check all identifier candidates across existing documents
+      const rProdId = String(r.productId ?? r.product_id ?? "").trim().toLowerCase();
+      const rSlug = String(r.slug ?? r.productSlug ?? r.product_slug ?? "").trim().toLowerCase();
+      const rProdName = String(r.productName ?? r.product_name ?? r.title ?? "").trim().toLowerCase();
+
+      const matchesId = Boolean(targetId && rProdId === targetId);
+      const matchesSlug = Boolean(
+        (targetSlug && rSlug === targetSlug) ||
+        (targetSlug && rProdId === targetSlug)
+      );
+      const matchesName = Boolean(
+        (targetName && rProdName === targetName) ||
+        (targetName && rProdId === targetName)
+      );
+
+      const status = typeof r.status === "string" ? r.status.trim().toLowerCase() : "";
+      const isNotHidden = status !== "hidden" && status !== "rejected";
+
+      return (matchesId || matchesSlug || matchesName) && isNotHidden;
+    };
+
+    const mapReview = (d: any, fallbackId: string): CustomerReview => {
+      const rawRating = Number(d.rating);
+      const safeRating = !isNaN(rawRating) && rawRating >= 1 && rawRating <= 5 ? Math.round(rawRating) : 5;
+      const resolvedDate = d.createdAt || (d.timestamp?.toDate ? d.timestamp.toDate().toISOString() : new Date().toISOString());
+
+      return {
+        id: d.id || fallbackId,
+        customerName: d.customerName || d.author || d.userName || d.name || "Verified Patron",
+        customerEmail: d.customerEmail || d.email || "",
+        rating: safeRating,
+        feedback: d.feedback || d.comment || d.review || d.text || "",
+        createdAt: resolvedDate,
+        status: d.status || "Approved",
+      };
+    };
 
     // 1. Initial load from localStorage so customer reviews are immediately visible
     try {
       const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
       if (Array.isArray(stored)) {
         const localMatched: CustomerReview[] = stored
-          .filter((r: any) => String(r.productId) === targetIdStr && r.status !== "Hidden")
-          .map((r: any) => ({
-            id: r.id || `local-${Date.now()}`,
-            customerName: r.customerName || "Verified Patron",
-            customerEmail: r.customerEmail || "",
-            rating: typeof r.rating === "number" ? r.rating : 5,
-            feedback: r.feedback || "",
-            createdAt: r.createdAt || new Date().toISOString(),
-            status: r.status || "Approved",
-          }));
+          .filter(isMatch)
+          .map((r: any, idx: number) => mapReview(r, `local-${idx}-${Date.now()}`));
         if (localMatched.length > 0) {
           setReviews(localMatched);
         }
@@ -323,36 +360,22 @@ export default function ProductDetail() {
         const fetched: CustomerReview[] = [];
         snapshot.forEach((docSnap) => {
           const d = docSnap.data();
-          if (String(d.productId) === targetIdStr && d.status !== "Hidden") {
-            fetched.push({
-              id: docSnap.id,
-              customerName: d.customerName || "Verified Patron",
-              customerEmail: d.customerEmail || "",
-              rating: typeof d.rating === "number" ? d.rating : 5,
-              feedback: d.feedback || "",
-              createdAt: d.createdAt || new Date().toISOString(),
-              status: d.status || "Approved",
-            });
+          if (isMatch(d)) {
+            fetched.push(mapReview(d, docSnap.id));
           }
         });
 
-        // Merge with local reviews
+        // Merge with local reviews for zero-data-loss resiliency
         try {
           const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
           const firestoreIds = new Set(fetched.map((f) => f.id));
-          stored.forEach((r: any) => {
-            if (String(r.productId) === targetIdStr && r.status !== "Hidden" && !firestoreIds.has(r.id)) {
-              fetched.push({
-                id: r.id,
-                customerName: r.customerName || "Verified Patron",
-                customerEmail: r.customerEmail || "",
-                rating: typeof r.rating === "number" ? r.rating : 5,
-                feedback: r.feedback || "",
-                createdAt: r.createdAt || new Date().toISOString(),
-                status: r.status || "Approved",
-              });
-            }
-          });
+          if (Array.isArray(stored)) {
+            stored.forEach((r: any, idx: number) => {
+              if (isMatch(r) && !firestoreIds.has(r.id)) {
+                fetched.push(mapReview(r, `local-${idx}-${Date.now()}`));
+              }
+            });
+          }
         } catch {
           // ignore
         }
@@ -365,16 +388,15 @@ export default function ProductDetail() {
       }
     );
     return () => unsubscribe();
-  }, [product?.id]);
+  }, [product?.id, product?.name]);
 
-  const baseRating = product?.rating ?? 4.9;
-  const baseCount = product?.reviewCount ?? 128;
-  const totalReviewCount = baseCount + reviews.length;
   const avgRating = useMemo(() => {
-    if (reviews.length === 0) return baseRating.toFixed(1);
-    const sum = baseRating * baseCount + reviews.reduce((acc, r) => acc + r.rating, 0);
-    return (sum / totalReviewCount).toFixed(1);
-  }, [baseRating, baseCount, reviews, totalReviewCount]);
+    if (reviews.length === 0) return (product?.rating ?? 4.9).toFixed(1);
+    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+    return (sum / reviews.length).toFixed(1);
+  }, [product?.rating, reviews]);
+
+  const totalReviewCount = reviews.length > 0 ? reviews.length : (product?.reviewCount ?? 0);
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -413,17 +435,36 @@ export default function ProductDetail() {
     // Optimistically update view
     setReviews((prev) => [reviewPayload, ...prev.filter((p) => p.id !== newRevId)]);
 
-    // Write to Firestore
+    // Write to Firestore with document ID matching reviewPayload.id
     try {
-      await addDoc(collection(db, "reviews"), {
+      await setDoc(doc(db, "reviews", newRevId), {
         ...reviewPayload,
         timestamp: serverTimestamp(),
       });
       setReviewSuccessMsg("Thank you! Your tasting review has been published.");
     } catch (err) {
-      console.warn("Firestore write pending rules deployment; review saved locally:", err);
-      setReviewSuccessMsg("Thank you! Your tasting review has been recorded.");
+      try {
+        await addDoc(collection(db, "reviews"), {
+          ...reviewPayload,
+          timestamp: serverTimestamp(),
+        });
+        setReviewSuccessMsg("Thank you! Your tasting review has been published.");
+      } catch (innerErr) {
+        console.warn("Firestore write pending rules deployment; review saved locally:", innerErr);
+        setReviewSuccessMsg("Thank you! Your tasting review has been recorded.");
+      }
     } finally {
+      // Broadcast new review to other active tabs (Admin Dashboard, etc.)
+      try {
+        if (typeof BroadcastChannel !== "undefined") {
+          const channel = new BroadcastChannel("leafly_reviews_sync");
+          channel.postMessage({ type: "NEW_REVIEW", review: reviewPayload });
+          channel.close();
+        }
+      } catch {
+        // ignore
+      }
+
       setReviewFeedback("");
       setIsWritingReview(false);
       setReviewSubmitting(false);
@@ -432,8 +473,8 @@ export default function ProductDetail() {
 
   /* --- render ---------------------------------------------- */
 
-  const isTeaware = Boolean(teawareItem) || product.category === "teaware" || (product.category as string) === "Teaware";
-  const isHamper = Boolean(hamperItem) || product.category === "gifting" || (product.category as string) === "Gifting";
+  const isTeaware = isTeawareRoute || Boolean(teawareItem) || product.category === "teaware" || (product.category as string) === "Teaware";
+  const isHamper = isGiftingRoute || Boolean(hamperItem) || product.category === "gifting" || (product.category as string) === "Gifting";
   const canonicalPath = isTeaware
     ? `/teaware/${getProductSlug(product)}`
     : isHamper
@@ -708,8 +749,8 @@ export default function ProductDetail() {
                   <strong>{currentWeight}</strong>
                 </div>
                 <div className="pdp-spec">
-                  <span>CAFFEINE</span>
-                  <strong>{product.caffeine}</strong>
+                  <span>LEAF STYLE</span>
+                  <strong>Whole Leaf Orthodox</strong>
                 </div>
                 <div className="pdp-spec">
                   <span>STATUS</span>
@@ -732,14 +773,19 @@ export default function ProductDetail() {
           {/* PRICE */}
           <div className="pdp-price-row">
             <span className="pdp-price">
-              ₹{currentPrice.toLocaleString("en-IN")}
+              ₹{(currentPrice * quantity).toLocaleString("en-IN")}
             </span>
             {currentOldPrice && currentOldPrice > currentPrice && (
               <del className="pdp-old-price">
-                ₹{currentOldPrice.toLocaleString("en-IN")}
+                ₹{(currentOldPrice * quantity).toLocaleString("en-IN")}
               </del>
             )}
             {savings && <span className="pdp-savings">{savings}% OFF</span>}
+            {quantity > 1 && (
+              <span className="pdp-unit-price-hint" style={{ fontSize: "12px", color: "rgba(11,43,30,0.6)", marginLeft: "6px" }}>
+                (₹{currentPrice.toLocaleString("en-IN")} × {quantity})
+              </span>
+            )}
           </div>
 
           {/* QUANTITY COUNTER */}
@@ -773,51 +819,53 @@ export default function ProductDetail() {
             {isDeactivated ? (
               <button
                 type="button"
-                className="pdp-cart-button disabled"
+                className="pdp-cart-button disabled pdp-coming-soon-btn"
                 disabled={true}
                 aria-label={`${product.name} is coming soon`}
-                style={{ opacity: 0.85, cursor: "not-allowed" }}
+                style={{ opacity: 0.9, cursor: "not-allowed", flex: "1 1 auto", background: "rgba(201, 162, 75, 0.15)", border: "1.5px solid rgba(201, 162, 75, 0.4)", color: "#87621c", fontWeight: 800, letterSpacing: "1px" }}
               >
                 COMING SOON ✦
               </button>
             ) : (
-              <button
-                type="button"
-                className={`pdp-cart-button ${addedToCart ? "added" : ""} ${!inStock ? "disabled out-of-stock" : ""}`}
-                disabled={addingToCart || !inStock}
-                onClick={handleAddToCart}
-                aria-label={
-                  !inStock
-                    ? `${product.name} is out of stock`
-                    : addedToCart
-                    ? "Added to cart"
-                    : `Add ${quantity} of ${product.name} to cart`
-                }
-              >
-                {!inStock ? (
-                  "OUT OF STOCK"
-                ) : addingToCart ? (
-                  <>
-                    <span className="pdp-cart-spinner" aria-hidden="true" />
-                    ADDING...
-                  </>
-                ) : addedToCart ? (
-                  <>ADDED ✓</>
-                ) : (
-                  <>ADD TO CART 🛒</>
-                )}
-              </button>
-            )}
+              <>
+                <button
+                  type="button"
+                  className={`pdp-cart-button ${addedToCart ? "added" : ""} ${!inStock ? "disabled out-of-stock" : ""}`}
+                  disabled={addingToCart || !inStock}
+                  onClick={handleAddToCart}
+                  aria-label={
+                    !inStock
+                      ? `${product.name} is out of stock`
+                      : addedToCart
+                      ? "Added to cart"
+                      : `Add ${quantity} of ${product.name} to cart`
+                  }
+                >
+                  {!inStock ? (
+                    "OUT OF STOCK"
+                  ) : addingToCart ? (
+                    <>
+                      <span className="pdp-cart-spinner" aria-hidden="true" />
+                      ADDING...
+                    </>
+                  ) : addedToCart ? (
+                    <>ADDED ✓</>
+                  ) : (
+                    <>ADD TO CART 🛒</>
+                  )}
+                </button>
 
-            <button
-              type="button"
-              className={`pdp-buy-now-button ${!inStock || isDeactivated ? "disabled" : ""}`}
-              disabled={!inStock || isDeactivated}
-              onClick={handleBuyNow}
-              aria-label={isDeactivated ? `${product.name} is coming soon` : !inStock ? `${product.name} is unavailable` : `Buy ${product.name} now`}
-            >
-              {isDeactivated ? "COMING SOON" : !inStock ? "UNAVAILABLE" : "BUY NOW ❧"}
-            </button>
+                <button
+                  type="button"
+                  className={`pdp-buy-now-button ${!inStock ? "disabled" : ""}`}
+                  disabled={!inStock}
+                  onClick={handleBuyNow}
+                  aria-label={!inStock ? `${product.name} is unavailable` : `Buy ${product.name} now`}
+                >
+                  {!inStock ? "UNAVAILABLE" : "BUY NOW ❧"}
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -830,7 +878,19 @@ export default function ProductDetail() {
               }
               aria-pressed={wishlisted}
             >
-              {wishlisted ? "♥" : "♡"}
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill={wishlisted ? "#e53e3e" : "none"}
+                stroke={wishlisted ? "#e53e3e" : "#0b2b1e"}
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
             </button>
           </div>
         </div>
@@ -963,7 +1023,7 @@ export default function ProductDetail() {
                 <article key={rev.id} className="pdp-review-card">
                   <div className="pdp-review-top">
                     <div className="pdp-review-stars">
-                      {"★".repeat(rev.rating)}{"☆".repeat(5 - rev.rating)}
+                      {"★".repeat(Math.max(1, Math.min(5, Math.round(rev.rating || 5))))}{"☆".repeat(5 - Math.max(1, Math.min(5, Math.round(rev.rating || 5))))}
                     </div>
                     <time className="pdp-review-date" dateTime={rev.createdAt}>
                       {new Date(rev.createdAt).toLocaleDateString("en-IN", {

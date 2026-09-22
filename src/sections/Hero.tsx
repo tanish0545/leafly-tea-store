@@ -38,7 +38,6 @@ export default function Hero() {
       <video
         ref={videoRef}
         className="hero-background-video"
-        src="/leafly-hero.mp4"
         poster="/leafly-hero-poster.webp"
         autoPlay
         muted
@@ -47,7 +46,9 @@ export default function Hero() {
         preload="metadata"
         aria-hidden="true"
         aria-label="Leafly artisanal tea harvesting and mindful brewing ritual"
-      />
+      >
+        <source src="/leafly-hero.mp4" type="video/mp4" />
+      </video>
 
       {/* =====================================================
           CINEMATIC OVERLAYS

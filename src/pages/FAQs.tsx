@@ -214,6 +214,31 @@ export default function FAQs() {
               </button>
             )}
           </div>
+
+          {/* QUICK ASK A QUESTION / CONTACT CONCIERGE ACTION */}
+          <div className="faqs-ask-action-wrap" style={{ marginTop: "16px", display: "flex", justifyContent: "center" }}>
+            <Link
+              to="/contact"
+              className="faqs-ask-quick-btn"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 20px",
+                background: "rgba(11, 43, 30, 0.9)",
+                color: "#f5f0eb",
+                borderRadius: "30px",
+                fontSize: "12.5px",
+                fontWeight: "600",
+                letterSpacing: "0.04em",
+                textDecoration: "none",
+                border: "1px solid #c9a24b",
+                transition: "all 0.2s ease"
+              }}
+            >
+              <span>✦ Have a different question? Ask Us / Contact Concierge →</span>
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -243,15 +268,33 @@ export default function FAQs() {
             {filteredFaqs.length === 0 ? (
               <div className="faqs-empty">
                 <p>No questions found matching &ldquo;{searchQuery}&rdquo;.</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery("");
-                    setActiveCategory("All Questions");
-                  }}
-                >
-                  Reset all filters
-                </button>
+                <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap", marginTop: "12px" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setActiveCategory("All Questions");
+                    }}
+                  >
+                    Reset all filters
+                  </button>
+                  <Link
+                    to="/contact"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "8px 16px",
+                      background: "#0b2b1e",
+                      color: "#f5f0eb",
+                      borderRadius: "6px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      textDecoration: "none"
+                    }}
+                  >
+                    Ask a Question →
+                  </Link>
+                </div>
               </div>
             ) : (
               filteredFaqs.map((faq) => {

@@ -33,8 +33,6 @@ const TEA_TYPES = [
   { label: "Oolong Tea", value: "Oolong Tea" },
 ];
 
-const CAFFEINE_LEVELS = ["Low", "Medium", "High"];
-
 export default function Shop() {
   const navigate = useNavigate();
   const { products: allProducts } = useProducts();
@@ -49,7 +47,23 @@ export default function Shop() {
     decreaseQuantity,
     cartCount,
     openCart,
+    subtotal,
   } = useCart();
+
+  // Free Delivery Progress Calculation (Threshold: ₹500)
+  const FREE_DELIVERY_THRESHOLD = 500;
+  const remainingForFreeDelivery = Math.max(0, FREE_DELIVERY_THRESHOLD - subtotal);
+  const isFreeDeliveryUnlocked = subtotal >= FREE_DELIVERY_THRESHOLD;
+
+  const freeDeliveryText = useMemo(() => {
+    if (items.length === 0 || subtotal === 0) {
+      return "Shop for ₹500 to unlock FREE delivery";
+    }
+    if (remainingForFreeDelivery > 0) {
+      return `Add ₹${remainingForFreeDelivery} more to unlock FREE delivery`;
+    }
+    return "FREE delivery unlocked!";
+  }, [items.length, subtotal, remainingForFreeDelivery]);
 
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
 
@@ -73,7 +87,6 @@ export default function Shop() {
     return [];
   });
   const [selectedOrigins, setSelectedOrigins] = useState<string[]>([]);
-  const [selectedCaffeine, setSelectedCaffeine] = useState<string[]>([]);
   const [selectedWeights, setSelectedWeights] = useState<string[]>([]);
   const [selectedBenefits, setSelectedBenefits] = useState<string[]>([]);
   const [maxPrice, setMaxPrice] = useState<number>(1000);
@@ -87,7 +100,6 @@ export default function Shop() {
   const [openSections, setOpenSections] = useState({
     teaType: true,
     origin: true,
-    caffeine: true,
     price: true,
     weights: true,
     benefits: true,
@@ -177,12 +189,6 @@ export default function Shop() {
       originCounts[o] = teaOnlyProducts.filter((p) => p.origin === o).length;
     });
 
-    const caffeineCounts: Record<string, number> = {
-      Low: teaOnlyProducts.filter((p) => p.caffeine === "Low").length,
-      Medium: teaOnlyProducts.filter((p) => p.caffeine === "Medium").length,
-      High: teaOnlyProducts.filter((p) => p.caffeine === "High").length,
-    };
-
     const weightCounts: Record<string, number> = {};
     WEIGHT_OPTIONS.forEach((w) => {
       weightCounts[w] = teaOnlyProducts.filter((p) => {
@@ -199,7 +205,7 @@ export default function Shop() {
       }).length;
     });
 
-    return { teaTypeCounts, originCounts, caffeineCounts, weightCounts, benefitCounts };
+    return { teaTypeCounts, originCounts, weightCounts, benefitCounts };
   }, [teaOnlyProducts]);
 
   // Filtering products
@@ -215,7 +221,6 @@ export default function Shop() {
           item.name.toLowerCase().includes(q) ||
           item.category.toLowerCase().includes(q) ||
           item.origin.toLowerCase().includes(q) ||
-          Boolean(item.caffeine && item.caffeine.toLowerCase().includes(q)) ||
           (item.description && item.description.toLowerCase().includes(q)) ||
           benefits.some((b) => b.toLowerCase().includes(q))
         );
@@ -240,10 +245,6 @@ export default function Shop() {
       });
     }
 
-    // Caffeine
-    if (selectedCaffeine.length > 0) {
-      result = result.filter((item) => Boolean(item.caffeine && selectedCaffeine.includes(item.caffeine)));
-    }
 
     // Available weights
     if (selectedWeights.length > 0) {
@@ -289,7 +290,6 @@ export default function Shop() {
     searchQuery,
     selectedTeaTypes,
     selectedOrigins,
-    selectedCaffeine,
     selectedWeights,
     selectedBenefits,
     maxPrice,
@@ -335,7 +335,6 @@ export default function Shop() {
   const clearAllFilters = () => {
     setSelectedTeaTypes([]);
     setSelectedOrigins([]);
-    setSelectedCaffeine([]);
     setSelectedWeights([]);
     setSelectedBenefits([]);
     setMaxPrice(1500);
@@ -348,7 +347,6 @@ export default function Shop() {
   const activeFiltersCount =
     selectedTeaTypes.length +
     selectedOrigins.length +
-    selectedCaffeine.length +
     selectedWeights.length +
     selectedBenefits.length +
     (maxPrice < 1500 ? 1 : 0) +
@@ -374,10 +372,6 @@ export default function Shop() {
       setSelectedOrigins((prev) =>
         prev.includes(pill.value!) ? prev.filter((v) => v !== pill.value) : [...prev, pill.value!]
       );
-    } else if (pill.type === "caffeine" && pill.value) {
-      setSelectedCaffeine((prev) =>
-        prev.includes(pill.value!) ? prev.filter((v) => v !== pill.value) : [...prev, pill.value!]
-      );
     }
   };
 
@@ -386,7 +380,6 @@ export default function Shop() {
       return (
         selectedTeaTypes.length === 0 &&
         selectedOrigins.length === 0 &&
-        selectedCaffeine.length === 0 &&
         selectedWeights.length === 0 &&
         selectedBenefits.length === 0 &&
         maxPrice === 1500 &&
@@ -395,7 +388,6 @@ export default function Shop() {
     }
     if (pill.type === "teaType" && pill.value) return selectedTeaTypes.includes(pill.value);
     if (pill.type === "origin" && pill.value) return selectedOrigins.includes(pill.value);
-    if (pill.type === "caffeine" && pill.value) return selectedCaffeine.includes(pill.value);
     return false;
   };
 
@@ -480,42 +472,6 @@ export default function Shop() {
         )}
       </div>
 
-      {/* 3. Caffeine Level */}
-      <div className="filter-group">
-        <button
-          type="button"
-          className="filter-group-header"
-          onClick={() => toggleSection("caffeine")}
-          aria-expanded={openSections.caffeine}
-        >
-          <span>Caffeine Level</span>
-          <span className={`accordion-chevron ${openSections.caffeine ? "open" : ""}`}>▾</span>
-        </button>
-        {openSections.caffeine && (
-          <div className="filter-options-list">
-            {CAFFEINE_LEVELS.map((level) => {
-              const isChecked = selectedCaffeine.includes(level);
-              const count = counts.caffeineCounts[level] ?? 0;
-              return (
-                <label key={level} className="filter-checkbox-item">
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => {
-                      setSelectedCaffeine((prev) =>
-                        isChecked ? prev.filter((c) => c !== level) : [...prev, level]
-                      );
-                    }}
-                  />
-                  <span className="checkbox-custom" />
-                  <span className="filter-label-text">{level}</span>
-                  <span className="filter-count">({count})</span>
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </div>
 
       {/* 4. Price Range */}
       <div className="filter-group">
@@ -818,18 +774,6 @@ export default function Shop() {
                   </button>
                 ))}
 
-                {selectedCaffeine.map((caff) => (
-                  <button
-                    key={caff}
-                    type="button"
-                    className="active-filter-chip"
-                    onClick={() => setSelectedCaffeine((prev) => prev.filter((c) => c !== caff))}
-                  >
-                    <span>{caff} Caffeine</span>
-                    <span className="chip-remove">×</span>
-                  </button>
-                ))}
-
                 {selectedWeights.map((weight) => (
                   <button
                     key={weight}
@@ -1054,7 +998,7 @@ export default function Shop() {
 
                       {/* SPECIFICATION LINE */}
                       <p className="card-specs-line">
-                        {currentVariant} · {product.caffeine} Caffeine
+                        {currentVariant} · Whole Leaf Orthodox
                       </p>
 
                       {/* RATING ROW */}
@@ -1414,8 +1358,8 @@ export default function Shop() {
                         <strong>{activeModalVariant}</strong>
                       </div>
                       <div>
-                        <span>CAFFEINE</span>
-                        <strong>{selectedProduct.caffeine}</strong>
+                        <span>LEAF STYLE</span>
+                        <strong>Whole Leaf Orthodox</strong>
                       </div>
                     </div>
 
@@ -1450,20 +1394,34 @@ export default function Shop() {
       )}
 
       {/* =====================================================
-          7. FLOATING CART & BACK TO TOP
+          7. FLOATING FREE DELIVERY & FLOATING CART
           ===================================================== */}
-      {cartCount > 0 && (
-        <button
-          type="button"
-          className="floating-cart"
-          aria-label={`${cartCount} teas in cart`}
+      <div className="shop-floating-container" aria-live="polite">
+        <div
+          className={`floating-delivery-pill ${isFreeDeliveryUnlocked ? "unlocked" : ""}`}
           onClick={openCart}
+          role="status"
+          aria-label={freeDeliveryText}
+          title="Leafly Free Delivery Progress"
         >
-          <span className="floating-cart-icon">🛒</span>
-          <span>{cartCount} {cartCount === 1 ? "tea" : "teas"} in cart</span>
-          <span className="floating-cart-leaf" aria-hidden="true">❧</span>
-        </button>
-      )}
+          <span className="delivery-icon" aria-hidden="true">🚚</span>
+          <span className="delivery-text">{freeDeliveryText}</span>
+          {isFreeDeliveryUnlocked && <span className="delivery-check" aria-hidden="true">✓</span>}
+        </div>
+
+        {cartCount > 0 && (
+          <button
+            type="button"
+            className="floating-cart"
+            aria-label={`${cartCount} teas in cart`}
+            onClick={openCart}
+          >
+            <span className="floating-cart-icon">🛒</span>
+            <span>{cartCount} {cartCount === 1 ? "tea" : "teas"} in cart</span>
+            <span className="floating-cart-leaf" aria-hidden="true">❧</span>
+          </button>
+        )}
+      </div>
 
       {showBackToTop && (
         <button
