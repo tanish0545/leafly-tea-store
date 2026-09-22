@@ -98,15 +98,22 @@ export default async function handler(
     const orderData = await orderResp.json().catch(() => ({}));
 
     if (!orderResp.ok) {
+      const verifyErrMsg = typeof orderData?.message === "string"
+        ? orderData.message
+        : orderData?.message
+          ? JSON.stringify(orderData.message)
+          : orderResp.status === 404
+            ? "Order not found on Cashfree. Please check your order history."
+            : "Unable to verify payment status. Please check your order history or contact support.";
       console.error(
         `[Cashfree Verify Error] Order #${orderId} lookup failed:`,
-        orderData?.message || orderResp.statusText
+        verifyErrMsg
       );
       res.statusCode = orderResp.status === 404 ? 404 : 502;
       res.setHeader("Content-Type", "application/json");
       res.end(
         JSON.stringify({
-          error: orderData?.message || "Order not found on Cashfree.",
+          error: verifyErrMsg,
           verified: false,
         })
       );

@@ -748,10 +748,7 @@ export default function ProductDetail() {
                   <span>WEIGHT</span>
                   <strong>{currentWeight}</strong>
                 </div>
-                <div className="pdp-spec">
-                  <span>LEAF STYLE</span>
-                  <strong>Whole Leaf Orthodox</strong>
-                </div>
+
                 <div className="pdp-spec">
                   <span>STATUS</span>
                   <strong style={{ color: isDeactivated ? "#b98428" : inStock ? "#1e824c" : "#b98428" }}>

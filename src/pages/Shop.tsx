@@ -998,7 +998,7 @@ export default function Shop() {
 
                       {/* SPECIFICATION LINE */}
                       <p className="card-specs-line">
-                        {currentVariant} · Whole Leaf Orthodox
+                        {currentVariant}
                       </p>
 
                       {/* RATING ROW */}
@@ -1357,10 +1357,7 @@ export default function Shop() {
                         <span>WEIGHT</span>
                         <strong>{activeModalVariant}</strong>
                       </div>
-                      <div>
-                        <span>LEAF STYLE</span>
-                        <strong>Whole Leaf Orthodox</strong>
-                      </div>
+
                     </div>
 
                     <div className="product-detail-price">

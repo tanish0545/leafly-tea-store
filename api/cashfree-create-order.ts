@@ -207,17 +207,22 @@ export default async function handler(
     const cfData = await cfResponse.json().catch(() => ({}));
 
     if (!cfResponse.ok) {
+      const cfErrMsg = typeof cfData?.message === "string"
+        ? cfData.message
+        : cfData?.message
+          ? JSON.stringify(cfData.message)
+          : cfData?.sub_code
+            ? `Payment error (${cfData.sub_code}). Please try again or choose Pay on Delivery.`
+            : cfResponse.statusText || "Unable to initialize secure payment session. Please try again or choose Pay on Delivery.";
       console.error(
         `[Cashfree Error] Failed to create order #${orderId}:`,
-        cfData?.message || cfResponse.statusText
+        cfErrMsg
       );
       res.statusCode = cfResponse.status >= 400 && cfResponse.status < 500 ? 400 : 502;
       res.setHeader("Content-Type", "application/json");
       res.end(
         JSON.stringify({
-          error:
-            cfData?.message ||
-            "Unable to initialize secure payment session. Please try again or choose Pay on Delivery.",
+          error: cfErrMsg,
         })
       );
       return;
