@@ -279,7 +279,7 @@
 
 .shop-main-layout {
   width: 100%;
-  padding: 28px 0 60px;
+  padding: 28px 0 32px;
 }
 
 .shop-main-container {
@@ -1167,7 +1167,7 @@
   border-top: 1px solid #e2d7c5;
   border-bottom: 1px solid #e2d7c5;
   padding: 28px 32px;
-  margin-top: 40px;
+  margin-top: 24px;
 }
 
 .shop-trust-container {

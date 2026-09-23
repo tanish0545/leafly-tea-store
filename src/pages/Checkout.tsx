@@ -130,7 +130,13 @@ export default function Checkout() {
     }
   }, [currentUser, firebaseUser, email, phone]);
 
-  const [paymentMethod, setPaymentMethod] = useState<"cashfree" | "cod">("cashfree");
+  // ────────────────────────────────────────────────────────
+  // FEATURE FLAG: Set to true to re-enable Cashfree online payment.
+  // Cashfree backend files and env vars remain intact — only the UI is disabled.
+  // ────────────────────────────────────────────────────────
+  const ONLINE_PAYMENT_ENABLED = false;
+
+  const [paymentMethod, setPaymentMethod] = useState<"cashfree" | "cod">("cod");
   const [paymentLoadingText, setPaymentLoadingText] = useState("");
   const [saveAddress, setSaveAddress] = useState(true);
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
@@ -940,6 +946,18 @@ export default function Checkout() {
       return;
     }
 
+    // Safety guard: online payment is currently disabled
+    if (paymentMethod === "cashfree" || !ONLINE_PAYMENT_ENABLED) {
+      if (paymentMethod === "cashfree") {
+        setErrors((prev) => ({
+          ...prev,
+          payment: "Online payment is currently unavailable. Please select Pay on Delivery.",
+        }));
+        setIsProcessing(false);
+        return;
+      }
+    }
+
     const orderId = generateOrderId();
 
     // ==========================================
@@ -1421,36 +1439,58 @@ export default function Checkout() {
             </div>
 
             <div className="checkout-option-list payment-options" role="radiogroup" aria-label="Payment Method Selection">
-              {/* 1. Cashfree Online Payment (Cards, UPI, NetBanking) - Active & Selectable */}
-              <label className={`checkout-option ${paymentMethod === "cashfree" ? "selected" : ""}`}>
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="cashfree"
-                  checked={paymentMethod === "cashfree"}
-                  onChange={() => {
-                    setPaymentMethod("cashfree");
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.payment;
-                      return next;
-                    });
-                  }}
-                  aria-label="Cashfree Online Payment (Cards, UPI, NetBanking)"
-                />
-                <div className="checkout-option-content">
-                  <div className="checkout-option-header-row">
-                    <strong className="checkout-option-title">ONLINE PAYMENT (UPI, Cards, NetBanking)</strong>
-                    <span className="payment-secure-badge">SECURE · INSTANT</span>
+              {/* 1. Online Payment — TEMPORARILY DISABLED (COMING SOON) */}
+              {ONLINE_PAYMENT_ENABLED ? (
+                /* Active selectable Cashfree card — only shown when flag is true */
+                <label className={`checkout-option ${paymentMethod === "cashfree" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="cashfree"
+                    checked={paymentMethod === "cashfree"}
+                    onChange={() => {
+                      setPaymentMethod("cashfree");
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.payment;
+                        return next;
+                      });
+                    }}
+                    aria-label="Cashfree Online Payment (Cards, UPI, NetBanking)"
+                  />
+                  <div className="checkout-option-content">
+                    <div className="checkout-option-header-row">
+                      <strong className="checkout-option-title">ONLINE PAYMENT (UPI, Cards, NetBanking)</strong>
+                      <span className="payment-secure-badge">SECURE · INSTANT</span>
+                    </div>
+                    <p className="checkout-option-desc">
+                      Pay securely via UPI (Google Pay, PhonePe, Paytm, BHIM, Amazon Pay), Enter UPI ID (yourname@upi), Cards, or NetBanking.
+                    </p>
+                    <CashfreePaymentLogos />
                   </div>
-                  <p className="checkout-option-desc">
-                    Pay securely via UPI (Google Pay, PhonePe, Paytm, BHIM, Amazon Pay), Enter UPI ID (yourname@upi), Cards, or NetBanking.
-                  </p>
-                  <CashfreePaymentLogos />
+                </label>
+              ) : (
+                /* Disabled card — COMING SOON */
+                <div
+                  className="checkout-option checkout-option-disabled"
+                  aria-disabled="true"
+                  role="presentation"
+                  title="Online payment is coming soon"
+                >
+                  <div className="checkout-option-content">
+                    <div className="checkout-option-header-row">
+                      <strong className="checkout-option-title checkout-option-title-muted">ONLINE PAYMENT (UPI, Cards, NetBanking)</strong>
+                      <span className="checkout-coming-soon-badge">COMING SOON</span>
+                    </div>
+                    <p className="checkout-unavailable-note">
+                      Online payment is temporarily unavailable. Please use Pay on Delivery (Cash / UPI).
+                    </p>
+                    <CashfreePaymentLogos />
+                  </div>
                 </div>
-              </label>
+              )}
 
-              {paymentMethod === "cashfree" && (
+              {paymentMethod === "cashfree" && ONLINE_PAYMENT_ENABLED && (
                 <div className="checkout-online-message">
                   <div className="checkout-online-badge-row">
                     <span>🔒 <strong>100% Encrypted & Instant Checkout</strong> powered by Cashfree Payments</span>

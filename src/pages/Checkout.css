@@ -409,7 +409,8 @@ select.leafly-auth-select[aria-invalid="true"] {
   opacity: 0.35;
 }
 
-.payment-coming-soon-badge {
+.payment-coming-soon-badge,
+.checkout-coming-soon-badge {
   font-family: Inter, Arial, sans-serif;
   font-size: 10px;
   font-weight: 800;
@@ -428,6 +429,18 @@ select.leafly-auth-select[aria-invalid="true"] {
   width: auto !important;
   max-width: fit-content !important;
   box-sizing: border-box;
+}
+
+.checkout-unavailable-note {
+  margin: 4px 0 8px;
+  font-size: 12.5px;
+  color: #7a8e82;
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.checkout-option-title-muted {
+  color: #8a9990;
 }
 
 .payment-secure-badge {

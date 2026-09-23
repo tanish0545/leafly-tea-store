@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useOrderContext } from "../context/OrderContext";
 import { useCart } from "../context/CartContext";
@@ -58,13 +58,18 @@ export default function OrderSuccess() {
 
   const order = latestOrder || persistedOrder;
 
-  // Clear cart cleanly once confirmed — ensures Checkout never rendered empty-cart flash
+  // One-shot cart clear for COD orders.
+  // Uses a ref flag so this fires EXACTLY ONCE on mount, regardless of clearCart identity.
+  // Do NOT put clearCart in the dependency array — that was the root cause of the
+  // infinite re-render loop that made navigation buttons appear frozen.
+  const cartClearedRef = useRef(false);
   useEffect(() => {
-    // If arriving from Cashfree redirect URL, cart is cleared in verifyAndLoadOrder upon verified status
-    if (!urlOrderId) {
+    if (!urlOrderId && !cartClearedRef.current) {
+      cartClearedRef.current = true;
       clearCart();
     }
-  }, [urlOrderId, clearCart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionally empty — run once on mount only
 
   // Synchronize latestOrder into sessionStorage
   useEffect(() => {

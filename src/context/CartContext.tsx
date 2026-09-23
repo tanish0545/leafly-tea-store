@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -488,9 +489,9 @@ export function CartProvider({
     );
   };
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setRawItems([]);
-  };
+  }, []); // Stable reference — MUST NOT depend on state to avoid infinite loops in consumers
 
   const openCart = () => {
     setIsCartOpen(true);
