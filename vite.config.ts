@@ -30,6 +30,14 @@ function apiDevMiddleware() {
             const mod = await server.ssrLoadModule('./api/order-notification.ts');
             return await mod.default(req, res);
           }
+          if (urlPath === '/api/order-status-notification') {
+            const mod = await server.ssrLoadModule('./api/order-status-notification.ts');
+            return await mod.default(req, res);
+          }
+          if (urlPath === '/api/test-email') {
+            const mod = await server.ssrLoadModule('./api/test-email.ts');
+            return await mod.default(req, res);
+          }
           if (urlPath === '/api/welcome') {
             const mod = await server.ssrLoadModule('./api/welcome.ts');
             return await mod.default(req, res);
@@ -67,6 +75,17 @@ export default defineConfig(({ mode }) => {
     'GMAIL_USER',
     'GMAIL_APP_PASSWORD',
     'ADMIN_EMAIL',
+    'ADMIN_NOTIFICATION_EMAIL',
+    'ADMIN_SECRET',
+    'ADMIN_KEY',
+    'EMAIL_FROM',
+    'EMAIL_USER',
+    'EMAIL_PASSWORD',
+    'SMTP_HOST',
+    'SMTP_PORT',
+    'SMTP_USER',
+    'SMTP_PASS',
+    'SMTP_PASSWORD',
     'CASHFREE_CLIENT_ID',
     'CASHFREE_CLIENT_SECRET',
     'CASHFREE_ENV',
@@ -85,7 +104,7 @@ export default defineConfig(({ mode }) => {
     'GOOGLE_APPLICATION_CREDENTIALS',
   ];
   for (const key of serverEnvKeys) {
-    if (env[key] && !process.env[key]) {
+    if (env[key]) {
       process.env[key] = env[key];
     }
   }

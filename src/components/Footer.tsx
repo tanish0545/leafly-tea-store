@@ -231,7 +231,7 @@ export default function Footer() {
             </a>
 
             <a
-              href="mailto:leaflydatabase@gmail.com"
+              href="mailto:myleaflytea@gmail.com"
               className="leafly-footer-social-link"
               aria-label="Email Leafly"
             >
@@ -239,8 +239,15 @@ export default function Footer() {
                 <rect x="3" y="5" width="18" height="14" rx="2" />
                 <path d="m4 7 8 6 8-6" />
               </svg>
-              <span>leaflydatabase@gmail.com</span>
+              <span>myleaflytea@gmail.com</span>
             </a>
+
+            <div className="leafly-footer-address">
+              <strong className="leafly-footer-address-name">Leafly</strong>
+              <p>Near Balaji Symphony,</p>
+              <p>Panvel - 410206,</p>
+              <p>Maharashtra, India</p>
+            </div>
 
             <p className="leafly-footer-origin">
               <span>◇</span>

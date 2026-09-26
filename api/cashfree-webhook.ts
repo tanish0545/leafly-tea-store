@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import crypto from "crypto";
 import { updateServerOrder, getServerOrder } from "./lib/firebaseAdmin";
-import { sendMail, getAdminEmail } from "./lib/mailer";
+import { sendAdminOrderNotification, sendOrderConfirmation, DEFAULT_CUSTOMER_SUPPORT_EMAIL } from "./lib/mailer";
 import {
   getOrderConfirmationCustomerEmail,
   getOrderAdminNotificationEmail,
@@ -199,22 +199,20 @@ export default async function handler(
         createdAt: String(existingOrder?.createdAt || new Date().toISOString()),
       };
 
-      const adminMail = getOrderAdminNotificationEmail(emailPayload);
       const emailPromises: Promise<unknown>[] = [
-        sendMail({
-          to: getAdminEmail(),
-          subject: adminMail.subject,
-          html: adminMail.html,
-        }),
+        sendAdminOrderNotification(emailPayload),
       ];
 
       if (customerEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
-        const customerMail = getOrderConfirmationCustomerEmail(emailPayload);
         emailPromises.push(
-          sendMail({
-            to: customerEmail,
-            subject: customerMail.subject,
-            html: customerMail.html,
+          sendOrderConfirmation(emailPayload).then(async (res) => {
+            if (res.delivered || res.success) {
+              const now = new Date().toISOString();
+              await updateServerOrder(orderId, {
+                confirmationEmailSentAt: now,
+                paymentEmailSentAt: now,
+              });
+            }
           })
         );
       }

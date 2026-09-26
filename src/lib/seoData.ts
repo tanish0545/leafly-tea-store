@@ -6,7 +6,7 @@ export const SITE_URL = (
   "https://leaflytea.in"
 );
 
-export const DEFAULT_OG_IMAGE = `${SITE_URL}/leafly-logo.webp`;
+export const DEFAULT_OG_IMAGE = `${SITE_URL}/leafly-site-icon.png`;
 
 export function getFullUrl(path: string): string {
   if (path.startsWith("http://") || path.startsWith("https://")) {
@@ -25,12 +25,20 @@ export function generateOrganizationSchema() {
     "@type": "Organization",
     "name": "Leafly",
     "url": SITE_URL,
-    "logo": `${SITE_URL}/leafly-logo.png`,
+    "logo": `${SITE_URL}/leafly-site-icon.png`,
+    "image": `${SITE_URL}/leafly-site-icon.png`,
     "description": "Curator of single-origin Indian teas, whole leaf Darjeeling harvests, artisan teaware, and mindful brewing rituals.",
-    "email": "leaflydatabase@gmail.com",
+    "email": "myleaflytea@gmail.com",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "Near Balaji Symphony",
+      "addressLocality": "Panvel",
+      "postalCode": "410206",
+      "addressRegion": "Maharashtra",
+      "addressCountry": "IN"
+    },
     "sameAs": [
-      "https://www.instagram.com/leafly.greentea?igsi=MWI2dG5qenQyYjUxZA==",
-      "https://facebook.com"
+      "https://www.instagram.com/leafly.greentea?igsi=MWI2dG5qenQyYjUxZA=="
     ]
   };
 }
@@ -225,7 +233,9 @@ export function generateArticleSchema(article: {
       "name": "Leafly",
       "logo": {
         "@type": "ImageObject",
-        "url": `${SITE_URL}/leafly-logo.png`
+        "url": `${SITE_URL}/leafly-site-icon.png`,
+        "width": 512,
+        "height": 512
       }
     },
     "mainEntityOfPage": {

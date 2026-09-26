@@ -1,10 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { sendMail, getAdminEmail } from "./lib/mailer";
-import {
-  getGiftingConfirmationEmail,
-  getGiftingAdminNotification,
-  type GiftingEmailData,
-} from "../src/lib/emailTemplates";
+import { sendGiftInquiry } from "./lib/mailer";
+import type { GiftingEmailData } from "../src/lib/emailTemplates";
 
 const recentGiftingSubmissions = new Map<string, number>();
 
@@ -73,6 +69,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       res.end(
         JSON.stringify({
           success: true,
+          delivered: true,
           message: "We have already received your gifting request. Thank you!",
           alreadyReceived: true,
         })
@@ -92,34 +89,40 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       referenceId,
     };
 
-    // 1. Customer Confirmation Email
-    const customerMail = getGiftingConfirmationEmail(giftingData);
+    // Centralized Gifting Dispatch (Customer Confirmation + Concierge Alert)
+    const inquiryResult = await sendGiftInquiry(giftingData);
 
-    // 2. Company Admin Notification Email
-    const adminEmail = getAdminEmail();
-    const adminMail = getGiftingAdminNotification(giftingData);
-
-    await Promise.allSettled([
-      sendMail({
-        to: email,
-        subject: customerMail.subject,
-        html: customerMail.html,
-      }),
-      sendMail({
-        to: adminEmail,
-        subject: adminMail.subject,
-        html: adminMail.html,
-        replyTo: email,
-      }),
-    ]);
+    if (!inquiryResult.adminResult.delivered && !inquiryResult.customerResult.delivered) {
+      const errorMsg =
+        inquiryResult.adminResult.error ||
+        inquiryResult.customerResult.error ||
+        "Email delivery failed. SMTP provider did not accept message.";
+      res.statusCode = 502;
+      res.setHeader("Content-Type", "application/json");
+      res.end(
+        JSON.stringify({
+          success: false,
+          delivered: false,
+          referenceId,
+          error: errorMsg,
+          adminAccepted: false,
+          customerAccepted: false,
+        })
+      );
+      return;
+    }
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
     res.end(
       JSON.stringify({
         success: true,
+        delivered: true,
         referenceId,
         message: "Your bespoke gifting inquiry has been received. Check your email for confirmation.",
+        adminAccepted: inquiryResult.adminResult.delivered,
+        customerAccepted: inquiryResult.customerResult.delivered,
+        messageId: inquiryResult.adminResult.messageId || inquiryResult.customerResult.messageId,
       })
     );
   } catch (error) {
@@ -128,6 +131,8 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
     res.setHeader("Content-Type", "application/json");
     res.end(
       JSON.stringify({
+        success: false,
+        delivered: false,
         error: "We couldn't submit your gifting request right now. Please try again in a moment.",
       })
     );

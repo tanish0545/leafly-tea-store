@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useOrderContext, type Order } from "../context/OrderContext";
 import { useAuth } from "../context/AuthContext";
+import logo from "../assets/leafly-logo.webp";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import "./Orders.css";
@@ -151,11 +152,13 @@ export default function Orders() {
 
   useEffect(() => {
     if (selectedInvoiceOrder) {
+      document.body.classList.add("invoice-open");
       const prevBodyOverflow = document.body.style.overflow;
       const prevHtmlOverflow = document.documentElement.style.overflow;
       document.body.style.overflow = "hidden";
       document.documentElement.style.overflow = "hidden";
       return () => {
+        document.body.classList.remove("invoice-open");
         document.body.style.overflow = prevBodyOverflow;
         document.documentElement.style.overflow = prevHtmlOverflow;
       };
@@ -418,8 +421,13 @@ export default function Orders() {
             <div className="invoice-sheet" id="printable-invoice">
               <header className="invoice-header">
                 <div className="invoice-brand-col">
-                  <h2 className="invoice-brand-name">LEAFLY</h2>
-                  <p className="invoice-brand-sub">TEA SANCTUARY & BOTANICALS</p>
+                  <div className="invoice-logo-row">
+                    <img src={logo} alt="Leafly" className="invoice-logo-img" />
+                    <div>
+                      <h2 className="invoice-brand-name">LEAFLY</h2>
+                      <p className="invoice-brand-sub">TEA SANCTUARY & BOTANICALS</p>
+                    </div>
+                  </div>
                 </div>
                 <div className="invoice-meta-top">
                   <h3>TAX INVOICE / RECEIPT</h3>
@@ -437,36 +445,11 @@ export default function Orders() {
               <div className="invoice-parties-grid">
                 <div className="invoice-party-col">
                   <h4>SOLD BY:</h4>
-                  <strong>Leafly Sanctuary Private Limited</strong>
-                  <p>Heritage Tea Estate, High Range Sanctuary</p>
-                  <p>Darjeeling Estates, India</p>
-                  <p>GSTIN: 29AAACL1234F1Z5</p>
-                  <p>support@leafly.in · www.leafly.in</p>
-                </div>
-
-                <div className="invoice-party-col">
-                  <h4>BILLED & SHIPPED TO:</h4>
-                  <strong>
-                    {selectedInvoiceOrder.customerName ||
-                      selectedInvoiceOrder.shippingAddress?.fullName ||
-                      "Valued Customer"}
-                  </strong>
-                  <p>{selectedInvoiceOrder.shippingAddress?.addressLine1}</p>
-                  {selectedInvoiceOrder.shippingAddress?.addressLine2 && (
-                    <p>{selectedInvoiceOrder.shippingAddress.addressLine2}</p>
-                  )}
-                  <p>
-                    {selectedInvoiceOrder.shippingAddress?.city ? `${selectedInvoiceOrder.shippingAddress.city}, ` : ""}
-                    {selectedInvoiceOrder.shippingAddress?.state ? `${selectedInvoiceOrder.shippingAddress.state} - ` : ""}
-                    {selectedInvoiceOrder.shippingAddress?.postalCode || ""}
-                  </p>
-                  <p>{selectedInvoiceOrder.shippingAddress?.country || "India"}</p>
-                  {selectedInvoiceOrder.customerPhone && (
-                    <p>Phone: {selectedInvoiceOrder.customerPhone}</p>
-                  )}
-                  {selectedInvoiceOrder.customerEmail && (
-                    <p>Email: {selectedInvoiceOrder.customerEmail}</p>
-                  )}
+                  <strong>Leafly</strong>
+                  <p>Near Balaji Symphony,</p>
+                  <p>Panvel - 410206,</p>
+                  <p>Maharashtra, India</p>
+                  <p>myleaflytea@gmail.com</p>
                 </div>
               </div>
 

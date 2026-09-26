@@ -483,6 +483,19 @@
   flex-direction: column;
 }
 
+.invoice-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.invoice-logo-img {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
 .invoice-brand-name {
   margin: 0;
   font-family: Georgia, serif;
@@ -532,9 +545,8 @@
 }
 
 .invoice-parties-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 24px;
+  display: flex;
+  justify-content: flex-start;
   margin-bottom: 18px;
   font-size: 12px;
   line-height: 1.45;
@@ -717,19 +729,44 @@
   }
 
   /* Hide navigation, footer, backdrops, background elements, action buttons */
+  body > #root > header,
+  body > #root > nav,
+  body > #root > footer,
   body > #root > div.navbar,
-  body > #root nav,
-  body > #root footer,
+  .leafly-navbar,
+  header.leafly-navbar,
+  header,
+  nav,
   .navbar,
+  .leafly-footer,
   .footer,
   footer,
   .orders-header,
   .orders-list,
   .orders-empty,
   .orders-feedback-banner,
+  .orders-card,
   .no-print,
-  .invoice-modal-actions {
+  .invoice-modal-actions,
+  .leafly-navbar-mobile-drawer,
+  .cart-drawer,
+  .cart-drawer-overlay,
+  .wishlist-drawer,
+  .wishlist-drawer-overlay,
+  .fly-to-cart-container,
+  .leaf-cursor,
+  .floating-leaves,
+  .brand-loader,
+  .search-modal,
+  .search-modal-overlay,
+  .back-to-top {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
   }
 
   .orders-page {
@@ -843,10 +880,24 @@
     letter-spacing: 0.5px !important;
   }
 
+  .invoice-logo-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+  }
+
+  .invoice-logo-img {
+    height: 38px !important;
+    width: auto !important;
+    object-fit: contain !important;
+    display: block !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .invoice-parties-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 16px !important;
+    display: flex !important;
+    justify-content: flex-start !important;
     margin-bottom: 10px !important;
     font-size: 10.5px !important;
     line-height: 1.35 !important;

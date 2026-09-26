@@ -97,11 +97,10 @@ export const ApiService = {
       });
       return result;
     } catch (apiError) {
-      console.warn("[ApiService] Newsletter API error, fallback handled:", apiError);
-      // If serverless is temporarily unavailable, since we already saved to Firestore, return success
+      console.warn("[ApiService] Newsletter API error:", apiError);
       return {
-        success: true,
-        message: "Thank you for subscribing to the Leafly ritual!",
+        success: false,
+        error: apiError instanceof Error ? apiError.message : "Unable to process subscription right now.",
       };
     }
   },
@@ -139,16 +138,17 @@ export const ApiService = {
         email: cleanEmail,
       });
       return {
-        success: true,
+        success: result.success,
         referenceId: result.referenceId || referenceId,
-        message: "Your bespoke gifting inquiry has been received. Check your email for confirmation.",
+        message: result.message || "Your bespoke gifting inquiry has been received. Check your email for confirmation.",
+        error: result.error,
       };
     } catch (apiError) {
-      console.warn("[ApiService] Gifting API error, fallback handled:", apiError);
+      console.warn("[ApiService] Gifting API error:", apiError);
       return {
-        success: true,
+        success: false,
         referenceId,
-        message: "Your bespoke gifting inquiry has been received. Our concierge team will reach out shortly.",
+        error: apiError instanceof Error ? apiError.message : "We couldn't submit your gifting request right now. Please try again in a moment.",
       };
     }
   },
@@ -162,7 +162,6 @@ export const ApiService = {
     const cleanEmail = payload.email.trim().toLowerCase();
     const cleanPhone = payload.phone?.trim() || "";
     const referenceId = `CT-${Date.now().toString(36).toUpperCase()}`;
-    let firestoreSaved = false;
 
     // 1. Save to Firestore
     try {
@@ -177,7 +176,6 @@ export const ApiService = {
         createdAt: new Date().toISOString(),
         timestamp: serverTimestamp(),
       });
-      firestoreSaved = true;
     } catch (dbError) {
       console.warn("[ApiService] Firestore contact record notice:", dbError);
     }
@@ -198,30 +196,17 @@ export const ApiService = {
         };
       }
 
-      if (firestoreSaved) {
-        return {
-          success: true,
-          referenceId,
-          message: "Your inquiry has been received (Ref #" + referenceId + "). Our team will review your message shortly.",
-        };
-      }
-
       return {
         success: false,
+        referenceId,
         error: result?.error || "We couldn't submit your message right now. Please try again.",
       };
     } catch (apiError) {
-      console.warn("[ApiService] Contact API error, fallback handled:", apiError);
-      if (firestoreSaved) {
-        return {
-          success: true,
-          referenceId,
-          message: "Thank you for reaching out. We have received your note (Ref #" + referenceId + ") and our concierge team will reply soon.",
-        };
-      }
+      console.warn("[ApiService] Contact API error:", apiError);
       return {
         success: false,
-        error: "Unable to submit inquiry. Please check your internet connection or email us directly at leaflydatabase@gmail.com.",
+        referenceId,
+        error: apiError instanceof Error ? apiError.message : "Unable to submit inquiry. Please check your internet connection or email us directly at myleaflytea@gmail.com.",
       };
     }
   },
@@ -234,6 +219,41 @@ export const ApiService = {
       await postApi("/api/order-notification", payload as unknown as Record<string, unknown>);
     } catch (err) {
       console.warn("[ApiService] Order email API notification notice:", err);
+    }
+  },
+
+  /**
+   * Dispatches customer transactional order status update email when admin updates status
+   */
+  async notifyOrderStatusUpdate(payload: {
+    orderId: string;
+    newStatus: string;
+    previousStatus?: string;
+    customerEmail?: string;
+    customerName?: string;
+    total?: number;
+    items?: Array<{ name: string; variant?: string; weight?: string; quantity: number; price: number }>;
+    shippingAddress?: {
+      fullName?: string;
+      addressLine1?: string;
+      addressLine2?: string;
+      city?: string;
+      state?: string;
+      postalCode?: string;
+      country?: string;
+    };
+  }): Promise<{ success: boolean; delivered?: boolean; duplicate?: boolean; error?: string }> {
+    try {
+      return await postApi<{ success: boolean; delivered?: boolean; duplicate?: boolean; error?: string }>(
+        "/api/order-status-notification",
+        payload as unknown as Record<string, unknown>
+      );
+    } catch (err) {
+      console.warn("[ApiService] Order status update notification notice:", err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to notify status update",
+      };
     }
   },
 

@@ -1303,4 +1303,27 @@
   100% {
     transform: scale(1) translateY(0);
   }
+}
+
+/* =========================================================
+   PRINT VIEW — HIDE NAVBAR & ALL NAVIGATION
+   ========================================================= */
+@media print {
+  .leafly-navbar,
+  header.leafly-navbar,
+  .leafly-navbar-mobile-drawer,
+  .leafly-navbar-links,
+  .leafly-navbar-actions,
+  .leafly-navbar-burger,
+  .leafly-desktop-nav,
+  .leafly-mobile-menu {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    position: absolute !important;
+    top: -9999px !important;
+    left: -9999px !important;
+    overflow: hidden !important;
+  }
 }

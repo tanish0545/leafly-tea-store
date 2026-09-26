@@ -424,11 +424,13 @@ export default function Checkout() {
 
   const validateCheckout = () => {
     const nextErrors: FormErrors = {};
-    const cleanEmail = email.trim().toLowerCase();
-    const isAuthEmail = Boolean(resolvedAuthEmail && cleanEmail === resolvedAuthEmail.toLowerCase());
-    if (!cleanEmail) {
+    const effectiveEmail = (email.trim() || resolvedAuthEmail || "").toLowerCase();
+    const isAuthEmail = Boolean(
+      resolvedAuthEmail && (effectiveEmail === resolvedAuthEmail.toLowerCase() || !email.trim())
+    );
+    if (!effectiveEmail) {
       nextErrors.email = "Email is required.";
-    } else if (!isAuthEmail && !isValidGmailAddress(cleanEmail)) {
+    } else if (!isAuthEmail && !isValidGmailAddress(effectiveEmail)) {
       nextErrors.email = GMAIL_ERROR_MESSAGE;
     }
 

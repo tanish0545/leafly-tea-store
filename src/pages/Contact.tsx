@@ -27,20 +27,20 @@ const contactDetails = [
   {
     label: "CUSTOMER CARE",
     detail: "For questions about orders, products and delivery.",
-    value: "leaflydatabase@gmail.com",
+    value: "myleaflytea@gmail.com",
     type: "email",
   },
   {
     label: "EMAIL",
-    detail: "leaflydatabase@gmail.com",
-    value: "leaflydatabase@gmail.com",
+    detail: "myleaflytea@gmail.com",
+    value: "myleaflytea@gmail.com",
     type: "email",
   },
   {
-    label: "TEA GUIDANCE",
-    detail: "Need help choosing a tea? Tell us what you enjoy and we'll help.",
-    value: "leaflydatabase@gmail.com",
-    type: "guidance",
+    label: "SANCTUARY ADDRESS",
+    detail: "Visit our tea sanctuary.",
+    value: "Near Balaji Symphony, Panvel - 410206, Maharashtra, India",
+    type: "address",
   },
 ];
 
@@ -176,13 +176,13 @@ export default function Contact() {
       } else {
         setSubmitError(
           res.error ||
-            "Unable to submit inquiry. Please check your internet connection or email us directly at leaflydatabase@gmail.com."
+            "Unable to submit inquiry. Please check your internet connection or email us directly at myleaflytea@gmail.com."
         );
       }
     } catch (err: unknown) {
       console.error("Error submitting contact form:", err);
       setSubmitError(
-        "Unable to submit inquiry. Please check your internet connection or email us directly at leaflydatabase@gmail.com."
+        "Unable to submit inquiry. Please check your internet connection or email us directly at myleaflytea@gmail.com."
       );
     } finally {
       setIsSubmitting(false);
@@ -226,7 +226,14 @@ export default function Contact() {
             <article key={item.label} className="contact-card">
               <p className="contact-card-label">{item.label}</p>
               <h2>{item.detail}</h2>
-              {item.value.includes("@") ? (
+              {item.type === "address" ? (
+                <div className="contact-card-meta" style={{ fontStyle: "normal", marginTop: "1rem" }}>
+                  <strong style={{ display: "block", color: "#0b2b1e", marginBottom: "2px" }}>Leafly</strong>
+                  <p style={{ margin: "1px 0", color: "rgba(11, 43, 30, 0.75)" }}>Near Balaji Symphony,</p>
+                  <p style={{ margin: "1px 0", color: "rgba(11, 43, 30, 0.75)" }}>Panvel - 410206,</p>
+                  <p style={{ margin: "1px 0", color: "rgba(11, 43, 30, 0.75)" }}>Maharashtra, India</p>
+                </div>
+              ) : item.value.includes("@") ? (
                 <a href={`mailto:${item.value}`} className="contact-link" aria-label={`Email ${item.label}`}>
                   {item.value}
                 </a>
@@ -335,11 +342,11 @@ export default function Contact() {
                   lineHeight: "1.5"
                 }}
               >
-                {submitError.includes("leaflydatabase@gmail.com") ? (
+                {submitError.includes("myleaflytea@gmail.com") ? (
                   <span>
                     Unable to submit inquiry. Please check your internet connection or email us directly at{" "}
-                    <a href="mailto:leaflydatabase@gmail.com" style={{ color: "#b98428", fontWeight: 600, textDecoration: "underline" }}>
-                      leaflydatabase@gmail.com
+                    <a href="mailto:myleaflytea@gmail.com" style={{ color: "#b98428", fontWeight: 600, textDecoration: "underline" }}>
+                      myleaflytea@gmail.com
                     </a>.
                   </span>
                 ) : (

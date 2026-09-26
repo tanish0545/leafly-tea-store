@@ -120,7 +120,7 @@ export default function TermsAndConditions() {
             <div className="policy-section-num">08</div>
             <h2>Changes & Contact Information</h2>
             <p>
-              We may revise these Terms & Conditions from time to time. For any legal inquiries, questions, or clarification, contact us at <a href="mailto:leaflydatabase@gmail.com">leaflydatabase@gmail.com</a> or visit our <Link to="/contact">Contact Page</Link>.
+              We may revise these Terms & Conditions from time to time. For any legal inquiries, questions, or clarification, contact us at <a href="mailto:myleaflytea@gmail.com">myleaflytea@gmail.com</a> or visit our <Link to="/contact">Contact Page</Link>.
             </p>
           </article>
         </div>

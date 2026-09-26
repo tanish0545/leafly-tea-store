@@ -1,19 +1,22 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { sendMail, getAdminEmail } from "./lib/mailer";
-import type { Order } from "../src/types/contracts";
 import {
-  getOrderConfirmationCustomerEmail,
-  getOrderAdminNotificationEmail,
-  type OrderEmailData,
-  type OrderEmailItem,
-} from "../src/lib/emailTemplates";
+  sendAdminOrderNotification,
+  sendOrderConfirmation,
+  DEFAULT_CUSTOMER_SUPPORT_EMAIL,
+} from "./lib/mailer";
+import { updateServerOrder, getServerOrder } from "./lib/firebaseAdmin";
+import type { Order } from "../src/types/contracts";
+import type { OrderEmailData, OrderEmailItem } from "../src/lib/emailTemplates";
 
 export type OrderNotificationRequest = Partial<Order> & Partial<OrderEmailData>;
+
+// In-memory idempotency set to prevent duplicate sends from rapid duplicate network requests
+const dispatchedConfirmationOrders = new Set<string>();
 
 export default async function handler(req: IncomingMessage & { body?: unknown }, res: ServerResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
 
   if (req.method === "OPTIONS") {
     res.statusCode = 200;
@@ -56,6 +59,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
 
     const id = String(body.id || "").trim();
     const customerName = String(body.customerName || body.shippingAddress?.fullName || "").trim();
+    // Prioritize verified customer email from user record/auth
     const email = String(body.email || body.customerEmail || "").trim().toLowerCase();
     const phone = String(body.phone || body.customerPhone || "").trim();
     const total = Number(body.total) || 0;
@@ -95,6 +99,25 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       return;
     }
 
+    // Idempotency: Check if confirmation email was already dispatched for this order
+    if (dispatchedConfirmationOrders.has(id)) {
+      console.info(`[Leafly Mailer] Order #${id} confirmation email was already dispatched in this session. Skipping duplicate.`);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ success: true, message: "Order confirmation email already processed.", duplicate: true }));
+      return;
+    }
+
+    const existingOrder = await getServerOrder(id);
+    if (existingOrder && existingOrder.confirmationEmailSentAt) {
+      console.info(`[Leafly Mailer] Order #${id} already has confirmationEmailSentAt recorded in Firestore (${existingOrder.confirmationEmailSentAt}). Skipping duplicate.`);
+      dispatchedConfirmationOrders.add(id);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ success: true, message: "Order confirmation email already sent.", duplicate: true }));
+      return;
+    }
+
     const orderData: OrderEmailData = {
       id,
       customerName,
@@ -112,33 +135,43 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       createdAt,
     };
 
-    const adminEmail = getAdminEmail();
-    const adminMail = getOrderAdminNotificationEmail(orderData);
+    // 1. Dispatch Admin Order Alert (to myleaflytea@gmail.com)
+    const adminResult = await sendAdminOrderNotification(orderData);
 
-    const promises: Promise<unknown>[] = [
-      sendMail({
-        to: adminEmail,
-        subject: adminMail.subject,
-        html: adminMail.html,
-      }),
-    ];
+    // 2. Dispatch Customer Order Confirmation
+    let customerResult = { success: false, delivered: false, error: undefined as string | undefined };
+    const isValidEmail = Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
 
-    if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      const customerMail = getOrderConfirmationCustomerEmail(orderData);
-      promises.push(
-        sendMail({
-          to: email,
-          subject: customerMail.subject,
-          html: customerMail.html,
-        })
-      );
+    if (isValidEmail) {
+      customerResult = await sendOrderConfirmation(orderData);
+
+      if (customerResult.delivered || customerResult.success) {
+        dispatchedConfirmationOrders.add(id);
+        // Track confirmation sent timestamp in Firestore
+        const sentAt = new Date().toISOString();
+        await updateServerOrder(id, {
+          confirmationEmailSentAt: sentAt,
+          customerEmail: email,
+        });
+      }
+    } else {
+      console.warn(`[Leafly Mailer] Skipping customer confirmation email: recipient email "${email}" is invalid or missing.`);
+      customerResult.error = `Invalid or missing customer email: "${email}"`;
     }
-
-    await Promise.allSettled(promises);
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ success: true, message: "Order notification emails processed." }));
+    res.end(
+      JSON.stringify({
+        success: customerResult.delivered || adminResult.delivered,
+        message: "Order notification emails processed.",
+        customerEmailSent: customerResult.delivered,
+        adminAlertSent: adminResult.delivered,
+        customerError: customerResult.error,
+        adminError: adminResult.error,
+        recipient: email || null,
+      })
+    );
   } catch (error) {
     console.error("[API Order Notification Error]:", error);
     res.statusCode = 500;

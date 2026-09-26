@@ -10,6 +10,7 @@ import { type TeawareItem, type TeawareCategory } from "../data/teaware";
 import { type GiftHamper } from "../data/gifting";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../lib/firebase";
+import { ApiService } from "../lib/apiClient";
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, getDoc } from "firebase/firestore";
 import type { Order, OrderStatus } from "../types/contracts";
 import SEO from "../components/SEO";
@@ -404,7 +405,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                 const customerName = newOrder.shippingAddress?.fullName || newOrder.customerName || "Customer";
                 const notif = new Notification("Leafly — New Order", {
                   body: `${customerName} placed an order worth ₹${newOrder.total || 0}.`,
-                  icon: "/leafly-logo.png",
+                  icon: "/leafly-site-icon.png",
                   tag: newOrder.id,
                 });
                 notif.onclick = () => {
@@ -1198,6 +1199,36 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
         setSelectedOrder((prev) => prev ? { ...prev, status: newStatus as OrderStatus, orderStatus: newStatus as OrderStatus } : null);
       }
       showToast("success", `Order #${orderId} status updated to ${newStatus}.${wasRestored ? " Inventory restored." : ""}`);
+
+      // Automatically dispatch customer transactional order status update email (Requirement 7 & 10)
+      if (orderSnap.exists()) {
+        const orderData = orderSnap.data() as Order;
+        const targetEmail = orderData.customerEmail || selectedOrder?.customerEmail;
+        if (targetEmail) {
+          ApiService.notifyOrderStatusUpdate({
+            orderId,
+            newStatus,
+            previousStatus: orderData.orderStatus || orderData.status,
+            customerEmail: targetEmail,
+            customerName: orderData.shippingAddress?.fullName || orderData.customerName || selectedOrder?.customerName,
+            total: orderData.total || selectedOrder?.total,
+            items: (orderData.items || selectedOrder?.items)?.map((item) => ({
+              name: item.name,
+              variant: item.variant,
+              weight: item.weight,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+            shippingAddress: orderData.shippingAddress || selectedOrder?.shippingAddress,
+          }).then((res) => {
+            if (res.delivered) {
+              console.info(`[AdminDashboard] Customer order status update email dispatched to <${targetEmail}> for #${orderId} (${newStatus}).`);
+            }
+          }).catch((err) => {
+            console.warn("[AdminDashboard] Order status update email notice:", err);
+          });
+        }
+      }
     } catch (error) {
       console.error("Error updating order status:", error);
       const msg = error instanceof Error ? error.message : String(error);

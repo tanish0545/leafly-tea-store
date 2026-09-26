@@ -1,15 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { sendMail, getAdminEmail } from "./lib/mailer";
-import {
-  getNewsletterWelcomeEmail,
-  getNewsletterAdminNotification,
-} from "../src/lib/emailTemplates";
+import { sendNewsletterNotification } from "./lib/mailer";
 
 // Rate limiting cache (IP / email based simple in-memory)
 const recentSubmissions = new Map<string, number>();
 
 export default async function handler(req: IncomingMessage & { body?: unknown }, res: ServerResponse) {
-  // Enable CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -36,7 +31,6 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
         // keep as is
       }
     } else if (!body) {
-      // Parse chunks if body is stream
       const buffers = [];
       for await (const chunk of req) {
         buffers.push(chunk);
@@ -71,6 +65,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       res.end(
         JSON.stringify({
           success: true,
+          delivered: true,
           message: "You are already subscribed to Leafly. Thank you!",
           alreadySubscribed: true,
         })
@@ -79,38 +74,38 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
     }
     recentSubmissions.set(email, now);
 
-    // 1. Prepare Customer Confirmation Email
-    const customerMail = getNewsletterWelcomeEmail(email);
+    // Centralized Newsletter Dispatch (Subscriber Welcome + Admin Alert)
+    const subResult = await sendNewsletterNotification(email, source);
 
-    // 2. Prepare Company Notification Email
-    const adminEmail = getAdminEmail();
-    const adminMail = getNewsletterAdminNotification(email, source);
-
-    // Dispatch both emails in parallel
-    const [customerRes, adminRes] = await Promise.allSettled([
-      sendMail({
-        to: email,
-        subject: customerMail.subject,
-        html: customerMail.html,
-      }),
-      sendMail({
-        to: adminEmail,
-        subject: adminMail.subject,
-        html: adminMail.html,
-      }),
-    ]);
-
-    const isCustomerSent = customerRes.status === "fulfilled" && customerRes.value.success;
-    const isAdminSent = adminRes.status === "fulfilled" && adminRes.value.success;
+    if (!subResult.adminResult.delivered && !subResult.customerResult.delivered) {
+      const errorMsg =
+        subResult.adminResult.error ||
+        subResult.customerResult.error ||
+        "Email delivery failed. SMTP provider did not accept message.";
+      res.statusCode = 502;
+      res.setHeader("Content-Type", "application/json");
+      res.end(
+        JSON.stringify({
+          success: false,
+          delivered: false,
+          error: errorMsg,
+          customerDelivered: false,
+          adminNotified: false,
+        })
+      );
+      return;
+    }
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
     res.end(
       JSON.stringify({
         success: true,
+        delivered: true,
         message: "Thank you for subscribing to the Leafly ritual!",
-        customerDelivered: isCustomerSent,
-        adminNotified: isAdminSent,
+        customerDelivered: subResult.customerResult.delivered,
+        adminNotified: subResult.adminResult.delivered,
+        messageId: subResult.customerResult.messageId || subResult.adminResult.messageId,
       })
     );
   } catch (error) {
@@ -119,7 +114,9 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
     res.setHeader("Content-Type", "application/json");
     res.end(
       JSON.stringify({
-        error: "We couldn't process your subscription right now. Please try again in a moment.",
+        success: false,
+        delivered: false,
+        error: "Subscription service encountered an error. Please try again.",
       })
     );
   }

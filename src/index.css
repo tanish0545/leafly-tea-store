@@ -247,3 +247,34 @@ button {
   background: var(--leafly-gold);
   color: var(--leafly-black);
 }
+
+/* =========================================================
+   GLOBAL PRINT CLEANUP
+   ========================================================= */
+@media print {
+  .leafly-navbar,
+  header.leafly-navbar,
+  header,
+  nav,
+  .leafly-footer,
+  footer,
+  .leafly-navbar-mobile-drawer,
+  .cart-drawer,
+  .cart-drawer-overlay,
+  .wishlist-drawer,
+  .wishlist-drawer-overlay,
+  .fly-to-cart-container,
+  .leaf-cursor,
+  .floating-leaves,
+  .brand-loader,
+  .search-modal,
+  .search-modal-overlay,
+  .back-to-top,
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+  }
+}

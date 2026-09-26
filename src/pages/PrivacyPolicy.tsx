@@ -110,7 +110,7 @@ export default function PrivacyPolicy() {
             <div className="policy-section-num">06</div>
             <h2>Your Rights & Contact</h2>
             <p>
-              You have the right to access, review, update, or request deletion of your personal account details at any time via your <Link to="/profile">Profile Settings</Link> or by reaching out to our team at <a href="mailto:leaflydatabase@gmail.com">leaflydatabase@gmail.com</a>.
+              You have the right to access, review, update, or request deletion of your personal account details at any time via your <Link to="/profile">Profile Settings</Link> or by reaching out to our team at <a href="mailto:myleaflytea@gmail.com">myleaflytea@gmail.com</a>.
             </p>
           </article>
         </div>

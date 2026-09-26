@@ -1,6 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { sendMail } from "./lib/mailer";
-import { getAccountWelcomeEmail } from "../src/lib/emailTemplates";
+import { sendWelcomeNotification } from "./lib/mailer";
 
 export default async function handler(req: IncomingMessage & { body?: unknown }, res: ServerResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -48,12 +47,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
       return;
     }
 
-    const { subject, html } = getAccountWelcomeEmail(name, email);
-    const result = await sendMail({
-      to: email,
-      subject,
-      html,
-    });
+    const result = await sendWelcomeNotification(name, email);
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
