@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * Leafly — Server-Side Firebase Admin Service
  * 

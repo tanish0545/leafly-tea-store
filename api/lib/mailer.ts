@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * Leafly — Centralized Production Email Service
  * 
