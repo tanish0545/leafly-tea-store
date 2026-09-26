@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { sendWelcomeNotification } from "./lib/mailer";
+import { sendWelcomeNotification } from "./lib/mailer.js";
 
 export default async function handler(req: IncomingMessage & { body?: unknown }, res: ServerResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*");

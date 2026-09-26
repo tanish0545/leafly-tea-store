@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { verifySmtp, sendMail, getFromEmail, DEFAULT_CUSTOMER_SUPPORT_EMAIL } from "./lib/mailer";
+import { verifySmtp, sendMail, getFromEmail, DEFAULT_CUSTOMER_SUPPORT_EMAIL } from "./lib/mailer.js";
 
 export default async function handler(
   req: IncomingMessage & { body?: unknown },

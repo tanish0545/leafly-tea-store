@@ -4,7 +4,7 @@ import {
   getCashfreeHeaders,
   sanitizePhoneForCashfree,
   sanitizeCustomerId,
-} from "./lib/cashfree";
+} from "./lib/cashfree.js";
 
 interface CreateOrderRequestBody {
   orderId?: string;

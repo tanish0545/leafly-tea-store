@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { sendContactInquiry } from "./lib/mailer";
-import type { ContactEmailData } from "../src/lib/emailTemplates";
+import { sendContactInquiry } from "./lib/mailer.js";
+import type { ContactEmailData } from "../src/lib/emailTemplates.js";
 
 const recentContactSubmissions = new Map<string, number>();
 

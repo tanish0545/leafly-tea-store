@@ -433,7 +433,8 @@ export interface OrderEmailData {
 export interface OrderStatusEmailData {
   orderId: string;
   customerName: string;
-  email: string;
+  email?: string;
+  customerEmail?: string;
   status: string;
   previousStatus?: string;
   total?: number;

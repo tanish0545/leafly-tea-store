@@ -32,7 +32,7 @@ import {
   type ContactEmailData,
   type GiftingEmailData,
   type OrderStatusEmailData,
-} from "../../src/lib/emailTemplates";
+} from "../../src/lib/emailTemplates.js";
 
 export type EmailPayload = {
   to: string;
@@ -438,7 +438,7 @@ export async function sendNewsletterNotification(
  * Dispatches customer transactional status update email when admin updates order status.
  */
 export async function sendOrderStatusUpdate(orderStatusData: OrderStatusEmailData): Promise<MailResult> {
-  const email = (orderStatusData.customerEmail || "").trim().toLowerCase();
+  const email = (orderStatusData.email || orderStatusData.customerEmail || "").trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     console.warn(
       `[Leafly Mailer] Skipping order status update: invalid or missing customer email "${email}".`

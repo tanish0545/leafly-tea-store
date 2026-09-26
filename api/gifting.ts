@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { sendGiftInquiry } from "./lib/mailer";
-import type { GiftingEmailData } from "../src/lib/emailTemplates";
+import { sendGiftInquiry } from "./lib/mailer.js";
+import type { GiftingEmailData } from "../src/lib/emailTemplates.js";
 
 const recentGiftingSubmissions = new Map<string, number>();
 
@@ -23,21 +23,31 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
   }
 
   try {
-    let body = req.body;
-    if (typeof body === "string") {
+    interface GiftingBody {
+      name?: string;
+      email?: string;
+      phone?: string;
+      quantity?: string;
+      message?: string;
+    }
+
+    let rawBody = req.body;
+    if (typeof rawBody === "string") {
       try {
-        body = JSON.parse(body);
+        rawBody = JSON.parse(rawBody);
       } catch {
         // keep
       }
-    } else if (!body) {
+    } else if (!rawBody) {
       const buffers = [];
       for await (const chunk of req) {
         buffers.push(chunk);
       }
       const raw = Buffer.concat(buffers).toString();
-      body = raw ? JSON.parse(raw) : {};
+      rawBody = raw ? JSON.parse(raw) : {};
     }
+
+    const body = (rawBody || {}) as GiftingBody;
 
     const name = (body?.name || "").trim();
     const email = (body?.email || "").trim().toLowerCase();

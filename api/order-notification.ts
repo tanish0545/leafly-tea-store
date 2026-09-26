@@ -3,10 +3,11 @@ import {
   sendAdminOrderNotification,
   sendOrderConfirmation,
   DEFAULT_CUSTOMER_SUPPORT_EMAIL,
-} from "./lib/mailer";
-import { updateServerOrder, getServerOrder } from "./lib/firebaseAdmin";
-import type { Order } from "../src/types/contracts";
-import type { OrderEmailData, OrderEmailItem } from "../src/lib/emailTemplates";
+  type MailResult,
+} from "./lib/mailer.js";
+import { updateServerOrder, getServerOrder } from "./lib/firebaseAdmin.js";
+import type { Order } from "../src/types/contracts.js";
+import type { OrderEmailData, OrderEmailItem } from "../src/lib/emailTemplates.js";
 
 export type OrderNotificationRequest = Partial<Order> & Partial<OrderEmailData>;
 
@@ -139,7 +140,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
     const adminResult = await sendAdminOrderNotification(orderData);
 
     // 2. Dispatch Customer Order Confirmation
-    let customerResult = { success: false, delivered: false, error: undefined as string | undefined };
+    let customerResult: MailResult = { success: false, delivered: false };
     const isValidEmail = Boolean(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
 
     if (isValidEmail) {

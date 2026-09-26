@@ -1,12 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import crypto from "crypto";
-import { updateServerOrder, getServerOrder } from "./lib/firebaseAdmin";
-import { sendAdminOrderNotification, sendOrderConfirmation, DEFAULT_CUSTOMER_SUPPORT_EMAIL } from "./lib/mailer";
+import { updateServerOrder, getServerOrder } from "./lib/firebaseAdmin.js";
+import { sendAdminOrderNotification, sendOrderConfirmation, DEFAULT_CUSTOMER_SUPPORT_EMAIL } from "./lib/mailer.js";
 import {
   getOrderConfirmationCustomerEmail,
   getOrderAdminNotificationEmail,
   type OrderEmailData,
-} from "../src/lib/emailTemplates";
+} from "../src/lib/emailTemplates.js";
 
 // Idempotency cache to prevent duplicate processing of the same webhook event
 const processedWebhookEvents = new Set<string>();

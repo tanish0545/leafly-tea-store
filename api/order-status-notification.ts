@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { sendOrderStatusUpdate } from "./lib/mailer";
-import { getServerOrder, updateServerOrder } from "./lib/firebaseAdmin";
+import { sendOrderStatusUpdate } from "./lib/mailer.js";
+import { getServerOrder, updateServerOrder } from "./lib/firebaseAdmin.js";
 import type {
   OrderStatusEmailData,
   OrderEmailItem,
   OrderEmailData,
-} from "../src/lib/emailTemplates";
+} from "../src/lib/emailTemplates.js";
 
 export interface OrderStatusNotificationRequest {
   orderId: string;
@@ -170,6 +170,7 @@ export default async function handler(
     const emailData: OrderStatusEmailData = {
       orderId,
       customerName,
+      email: customerEmail,
       customerEmail,
       status: newStatus,
       previousStatus: body.previousStatus,
