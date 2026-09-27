@@ -4,7 +4,7 @@ import {
   getCashfreeHeaders,
   sanitizePhoneForCashfree,
   sanitizeCustomerId,
-} from "./lib/cashfree.js";
+} from "./_lib/cashfree.js";
 
 interface CreateOrderRequestBody {
   orderId?: string;
@@ -204,7 +204,7 @@ export default async function handler(
       body: JSON.stringify(cashfreePayload),
     });
 
-    const cfData = await cfResponse.json().catch(() => ({}));
+    const cfData = (await cfResponse.json().catch(() => ({}))) as Record<string, any>;
 
     if (!cfResponse.ok) {
       const cfErrMsg = typeof cfData?.message === "string"

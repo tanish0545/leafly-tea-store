@@ -1,6 +1,30 @@
 {
   "rewrites": [
     {
+      "source": "/api/newsletter",
+      "destination": "/api/email?action=newsletter"
+    },
+    {
+      "source": "/api/contact",
+      "destination": "/api/email?action=contact"
+    },
+    {
+      "source": "/api/gifting",
+      "destination": "/api/email?action=gifting"
+    },
+    {
+      "source": "/api/welcome",
+      "destination": "/api/email?action=welcome"
+    },
+    {
+      "source": "/api/order-notification",
+      "destination": "/api/orders?action=notification"
+    },
+    {
+      "source": "/api/order-status-notification",
+      "destination": "/api/orders?action=status"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

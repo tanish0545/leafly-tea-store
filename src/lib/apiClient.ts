@@ -91,7 +91,8 @@ export const ApiService = {
 
     // 2. Dispatch via Serverless Email API
     try {
-      const result = await postApi<NewsletterResponse>("/api/newsletter", {
+      const result = await postApi<NewsletterResponse>("/api/email?action=newsletter", {
+        action: "newsletter",
         email: cleanEmail,
         source,
       });
@@ -133,7 +134,8 @@ export const ApiService = {
 
     // 2. Dispatch via Serverless Email API
     try {
-      const result = await postApi<GiftingResponse>("/api/gifting", {
+      const result = await postApi<GiftingResponse>("/api/email?action=gifting", {
+        action: "gifting",
         ...payload,
         email: cleanEmail,
       });
@@ -182,7 +184,8 @@ export const ApiService = {
 
     // 2. Dispatch via Serverless Email API
     try {
-      const result = await postApi<ContactResponse>("/api/contact", {
+      const result = await postApi<ContactResponse>("/api/email?action=contact", {
+        action: "contact",
         ...payload,
         email: cleanEmail,
         phone: cleanPhone || undefined,
@@ -216,7 +219,10 @@ export const ApiService = {
    */
   async notifyOrderPlaced(payload: OrderNotificationPayload): Promise<void> {
     try {
-      await postApi("/api/order-notification", payload as unknown as Record<string, unknown>);
+      await postApi("/api/orders?action=notification", {
+        action: "notification",
+        ...(payload as unknown as Record<string, unknown>),
+      });
     } catch (err) {
       console.warn("[ApiService] Order email API notification notice:", err);
     }
@@ -245,8 +251,11 @@ export const ApiService = {
   }): Promise<{ success: boolean; delivered?: boolean; duplicate?: boolean; error?: string }> {
     try {
       return await postApi<{ success: boolean; delivered?: boolean; duplicate?: boolean; error?: string }>(
-        "/api/order-status-notification",
-        payload as unknown as Record<string, unknown>
+        "/api/orders?action=status",
+        {
+          action: "status",
+          ...(payload as unknown as Record<string, unknown>),
+        }
       );
     } catch (err) {
       console.warn("[ApiService] Order status update notification notice:", err);
@@ -264,7 +273,8 @@ export const ApiService = {
     try {
       const cleanEmail = payload.email.trim().toLowerCase();
       if (!cleanEmail) return { success: false, error: "Email is required" };
-      const res = await postApi<{ success: boolean; error?: string }>("/api/welcome", {
+      const res = await postApi<{ success: boolean; error?: string }>("/api/email?action=welcome", {
+        action: "welcome",
         name: payload.name.trim() || "Valued Patron",
         email: cleanEmail,
       });

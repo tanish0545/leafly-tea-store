@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { getCashfreeBaseUrl, getCashfreeHeaders } from "./lib/cashfree.js";
-import { updateServerOrder, getServerOrder } from "./lib/firebaseAdmin.js";
-import { sendAdminOrderNotification, sendOrderConfirmation, DEFAULT_CUSTOMER_SUPPORT_EMAIL } from "./lib/mailer.js";
+import { getCashfreeBaseUrl, getCashfreeHeaders } from "./_lib/cashfree.js";
+import { updateServerOrder, getServerOrder } from "./_lib/firebaseAdmin.js";
+import { sendAdminOrderNotification, sendOrderConfirmation, DEFAULT_CUSTOMER_SUPPORT_EMAIL } from "./_lib/mailer.js";
 import {
   getOrderConfirmationCustomerEmail,
   getOrderAdminNotificationEmail,
@@ -95,7 +95,7 @@ export default async function handler(
       headers,
     });
 
-    const orderData = await orderResp.json().catch(() => ({}));
+    const orderData = (await orderResp.json().catch(() => ({}))) as Record<string, any>;
 
     if (!orderResp.ok) {
       const verifyErrMsg = typeof orderData?.message === "string"

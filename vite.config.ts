@@ -14,32 +14,22 @@ function apiDevMiddleware() {
 
         const urlPath = req.url.split('?')[0];
         try {
-          if (urlPath === '/api/newsletter') {
-            const mod = await server.ssrLoadModule('./api/newsletter.ts');
+          if (
+            urlPath === '/api/email' ||
+            urlPath === '/api/newsletter' ||
+            urlPath === '/api/gifting' ||
+            urlPath === '/api/contact' ||
+            urlPath === '/api/welcome'
+          ) {
+            const mod = await server.ssrLoadModule('./api/email.ts');
             return await mod.default(req, res);
           }
-          if (urlPath === '/api/gifting') {
-            const mod = await server.ssrLoadModule('./api/gifting.ts');
-            return await mod.default(req, res);
-          }
-          if (urlPath === '/api/contact') {
-            const mod = await server.ssrLoadModule('./api/contact.ts');
-            return await mod.default(req, res);
-          }
-          if (urlPath === '/api/order-notification') {
-            const mod = await server.ssrLoadModule('./api/order-notification.ts');
-            return await mod.default(req, res);
-          }
-          if (urlPath === '/api/order-status-notification') {
-            const mod = await server.ssrLoadModule('./api/order-status-notification.ts');
-            return await mod.default(req, res);
-          }
-          if (urlPath === '/api/test-email') {
-            const mod = await server.ssrLoadModule('./api/test-email.ts');
-            return await mod.default(req, res);
-          }
-          if (urlPath === '/api/welcome') {
-            const mod = await server.ssrLoadModule('./api/welcome.ts');
+          if (
+            urlPath === '/api/orders' ||
+            urlPath === '/api/order-notification' ||
+            urlPath === '/api/order-status-notification'
+          ) {
+            const mod = await server.ssrLoadModule('./api/orders.ts');
             return await mod.default(req, res);
           }
           if (urlPath === '/api/cashfree-create-order') {

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import crypto from "crypto";
-import { updateServerOrder, getServerOrder } from "./lib/firebaseAdmin.js";
-import { sendAdminOrderNotification, sendOrderConfirmation, DEFAULT_CUSTOMER_SUPPORT_EMAIL } from "./lib/mailer.js";
+import { updateServerOrder, getServerOrder } from "./_lib/firebaseAdmin.js";
+import { sendAdminOrderNotification, sendOrderConfirmation, DEFAULT_CUSTOMER_SUPPORT_EMAIL } from "./_lib/mailer.js";
 import {
   getOrderConfirmationCustomerEmail,
   getOrderAdminNotificationEmail,
