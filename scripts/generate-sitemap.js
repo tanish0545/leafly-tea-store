@@ -5,7 +5,20 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const BASE_URL = (process.env.VITE_SITE_URL || "https://leaflytea.in").replace(/\/$/, "");
+// Production canonical domain for Leafly.
+// HARD RULE: This MUST strictly be https://leaflytea.in.
+// NEVER allow vercel.app, preview URLs, localhost, or arbitrary environment variables to override it.
+const CANONICAL_SITE_URL = "https://leaflytea.in";
+
+function resolveBaseUrl() {
+  const envUrl = (process.env.VITE_SITE_URL || process.env.SITE_URL || "").trim().replace(/\/$/, "");
+  if (envUrl && envUrl.startsWith("https://leaflytea.in") && !envUrl.includes("vercel.app") && !envUrl.includes("localhost")) {
+    return envUrl;
+  }
+  return CANONICAL_SITE_URL;
+}
+
+const BASE_URL = resolveBaseUrl();
 const TODAY = new Date().toISOString().split("T")[0];
 
 // Extract tea product IDs from src/data/products.ts
@@ -142,6 +155,15 @@ function generateSitemap() {
     ),
     `</urlset>`,
   ].join("\n");
+
+  // Strict validation: Ensure 100% of generated URLs belong to https://leaflytea.in/
+  const invalidEntries = entries.filter((entry) => !`${BASE_URL}${entry.path}`.startsWith("https://leaflytea.in/"));
+  if (invalidEntries.length > 0) {
+    throw new Error(
+      `[SITEMAP SECURITY ERROR]: Found ${invalidEntries.length} entries not starting with https://leaflytea.in/:\n` +
+      invalidEntries.map((e) => `  - ${BASE_URL}${e.path}`).join("\n")
+    );
+  }
 
   const outputPath = path.resolve(__dirname, "../public/sitemap.xml");
   fs.writeFileSync(outputPath, xml, "utf-8");

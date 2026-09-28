@@ -1,10 +1,21 @@
 import { type Product, type ProductVariantKey, getProductSlug } from "../data/products";
 import { type TeawareItem } from "../data/teaware";
 
-export const SITE_URL = (
-  (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, "") ||
-  "https://leaflytea.in"
-);
+/**
+ * Canonical production domain for Leafly.
+ * CRITICAL SEO RULE: This MUST strictly resolve to https://leaflytea.in.
+ * NEVER allow vercel.app, preview URLs, localhost, or any environment variable to override it.
+ */
+export const CANONICAL_SITE_URL = "https://leaflytea.in";
+
+export const SITE_URL: string = (() => {
+  const envUrl = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim().replace(/\/$/, "");
+  // Strict guard: ONLY allow if explicitly starting with https://leaflytea.in and NOT containing vercel.app or localhost
+  if (envUrl && envUrl.startsWith("https://leaflytea.in") && !envUrl.includes("vercel.app") && !envUrl.includes("localhost")) {
+    return envUrl;
+  }
+  return CANONICAL_SITE_URL;
+})();
 
 export const DEFAULT_OG_IMAGE = `${SITE_URL}/leafly-site-icon.png`;
 
