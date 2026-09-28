@@ -1,6 +1,17 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
 Allow: /
+Allow: /favicon*
+Allow: /leafly-site-icon.png
+Allow: /android-chrome*
+Allow: /apple-touch-icon*
+Allow: /*.png$
+Allow: /*.ico$
+
+# Explicit allowance for Google Favicon bot
+User-agent: Googlebot-Image
+Allow: /
+
 
 # Disallow private and transactional routes
 Disallow: /admin

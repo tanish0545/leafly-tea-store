@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/leafly-logo.png",
+      "destination": "/leafly-site-icon.png",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/newsletter",
@@ -63,6 +70,15 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/(favicon.*|apple-touch-icon.*|android-chrome.*|leafly-site-icon.*|site\\.webmanifest)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
         }
       ]
     }

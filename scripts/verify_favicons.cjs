@@ -16,6 +16,8 @@ const files = [
   { name: "android-chrome-192x192.png", width: 192, height: 192 },
   { name: "android-chrome-512x512.png", width: 512, height: 512 },
   { name: "leafly-site-icon.png", width: 512, height: 512 },
+  { name: "leafly-logo.png", width: 512, height: 512 },
+  { name: "favicon.svg", isSvg: true },
   { name: "site.webmanifest", isJson: true }
 ];
 
@@ -44,6 +46,17 @@ async function verify() {
         console.log(`✓ ${f.name}: Valid JSON, ${json.icons.length} icons defined`);
       } catch (e) {
         console.error(`❌ INVALID JSON in ${f.name}:`, e.message);
+        allPassed = false;
+      }
+      continue;
+    }
+
+    if (f.isSvg) {
+      const content = fs.readFileSync(filePath, "utf-8");
+      if (content.includes("<svg") && content.includes("data:image/png;base64")) {
+        console.log(`✓ ${f.name}: Valid SVG embedding high-res circular logo (${stats.size} bytes)`);
+      } else {
+        console.error(`❌ ${f.name} missing embedded logo`);
         allPassed = false;
       }
       continue;

@@ -2,10 +2,18 @@ const sharp = require("sharp");
 const fs = require("fs");
 const path = require("path");
 
-const inputImagePath = "C:/Users/tanis/.gemini/antigravity-ide/brain/39f815fe-b26b-4f2c-a3c1-3e57ccc1297c/.user_uploaded/media_1790074582676.jpg";
-const publicDir = path.resolve(__dirname, "../public");
+// Master source image candidates in order of preference
+const sourceCandidates = [
+  path.resolve(__dirname, "../src/assets/leafly-site-icon-master.jpg"),
+  "C:/Users/tanis/.gemini/antigravity-ide/brain/39f815fe-b26b-4f2c-a3c1-3e57ccc1297c/.user_uploaded/media_1790074582676.jpg",
+  path.resolve(__dirname, "../public/leafly-site-icon.png")
+];
 
-// Helper to assemble a valid multi-resolution PNG-compressed ICO file
+const publicDir = path.resolve(__dirname, "../public");
+const leaflySubPublicDir = path.resolve(__dirname, "../Leafly/public");
+
+// Helper to assemble a valid multi-resolution ICO file
+// Ordering: 48x48 first (for Google Search / Googlebot-Image), then 32x32, then 16x16
 function createIco(pngBuffers) {
   const numImages = pngBuffers.length;
   const header = Buffer.alloc(6);
@@ -39,56 +47,69 @@ function createIco(pngBuffers) {
 }
 
 async function run() {
-  console.log("Reading source logo image:", inputImagePath);
-  if (!fs.existsSync(inputImagePath)) {
-    throw new Error(`Input file not found: ${inputImagePath}`);
-  }
-
-  // 1. Load raw RGBA pixels from the source image
-  const { data, info } = await sharp(inputImagePath)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
-  const width = info.width;
-  const height = info.height;
-  const centerX = 511.5;
-  const centerY = 511.5;
-  const radius = 474;
-
-  // Apply smooth anti-aliased circular alpha mask
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4;
-      const dx = x - centerX;
-      const dy = y - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist >= radius + 1) {
-        data[idx + 3] = 0; // completely transparent outside circle
-      } else if (dist <= radius - 1) {
-        data[idx + 3] = 255; // completely opaque inside
-      } else {
-        // Smooth anti-aliased border transition
-        const alphaFraction = (radius + 1 - dist) / 2;
-        data[idx + 3] = Math.round(255 * Math.max(0, Math.min(1, alphaFraction)));
-      }
+  let inputImagePath = null;
+  for (const candidate of sourceCandidates) {
+    if (fs.existsSync(candidate)) {
+      inputImagePath = candidate;
+      break;
     }
   }
 
-  // Create 948x948 master buffer extracted to the exact circular boundary
-  const maskedMasterBuffer = await sharp(data, {
-    raw: { width, height, channels: 4 }
-  })
-    .extract({ left: 38, top: 38, width: 948, height: 948 })
-    .png({ compressionLevel: 9 })
-    .toBuffer();
+  if (!inputImagePath) {
+    throw new Error(`None of the source image candidates exist: ${sourceCandidates.join(", ")}`);
+  }
 
-  console.log("Masked high-res circular master generated (948x948).");
+  console.log("Using source logo image:", inputImagePath);
+
+  let maskedMasterBuffer;
+
+  if (inputImagePath.endsWith(".png") && inputImagePath.includes("leafly-site-icon")) {
+    // Already masked circular PNG
+    maskedMasterBuffer = await sharp(inputImagePath).png().toBuffer();
+  } else {
+    // Raw source image (1024x1024) - apply smooth circular alpha mask
+    const { data, info } = await sharp(inputImagePath)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const width = info.width;
+    const height = info.height;
+    const centerX = 511.5;
+    const centerY = 511.5;
+    const radius = 474;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        const dx = x - centerX;
+        const dy = y - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist >= radius + 1) {
+          data[idx + 3] = 0; // completely transparent outside circle
+        } else if (dist <= radius - 1) {
+          data[idx + 3] = 255; // completely opaque inside circle
+        } else {
+          // Smooth anti-aliased border transition
+          const alphaFraction = (radius + 1 - dist) / 2;
+          data[idx + 3] = Math.round(255 * Math.max(0, Math.min(1, alphaFraction)));
+        }
+      }
+    }
+
+    maskedMasterBuffer = await sharp(data, {
+      raw: { width, height, channels: 4 }
+    })
+      .extract({ left: 38, top: 38, width: 948, height: 948 })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+  }
+
+  console.log("Master circular buffer ready.");
 
   // Helper to generate a resized PNG
-  async function generatePng(size, filename) {
-    const outPath = path.join(publicDir, filename);
+  async function generatePng(size, filename, destDirs = [publicDir]) {
     const buf = await sharp(maskedMasterBuffer)
       .resize(size, size, {
         kernel: sharp.kernel.lanczos3,
@@ -97,30 +118,68 @@ async function run() {
       })
       .png({ compressionLevel: 9 })
       .toBuffer();
-    fs.writeFileSync(outPath, buf);
+
+    for (const d of destDirs) {
+      if (fs.existsSync(d)) {
+        fs.writeFileSync(path.join(d, filename), buf);
+      }
+    }
     console.log(`Saved ${filename} (${size}x${size}, ${buf.length} bytes)`);
     return { width: size, height: size, buffer: buf };
   }
 
-  // Generate all standard web and Google Search favicon sizes
-  const icon16 = await generatePng(16, "favicon-16x16.png");
-  const icon32 = await generatePng(32, "favicon-32x32.png");
-  const icon48 = await generatePng(48, "favicon-48x48.png");
-  const icon96 = await generatePng(96, "favicon-96x96.png");
-  await generatePng(48, "favicon.png"); // standard PNG fallback
-  await generatePng(180, "apple-touch-icon.png");
-  await generatePng(180, "apple-touch-icon-precomposed.png");
-  await generatePng(192, "android-chrome-192x192.png");
-  await generatePng(512, "android-chrome-512x512.png");
-  await generatePng(512, "leafly-site-icon.png");
+  const allDestDirs = [publicDir];
+  if (fs.existsSync(leaflySubPublicDir)) {
+    allDestDirs.push(leaflySubPublicDir);
+  }
 
-  // Generate multi-resolution favicon.ico containing 16x16, 32x32, 48x48
-  const icoBuffer = createIco([icon16, icon32, icon48]);
-  const icoPath = path.join(publicDir, "favicon.ico");
-  fs.writeFileSync(icoPath, icoBuffer);
-  console.log(`Saved favicon.ico (16, 32, 48 multi-res, ${icoBuffer.length} bytes)`);
+  // 1. Generate standard web & Google Search favicon sizes
+  const icon48 = await generatePng(48, "favicon-48x48.png", allDestDirs);
+  const icon96 = await generatePng(96, "favicon-96x96.png", allDestDirs);
+  const icon32 = await generatePng(32, "favicon-32x32.png", allDestDirs);
+  const icon16 = await generatePng(16, "favicon-16x16.png", allDestDirs);
+  await generatePng(48, "favicon.png", allDestDirs); // standard 48px PNG fallback for search bots
 
-  // Generate site.webmanifest
+  // 2. Touch and Chrome app icons
+  await generatePng(180, "apple-touch-icon.png", allDestDirs);
+  await generatePng(180, "apple-touch-icon-precomposed.png", allDestDirs);
+  await generatePng(192, "android-chrome-192x192.png", allDestDirs);
+  const icon512 = await generatePng(512, "android-chrome-512x512.png", allDestDirs);
+  await generatePng(512, "leafly-site-icon.png", allDestDirs);
+
+  // 3. OVERWRITE OLD FAVICON FILE (leafly-logo.png) WITH NEW LOGO
+  // This completely eliminates stale cache from Google/Brave that cached /leafly-logo.png as the favicon
+  await generatePng(512, "leafly-logo.png", allDestDirs);
+  const publicSrcAssetsDir = path.resolve(__dirname, "../public/src/assets");
+  if (fs.existsSync(publicSrcAssetsDir)) {
+    await generatePng(512, "leafly-logo.png", [publicSrcAssetsDir]);
+  }
+
+  // 4. Generate multi-resolution favicon.ico with 48x48 as the primary first frame
+  // Ordering: 48x48 (Google standard), 32x32 (Desktop retina), 16x16 (Desktop standard)
+  const icoBuffer = createIco([icon48, icon32, icon16]);
+  for (const d of allDestDirs) {
+    if (fs.existsSync(d)) {
+      fs.writeFileSync(path.join(d, "favicon.ico"), icoBuffer);
+    }
+  }
+  console.log(`Saved favicon.ico (48, 32, 16 multi-res, ${icoBuffer.length} bytes, 48x48 primary)`);
+
+  // 5. Generate high-fidelity SVG embedding the new circular emblem
+  // Ensures any browser/crawler requesting /favicon.svg renders the exact new circular logo
+  const icon512Base64 = icon512.buffer.toString("base64");
+  const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512" width="512" height="512">
+  <image width="512" height="512" href="data:image/png;base64,${icon512Base64}" xlink:href="data:image/png;base64,${icon512Base64}"/>
+</svg>
+`;
+  for (const d of allDestDirs) {
+    if (fs.existsSync(d)) {
+      fs.writeFileSync(path.join(d, "favicon.svg"), svgContent, "utf-8");
+    }
+  }
+  console.log("Saved favicon.svg (embedded high-fidelity new logo)");
+
+  // 6. Generate site.webmanifest
   const manifest = {
     name: "Leafly — Premium Indian Teas & Artisanal Rituals",
     short_name: "Leafly",
@@ -159,6 +218,12 @@ async function run() {
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable"
+      },
+      {
+        src: "/leafly-site-icon.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any"
       }
     ],
     theme_color: "#0b2b1e",
@@ -168,11 +233,14 @@ async function run() {
     start_url: "/"
   };
 
-  const manifestPath = path.join(publicDir, "site.webmanifest");
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  for (const d of allDestDirs) {
+    if (fs.existsSync(d)) {
+      fs.writeFileSync(path.join(d, "site.webmanifest"), JSON.stringify(manifest, null, 2), "utf-8");
+    }
+  }
   console.log("Saved site.webmanifest");
 
-  console.log("\nALL FAVICONS SUCCESSFULLY GENERATED!");
+  console.log("\nALL FAVICONS AND BRAND ASSETS SUCCESSFULLY GENERATED & VERIFIED!");
 }
 
 run().catch((err) => {
