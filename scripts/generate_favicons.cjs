@@ -235,10 +235,13 @@ async function run() {
 
   for (const d of allDestDirs) {
     if (fs.existsSync(d)) {
-      fs.writeFileSync(path.join(d, "site.webmanifest"), JSON.stringify(manifest, null, 2), "utf-8");
+      const manifestStr = JSON.stringify(manifest, null, 2);
+      fs.writeFileSync(path.join(d, "site.webmanifest"), manifestStr, "utf-8");
+      fs.writeFileSync(path.join(d, "manifest.webmanifest"), manifestStr, "utf-8");
+      fs.writeFileSync(path.join(d, "manifest.json"), manifestStr, "utf-8");
     }
   }
-  console.log("Saved site.webmanifest");
+  console.log("Saved site.webmanifest, manifest.webmanifest, manifest.json");
 
   console.log("\nALL FAVICONS AND BRAND ASSETS SUCCESSFULLY GENERATED & VERIFIED!");
 }

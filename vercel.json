@@ -74,7 +74,7 @@
       ]
     },
     {
-      "source": "/(favicon.*|apple-touch-icon.*|android-chrome.*|leafly-site-icon.*|site\\.webmanifest)",
+      "source": "/(favicon.*|apple-touch-icon.*|android-chrome.*|leafly-site-icon.*|site\\.webmanifest|manifest\\.webmanifest|manifest\\.json)",
       "headers": [
         {
           "key": "Cache-Control",

@@ -18,7 +18,9 @@ const files = [
   { name: "leafly-site-icon.png", width: 512, height: 512 },
   { name: "leafly-logo.png", width: 512, height: 512 },
   { name: "favicon.svg", isSvg: true },
-  { name: "site.webmanifest", isJson: true }
+  { name: "site.webmanifest", isJson: true },
+  { name: "manifest.webmanifest", isJson: true },
+  { name: "manifest.json", isJson: true }
 ];
 
 async function verify() {
