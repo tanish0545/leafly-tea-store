@@ -1020,7 +1020,7 @@ export default function Checkout() {
       if (!cfResponse || !cfResponse.paymentSessionId) {
         throw new Error(
           cfResponse?.error ||
-            "Unable to start secure payment session. Please retry or choose Pay on Delivery."
+          "Unable to start secure payment session. Please retry or choose Pay on Delivery."
         );
       }
 
@@ -1611,7 +1611,7 @@ export default function Checkout() {
                   <input
                     type="text"
                     className="checkout-coupon-input"
-                    placeholder="Enter promo code (e.g. Leafly10)"
+                    placeholder=" "
                     value={couponInput}
                     onChange={(e) => {
                       setCouponInput(e.target.value);
