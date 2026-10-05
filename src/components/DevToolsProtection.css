@@ -1,0 +1,132 @@
+/* =========================================================
+   LEAFLY — DEVELOPER TOOLS PROTECTION OVERLAY
+   Visual Language:
+   - Forest Green: #0B2B1E
+   - Heritage Gold: #C9A24B
+   - Warm Ivory: #F7F3EC
+   ========================================================= */
+
+.leafly-devtools-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2147483647;
+  background: radial-gradient(circle at 50% 42%, #123d2b 0%, #0b2b1e 65%, #051911 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(20px, 4vw, 32px);
+  color: #f7f3ec;
+  user-select: none;
+  -webkit-user-select: none;
+  animation: leaflyOverlayFadeIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+@keyframes leaflyOverlayFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.leafly-devtools-card {
+  position: relative;
+  max-width: 480px;
+  width: 100%;
+  background: rgba(11, 43, 30, 0.94);
+  border: 1px solid rgba(201, 162, 75, 0.3);
+  border-radius: 12px;
+  padding: clamp(32px, 6vw, 48px) clamp(24px, 5vw, 40px);
+  text-align: center;
+  box-shadow: 
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 0 50px rgba(201, 162, 75, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.leafly-devtools-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(201, 162, 75, 0.1);
+  border: 1px solid rgba(201, 162, 75, 0.25);
+  margin-bottom: 24px;
+}
+
+.leafly-devtools-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #c9a24b;
+  box-shadow: 0 0 8px #c9a24b;
+}
+
+.leafly-devtools-badge-text {
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #c9a24b;
+}
+
+.leafly-devtools-icon-wrapper {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(201, 162, 75, 0.12);
+  border: 1px solid rgba(201, 162, 75, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c9a24b;
+  margin-bottom: 20px;
+}
+
+.leafly-devtools-title {
+  margin: 0 0 14px 0;
+  font-family: var(--font-display, "Playfair Display", "Georgia", serif);
+  font-size: clamp(24px, 5vw, 28px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: #f7f3ec;
+  line-height: 1.25;
+}
+
+.leafly-devtools-divider {
+  width: 64px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #c9a24b, transparent);
+  margin: 0 auto 18px auto;
+}
+
+.leafly-devtools-message {
+  margin: 0 0 10px 0;
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: rgba(247, 243, 236, 0.85);
+}
+
+.leafly-devtools-hint {
+  margin: 0;
+  font-family: var(--font-body, "Inter", sans-serif);
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: rgba(247, 243, 236, 0.55);
+}

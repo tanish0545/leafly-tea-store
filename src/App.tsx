@@ -29,6 +29,7 @@ import { ProductProvider } from "./context/ProductContext";
    Only the Home bundle ships on initial page load. */
 
 import AdminRoute from "./components/AdminRoute";
+import DevToolsProtection from "./components/DevToolsProtection";
 
 const About = lazy(() => import("./pages/About"));
 const Checkout = lazy(() => import("./pages/Checkout"));
@@ -79,6 +80,7 @@ function App() {
                   <OrderProvider>
                     <CouponProvider>
                       <BrowserRouter>
+                      <DevToolsProtection />
                       <ScrollToTop />
                       <BrandLoader />
                       <FloatingLeaves />
