@@ -46,6 +46,7 @@ export type ReviewItem = {
 
 export type CustomerRequest = {
   id: string;
+  requestId?: string;
   type: "Contact" | "Gifting" | "Newsletter" | "Inquiry" | string;
   customerName: string;
   customerEmail: string;
@@ -58,6 +59,7 @@ export type CustomerRequest = {
   status: "NEW" | "IN PROGRESS" | "RESOLVED";
   updatedAt?: string;
   notes?: string;
+  source?: string;
 };
 
 type TabType = "dashboard" | "products" | "teaware" | "hampers" | "orders" | "accounts" | "coupons" | "reviews" | "requests" | "removed";
@@ -712,11 +714,13 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
   useEffect(() => {
     if (authLoading || !isAuthenticated || !isAdmin) return;
 
+    console.log("[Requests] Starting realtime listener...");
     setRequestsLoading(true);
     const requestsCol = collection(db, "requests");
     const unsubscribe = onSnapshot(
       requestsCol,
       (snapshot) => {
+        console.log(`[Requests] Received ${snapshot.docs.length} requests`);
         const fetchedRequests: CustomerRequest[] = snapshot.docs.map((docSnap) => {
           const d = docSnap.data();
           const rawStatus = String(d.status || "NEW").toUpperCase().trim();
@@ -727,12 +731,28 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
             status = "IN PROGRESS";
           }
 
-          const rawDate = d.createdAt || (d.timestamp?.toDate ? d.timestamp.toDate().toISOString() : null);
-          const createdAt = rawDate || new Date().toISOString();
+          let createdAt = new Date().toISOString();
+          try {
+            if (d.createdAt && typeof d.createdAt === "string") {
+              const parsed = new Date(d.createdAt);
+              if (!isNaN(parsed.getTime())) {
+                createdAt = parsed.toISOString();
+              }
+            } else if (d.timestamp?.toDate && typeof d.timestamp.toDate === "function") {
+              createdAt = d.timestamp.toDate().toISOString();
+            } else if (d.createdAt?.toDate && typeof d.createdAt.toDate === "function") {
+              createdAt = d.createdAt.toDate().toISOString();
+            }
+          } catch (tsErr) {
+            console.warn("[Requests] Error parsing request timestamp:", tsErr);
+          }
+
+          const resolvedType = d.type || (d.quantity ? "Gifting" : d.subject ? "Contact" : "Inquiry");
 
           return {
-            id: d.id || docSnap.id,
-            type: d.type || (d.quantity ? "Gifting" : d.subject ? "Contact" : "Inquiry"),
+            id: d.id || d.requestId || docSnap.id,
+            requestId: d.requestId || d.id || docSnap.id,
+            type: resolvedType,
             customerName: d.customerName || d.name || "Patron",
             customerEmail: d.customerEmail || d.email || "",
             customerPhone: d.customerPhone || d.phone || undefined,
@@ -741,6 +761,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
             quantity: d.quantity || undefined,
             createdAt,
             status,
+            source: d.source || undefined,
             updatedAt: d.updatedAt || undefined,
             notes: d.notes || undefined,
           };
@@ -753,12 +774,15 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
         setRequestsLoading(false);
       },
       (error) => {
-        console.warn("Error listening to customer requests in Firestore:", error);
+        console.error("[Requests] Firestore listener error:", error);
         setRequestsLoading(false);
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      console.log("[Requests] Unsubscribing realtime listener");
+      unsubscribe();
+    };
   }, [authLoading, isAuthenticated, isAdmin]);
 
   // Keep selectedRequest updated when requests state updates in real-time
@@ -1954,23 +1978,35 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
   const filteredRequests = useMemo(() => {
     return requests.filter((req) => {
       // 1. Status Filter
-      if (requestFilterStatus !== "all" && req.status !== requestFilterStatus) {
+      const reqStatus = (req.status || "NEW").toUpperCase().trim();
+      if (requestFilterStatus !== "all" && reqStatus !== requestFilterStatus) {
         return false;
       }
       // 2. Type Filter
-      if (requestFilterType !== "all" && req.type.toLowerCase() !== requestFilterType.toLowerCase()) {
-        return false;
+      if (requestFilterType !== "all") {
+        const reqType = String(req.type || "").toLowerCase().trim();
+        const filterType = requestFilterType.toLowerCase().trim();
+        if (filterType === "contact" && !reqType.includes("contact")) {
+          return false;
+        }
+        if (filterType === "gifting" && !reqType.includes("gift")) {
+          return false;
+        }
+        if (filterType === "inquiry" && (reqType.includes("contact") || reqType.includes("gift"))) {
+          return false;
+        }
       }
       // 3. Search Query
       if (requestSearchQuery.trim()) {
         const query = requestSearchQuery.toLowerCase().trim();
-        const matchesId = req.id.toLowerCase().includes(query);
-        const matchesName = req.customerName.toLowerCase().includes(query);
-        const matchesEmail = req.customerEmail.toLowerCase().includes(query);
-        const matchesPhone = Boolean(req.customerPhone?.toLowerCase().includes(query));
-        const matchesSubject = Boolean(req.subject?.toLowerCase().includes(query));
-        const matchesMessage = Boolean(req.message?.toLowerCase().includes(query));
-        return matchesId || matchesName || matchesEmail || matchesPhone || matchesSubject || matchesMessage;
+        const matchesId = (req.id || "").toLowerCase().includes(query) || (req.requestId || "").toLowerCase().includes(query);
+        const matchesName = (req.customerName || "").toLowerCase().includes(query);
+        const matchesEmail = (req.customerEmail || "").toLowerCase().includes(query);
+        const matchesPhone = Boolean((req.customerPhone || "").toLowerCase().includes(query));
+        const matchesSubject = Boolean((req.subject || "").toLowerCase().includes(query));
+        const matchesMessage = Boolean((req.message || "").toLowerCase().includes(query));
+        const matchesQuantity = Boolean((req.quantity || "").toLowerCase().includes(query));
+        return matchesId || matchesName || matchesEmail || matchesPhone || matchesSubject || matchesMessage || matchesQuantity;
       }
       return true;
     });
@@ -5271,8 +5307,8 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                               </div>
                             </td>
                             <td>
-                              <span className={`request-type-badge ${req.type.toLowerCase()}`}>
-                                {req.type}
+                              <span className={`request-type-badge ${(req.type || "Inquiry").toLowerCase()}`}>
+                                {req.type || "Inquiry"}
                               </span>
                             </td>
                             <td>
@@ -5294,10 +5330,14 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                             </td>
                             <td>
                               <span className="cell-main-text" style={{ fontSize: "12px", fontWeight: 500 }}>
-                                {req.createdAt ? new Date(req.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Recent"}
+                                {req.createdAt && !isNaN(new Date(req.createdAt).getTime())
+                                  ? new Date(req.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+                                  : "Recent"}
                               </span>
                               <span className="cell-subtext">
-                                {req.createdAt ? new Date(req.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+                                {req.createdAt && !isNaN(new Date(req.createdAt).getTime())
+                                  ? new Date(req.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                                  : ""}
                               </span>
                             </td>
                             <td>
@@ -5359,8 +5399,8 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                         <div className="mobile-card-header">
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <span className="request-id-badge">#{req.id.slice(0, 8)}</span>
-                            <span className={`request-type-badge ${req.type.toLowerCase()}`}>
-                              {req.type}
+                            <span className={`request-type-badge ${(req.type || "Inquiry").toLowerCase()}`}>
+                              {req.type || "Inquiry"}
                             </span>
                           </div>
                           <span className={`request-status-badge ${req.status === "NEW" ? "new" : req.status === "IN PROGRESS" ? "in-progress" : "resolved"}`}>
@@ -5682,8 +5722,8 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                   <span className="modal-eyebrow">CUSTOMER INQUIRY DOSSIER</span>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px", flexWrap: "wrap" }}>
                     <h3 className="modal-title" style={{ margin: 0 }}>#{selectedRequest.id}</h3>
-                    <span className={`request-type-badge ${selectedRequest.type.toLowerCase()}`}>
-                      {selectedRequest.type}
+                    <span className={`request-type-badge ${(selectedRequest.type || "Inquiry").toLowerCase()}`}>
+                      {selectedRequest.type || "Inquiry"}
                     </span>
                     <span className={`request-status-badge ${selectedRequest.status === "NEW" ? "new" : selectedRequest.status === "IN PROGRESS" ? "in-progress" : "resolved"}`}>
                       {selectedRequest.status}
@@ -5732,10 +5772,12 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                       <div className="modal-info-row">
                         <span className="modal-info-label">Submitted:</span>
                         <span className="modal-info-val">
-                          {selectedRequest.createdAt ? new Date(selectedRequest.createdAt).toLocaleString("en-IN", { dateStyle: "full", timeStyle: "medium" }) : "Recent"}
+                          {selectedRequest.createdAt && !isNaN(new Date(selectedRequest.createdAt).getTime())
+                            ? new Date(selectedRequest.createdAt).toLocaleString("en-IN", { dateStyle: "full", timeStyle: "medium" })
+                            : "Recent"}
                         </span>
                       </div>
-                      {selectedRequest.updatedAt && (
+                      {selectedRequest.updatedAt && !isNaN(new Date(selectedRequest.updatedAt).getTime()) && (
                         <div className="modal-info-row">
                           <span className="modal-info-label">Last Updated:</span>
                           <span className="modal-info-val">

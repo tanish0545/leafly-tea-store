@@ -113,24 +113,34 @@ export const ApiService = {
    */
   async submitGiftingInquiry(payload: GiftingFormPayload): Promise<GiftingResponse> {
     const cleanEmail = payload.email.trim().toLowerCase();
+    const cleanPhone = payload.phone?.trim() || "";
     const referenceId = `GF-${Date.now().toString(36).toUpperCase()}`;
+
+    console.log("[Requests] Creating request...", referenceId);
+
+    const requestData = {
+      id: referenceId,
+      requestId: referenceId,
+      type: "Gifting",
+      customerName: payload.name.trim(),
+      name: payload.name.trim(),
+      customerEmail: cleanEmail,
+      email: cleanEmail,
+      ...(cleanPhone ? { customerPhone: cleanPhone, phone: cleanPhone } : {}),
+      quantity: payload.quantity,
+      ...(payload.message?.trim() ? { message: payload.message.trim() } : {}),
+      status: "NEW",
+      source: "Website Bespoke Gifting Form",
+      createdAt: new Date().toISOString(),
+      timestamp: serverTimestamp(),
+    };
 
     // 1. Save to Firestore 'requests' collection
     try {
-      await setDoc(doc(db, "requests", referenceId), {
-        id: referenceId,
-        type: "Gifting",
-        customerName: payload.name.trim(),
-        customerEmail: cleanEmail,
-        ...(payload.phone?.trim() ? { customerPhone: payload.phone.trim() } : {}),
-        quantity: payload.quantity,
-        ...(payload.message?.trim() ? { message: payload.message.trim() } : {}),
-        status: "NEW",
-        createdAt: new Date().toISOString(),
-        timestamp: serverTimestamp(),
-      });
+      await setDoc(doc(db, "requests", referenceId), requestData);
+      console.log(`[Requests] Firestore write successful: ${referenceId}`);
     } catch (dbError) {
-      console.warn("[ApiService] Firestore gifting request record notice:", dbError);
+      console.error("[Requests] Firestore write error:", dbError);
     }
 
     // 2. Dispatch via Serverless Email API
@@ -138,8 +148,11 @@ export const ApiService = {
       const result = await postApi<GiftingResponse>("/api/email?action=gifting", {
         action: "gifting",
         referenceId,
+        requestId: referenceId,
+        source: "Website Bespoke Gifting Form",
         ...payload,
         email: cleanEmail,
+        phone: cleanPhone || undefined,
       });
       return {
         success: result.success,
@@ -148,7 +161,7 @@ export const ApiService = {
         error: result.error,
       };
     } catch (apiError) {
-      console.warn("[ApiService] Gifting API error:", apiError);
+      console.error("[ApiService] Gifting API error:", apiError);
       return {
         success: false,
         referenceId,
@@ -167,22 +180,31 @@ export const ApiService = {
     const cleanPhone = payload.phone?.trim() || "";
     const referenceId = `CT-${Date.now().toString(36).toUpperCase()}`;
 
+    console.log("[Requests] Creating request...", referenceId);
+
+    const requestData = {
+      id: referenceId,
+      requestId: referenceId,
+      type: "Contact",
+      customerName: payload.name.trim(),
+      name: payload.name.trim(),
+      customerEmail: cleanEmail,
+      email: cleanEmail,
+      ...(cleanPhone ? { customerPhone: cleanPhone, phone: cleanPhone } : {}),
+      subject: payload.subject.trim(),
+      message: payload.message.trim(),
+      status: "NEW",
+      source: "Website Contact Form",
+      createdAt: new Date().toISOString(),
+      timestamp: serverTimestamp(),
+    };
+
     // 1. Save to Firestore 'requests' collection
     try {
-      await setDoc(doc(db, "requests", referenceId), {
-        id: referenceId,
-        type: "Contact",
-        customerName: payload.name.trim(),
-        customerEmail: cleanEmail,
-        ...(cleanPhone ? { customerPhone: cleanPhone } : {}),
-        subject: payload.subject.trim(),
-        message: payload.message.trim(),
-        status: "NEW",
-        createdAt: new Date().toISOString(),
-        timestamp: serverTimestamp(),
-      });
+      await setDoc(doc(db, "requests", referenceId), requestData);
+      console.log(`[Requests] Firestore write successful: ${referenceId}`);
     } catch (dbError) {
-      console.warn("[ApiService] Firestore contact request record notice:", dbError);
+      console.error("[Requests] Firestore write error:", dbError);
     }
 
     // 2. Dispatch via Serverless Email API
@@ -190,6 +212,8 @@ export const ApiService = {
       const result = await postApi<ContactResponse>("/api/email?action=contact", {
         action: "contact",
         referenceId,
+        requestId: referenceId,
+        source: "Website Contact Form",
         ...payload,
         email: cleanEmail,
         phone: cleanPhone || undefined,
@@ -209,7 +233,7 @@ export const ApiService = {
         error: result?.error || "We couldn't submit your message right now. Please try again.",
       };
     } catch (apiError) {
-      console.warn("[ApiService] Contact API error:", apiError);
+      console.error("[ApiService] Contact API error:", apiError);
       return {
         success: false,
         referenceId,

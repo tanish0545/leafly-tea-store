@@ -230,20 +230,25 @@ export default async function handler(
           await adminDb.collection("requests").doc(referenceId).set(
             {
               id: referenceId,
+              requestId: referenceId,
               type: "Contact",
               customerName: name,
+              name,
               customerEmail: email,
-              ...(phone ? { customerPhone: phone } : {}),
+              email,
+              ...(phone ? { customerPhone: phone, phone } : {}),
               subject,
               message,
               status: "NEW",
+              source: body.source || "Website Contact Form",
               createdAt: new Date().toISOString(),
             },
             { merge: true }
           );
+          console.log(`[Requests] Server Firestore write successful: ${referenceId}`);
         }
       } catch (dbErr) {
-        console.warn("[API Email] Server Firestore contact sync notice:", dbErr);
+        console.error("[Requests] Server Firestore contact sync error:", dbErr);
       }
 
       const contactData: ContactEmailData = {
@@ -345,20 +350,25 @@ export default async function handler(
           await adminDb.collection("requests").doc(referenceId).set(
             {
               id: referenceId,
+              requestId: referenceId,
               type: "Gifting",
               customerName: name,
+              name,
               customerEmail: email,
-              ...(phone ? { customerPhone: phone } : {}),
+              email,
+              ...(phone ? { customerPhone: phone, phone } : {}),
               quantity,
               ...(message ? { message } : {}),
               status: "NEW",
+              source: body.source || "Website Bespoke Gifting Form",
               createdAt: new Date().toISOString(),
             },
             { merge: true }
           );
+          console.log(`[Requests] Server Firestore write successful: ${referenceId}`);
         }
       } catch (dbErr) {
-        console.warn("[API Email] Server Firestore gifting sync notice:", dbErr);
+        console.error("[Requests] Server Firestore gifting sync error:", dbErr);
       }
 
       const giftingData: GiftingEmailData = {
