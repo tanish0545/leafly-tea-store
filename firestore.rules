@@ -178,6 +178,12 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // 10b. Unified Customer Requests (Contact, Gifting, Concierge Inquiries):
+    match /requests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
     // 11. Firebase Trigger Email extension queue:
     match /mail/{mailId} {
       allow create: if true;

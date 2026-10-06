@@ -155,7 +155,7 @@ export function getNewsletterWelcomeEmail(subscriberEmail: string): { subject: s
 }
 
 export function getNewsletterAdminNotification(subscriberEmail: string, source = "Website Footer"): { subject: string; html: string } {
-  const subject = "New Leafly Newsletter Subscription";
+  const subject = "[Leafly] New Newsletter Subscription";
   const content = `
     <h2 style="margin: 0 0 16px; font-family: Georgia, serif; font-size: 20px; color: ${LEAFLY_GREEN}; font-weight: normal;">
       New Newsletter Subscriber
@@ -165,6 +165,14 @@ export function getNewsletterAdminNotification(subscriberEmail: string, source =
     </p>
 
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${LEAFLY_CREAM}; border: 1px solid ${LEAFLY_BORDER}; border-radius: 6px; margin: 16px 0;">
+      <tr>
+        <td style="padding: 12px 18px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">
+          Request Type:
+        </td>
+        <td style="padding: 12px 18px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_GREEN};">
+          Newsletter Subscription
+        </td>
+      </tr>
       <tr>
         <td style="padding: 12px 18px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">
           Subscriber Email:
@@ -252,7 +260,7 @@ export function getGiftingConfirmationEmail(data: GiftingEmailData): { subject: 
 }
 
 export function getGiftingAdminNotification(data: GiftingEmailData): { subject: string; html: string } {
-  const subject = `New Gifting Request — Leafly [Ref: #${data.referenceId}]`;
+  const subject = `[Leafly] New Gifting Request [Ref: #${data.referenceId}]`;
   const content = `
     <h2 style="margin: 0 0 16px; font-family: Georgia, serif; font-size: 20px; color: ${LEAFLY_GREEN}; font-weight: normal;">
       New Corporate / Bespoke Gifting Request
@@ -263,19 +271,23 @@ export function getGiftingAdminNotification(data: GiftingEmailData): { subject: 
 
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${LEAFLY_CREAM}; border: 1px solid ${LEAFLY_BORDER}; border-radius: 6px; margin: 16px 0;">
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">Reference:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">Request Type:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_GREEN};">Bespoke Gifting Request</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">Request ID:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_GOLD}; font-family: monospace;">#${data.referenceId}</td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Client Name:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Customer Name:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_GREEN};">${data.name}</td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Client Email:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Customer Email:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};"><a href="mailto:${data.email}">${data.email}</a></td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Phone Number:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Customer Phone:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};">${data.phone || "Not provided"}</td>
       </tr>
       <tr>
@@ -287,7 +299,7 @@ export function getGiftingAdminNotification(data: GiftingEmailData): { subject: 
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT}; white-space: pre-wrap;">${data.message || "No additional message."}</td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_MUTED};">Submitted At:</td>
+        <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_MUTED};">Submitted Time:</td>
         <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_TEXT};">${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST</td>
       </tr>
     </table>
@@ -348,7 +360,7 @@ export function getContactConfirmationEmail(data: ContactEmailData): { subject: 
 }
 
 export function getContactAdminNotification(data: ContactEmailData): { subject: string; html: string } {
-  const subject = `New Contact Inquiry — Leafly [${data.subject}]`;
+  const subject = `[Leafly] New Contact Request${data.subject ? ` — ${data.subject}` : ""}`;
   const content = `
     <h2 style="margin: 0 0 16px; font-family: Georgia, serif; font-size: 20px; color: ${LEAFLY_GREEN}; font-weight: normal;">
       New Customer Inquiry Received
@@ -356,7 +368,11 @@ export function getContactAdminNotification(data: ContactEmailData): { subject: 
 
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${LEAFLY_CREAM}; border: 1px solid ${LEAFLY_BORDER}; border-radius: 6px; margin: 16px 0;">
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 120px;">Reference:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">Request Type:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_GREEN};">Contact Request</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">Request ID:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; font-weight: 600; color: ${LEAFLY_GOLD}; font-family: monospace;">#${data.referenceId}</td>
       </tr>
       <tr>
@@ -369,7 +385,7 @@ export function getContactAdminNotification(data: ContactEmailData): { subject: 
       </tr>
       ${data.phone ? `
       <tr>
-        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Phone:</td>
+        <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED};">Customer Phone:</td>
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT};"><a href="tel:${data.phone}">${data.phone}</a></td>
       </tr>` : ""}
       <tr>
@@ -381,7 +397,7 @@ export function getContactAdminNotification(data: ContactEmailData): { subject: 
         <td style="padding: 10px 16px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_TEXT}; white-space: pre-wrap;">${data.message}</td>
       </tr>
       <tr>
-        <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_MUTED};">Received At:</td>
+        <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_MUTED};">Submitted Time:</td>
         <td style="padding: 10px 16px; font-size: 13px; color: ${LEAFLY_TEXT};">${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST</td>
       </tr>
     </table>

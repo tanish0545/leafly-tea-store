@@ -4,7 +4,7 @@
  * Stores requests into Firestore and triggers server-side email notifications.
  */
 
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
 
 export interface NewsletterResponse {
@@ -108,34 +108,36 @@ export const ApiService = {
 
   /**
    * Submit Gifting page request:
-   * 1. Saves to Firestore 'gifting_requests'
+   * 1. Saves to Firestore 'requests' collection (Request ID as doc key)
    * 2. Calls backend API to send confirmation & admin alert
    */
   async submitGiftingInquiry(payload: GiftingFormPayload): Promise<GiftingResponse> {
     const cleanEmail = payload.email.trim().toLowerCase();
     const referenceId = `GF-${Date.now().toString(36).toUpperCase()}`;
 
-    // 1. Save to Firestore
+    // 1. Save to Firestore 'requests' collection
     try {
-      await addDoc(collection(db, "gifting_requests"), {
-        referenceId,
-        name: payload.name.trim(),
-        email: cleanEmail,
-        phone: payload.phone?.trim() || null,
+      await setDoc(doc(db, "requests", referenceId), {
+        id: referenceId,
+        type: "Gifting",
+        customerName: payload.name.trim(),
+        customerEmail: cleanEmail,
+        ...(payload.phone?.trim() ? { customerPhone: payload.phone.trim() } : {}),
         quantity: payload.quantity,
-        message: payload.message?.trim() || "",
-        status: "Pending",
+        ...(payload.message?.trim() ? { message: payload.message.trim() } : {}),
+        status: "NEW",
         createdAt: new Date().toISOString(),
         timestamp: serverTimestamp(),
       });
     } catch (dbError) {
-      console.warn("[ApiService] Firestore gifting record notice:", dbError);
+      console.warn("[ApiService] Firestore gifting request record notice:", dbError);
     }
 
     // 2. Dispatch via Serverless Email API
     try {
       const result = await postApi<GiftingResponse>("/api/email?action=gifting", {
         action: "gifting",
+        referenceId,
         ...payload,
         email: cleanEmail,
       });
@@ -157,7 +159,7 @@ export const ApiService = {
 
   /**
    * Submit Contact Us inquiry:
-   * 1. Saves to Firestore 'contact_messages'
+   * 1. Saves to Firestore 'requests' collection (Request ID as doc key)
    * 2. Calls backend API to send confirmation & admin alert
    */
   async submitContactInquiry(payload: ContactFormPayload): Promise<ContactResponse> {
@@ -165,27 +167,29 @@ export const ApiService = {
     const cleanPhone = payload.phone?.trim() || "";
     const referenceId = `CT-${Date.now().toString(36).toUpperCase()}`;
 
-    // 1. Save to Firestore
+    // 1. Save to Firestore 'requests' collection
     try {
-      await addDoc(collection(db, "contact_messages"), {
-        referenceId,
-        name: payload.name.trim(),
-        email: cleanEmail,
-        phone: cleanPhone || null,
+      await setDoc(doc(db, "requests", referenceId), {
+        id: referenceId,
+        type: "Contact",
+        customerName: payload.name.trim(),
+        customerEmail: cleanEmail,
+        ...(cleanPhone ? { customerPhone: cleanPhone } : {}),
         subject: payload.subject.trim(),
         message: payload.message.trim(),
-        status: "Unread",
+        status: "NEW",
         createdAt: new Date().toISOString(),
         timestamp: serverTimestamp(),
       });
     } catch (dbError) {
-      console.warn("[ApiService] Firestore contact record notice:", dbError);
+      console.warn("[ApiService] Firestore contact request record notice:", dbError);
     }
 
     // 2. Dispatch via Serverless Email API
     try {
       const result = await postApi<ContactResponse>("/api/email?action=contact", {
         action: "contact",
+        referenceId,
         ...payload,
         email: cleanEmail,
         phone: cleanPhone || undefined,

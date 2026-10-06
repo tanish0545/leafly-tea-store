@@ -44,7 +44,23 @@ export type ReviewItem = {
   createdAt: string;
 };
 
-type TabType = "dashboard" | "products" | "teaware" | "hampers" | "orders" | "accounts" | "coupons" | "reviews" | "removed";
+export type CustomerRequest = {
+  id: string;
+  type: "Contact" | "Gifting" | "Newsletter" | "Inquiry" | string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string;
+  subject?: string;
+  message?: string;
+  quantity?: string;
+  createdAt: string;
+  timestamp?: unknown;
+  status: "NEW" | "IN PROGRESS" | "RESOLVED";
+  updatedAt?: string;
+  notes?: string;
+};
+
+type TabType = "dashboard" | "products" | "teaware" | "hampers" | "orders" | "accounts" | "coupons" | "reviews" | "requests" | "removed";
 
 const SECTION_TO_TAB: Record<string, TabType> = {
   dashboard: "dashboard",
@@ -61,6 +77,11 @@ const SECTION_TO_TAB: Record<string, TabType> = {
   "customer-reviews": "reviews",
   ratings: "reviews",
   feedback: "reviews",
+  requests: "requests",
+  request: "requests",
+  inquiries: "requests",
+  enquiries: "requests",
+  contact: "requests",
   removed: "removed",
   "removed-products": "removed",
 };
@@ -74,6 +95,7 @@ const TAB_TO_PATH: Record<TabType, string> = {
   accounts: "/admin/accounts",
   coupons: "/admin/coupons",
   reviews: "/admin/reviews",
+  requests: "/admin/requests",
   removed: "/admin/removed",
 };
 
@@ -266,6 +288,16 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
   const [selectedAccount, setSelectedAccount] = useState<AccountUser | null>(null);
   const [showAdminLogoutConfirm, setShowAdminLogoutConfirm] = useState(false);
   const savedModalScrollPosRef = useRef<number>(0);
+
+  // Customer Requests State (Contact, Gifting, Concierge Inquiries)
+  const [requests, setRequests] = useState<CustomerRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [selectedRequest, setSelectedRequest] = useState<CustomerRequest | null>(null);
+  const [requestSearchQuery, setRequestSearchQuery] = useState("");
+  const [requestFilterStatus, setRequestFilterStatus] = useState<"all" | "NEW" | "IN PROGRESS" | "RESOLVED">("all");
+  const [requestFilterType, setRequestFilterType] = useState<"all" | string>("all");
+  const [isUpdatingRequestStatus, setIsUpdatingRequestStatus] = useState(false);
+  const [adminNoteInput, setAdminNoteInput] = useState("");
 
   // Dashboard UI States
   const [chartTimeframe, setChartTimeframe] = useState<"7days" | "30days" | "6months">("7days");
@@ -675,12 +707,76 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
     return () => unsubscribe();
   }, [authLoading, isAuthenticated, isAdmin]);
 
+  // Real-time Firestore customer requests synchronization (Contact, Gifting, Inquiries)
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !isAdmin) return;
+
+    setRequestsLoading(true);
+    const requestsCol = collection(db, "requests");
+    const unsubscribe = onSnapshot(
+      requestsCol,
+      (snapshot) => {
+        const fetchedRequests: CustomerRequest[] = snapshot.docs.map((docSnap) => {
+          const d = docSnap.data();
+          const rawStatus = String(d.status || "NEW").toUpperCase().trim();
+          let status: "NEW" | "IN PROGRESS" | "RESOLVED" = "NEW";
+          if (rawStatus === "RESOLVED") {
+            status = "RESOLVED";
+          } else if (rawStatus === "IN PROGRESS" || rawStatus === "IN_PROGRESS" || rawStatus === "PROCESSING") {
+            status = "IN PROGRESS";
+          }
+
+          const rawDate = d.createdAt || (d.timestamp?.toDate ? d.timestamp.toDate().toISOString() : null);
+          const createdAt = rawDate || new Date().toISOString();
+
+          return {
+            id: d.id || docSnap.id,
+            type: d.type || (d.quantity ? "Gifting" : d.subject ? "Contact" : "Inquiry"),
+            customerName: d.customerName || d.name || "Patron",
+            customerEmail: d.customerEmail || d.email || "",
+            customerPhone: d.customerPhone || d.phone || undefined,
+            subject: d.subject || undefined,
+            message: d.message || undefined,
+            quantity: d.quantity || undefined,
+            createdAt,
+            status,
+            updatedAt: d.updatedAt || undefined,
+            notes: d.notes || undefined,
+          };
+        });
+
+        // Sort descending by creation date (newest first)
+        fetchedRequests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        setRequests(fetchedRequests);
+        setRequestsLoading(false);
+      },
+      (error) => {
+        console.warn("Error listening to customer requests in Firestore:", error);
+        setRequestsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [authLoading, isAuthenticated, isAdmin]);
+
+  // Keep selectedRequest updated when requests state updates in real-time
+  useEffect(() => {
+    if (selectedRequest) {
+      const updated = requests.find((r) => r.id === selectedRequest.id);
+      if (updated && (updated.status !== selectedRequest.status || updated.notes !== selectedRequest.notes)) {
+        setSelectedRequest(updated);
+      }
+    }
+  }, [requests, selectedRequest]);
+
   // Close modals & mobile menu on Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSelectedOrder(null);
         setSelectedAccount(null);
+        setSelectedRequest(null);
         setIsMobileMenuOpen(false);
       }
     };
@@ -1853,6 +1949,83 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
     });
   }, [reviews, reviewSearchQuery, reviewFilterStatus]);
 
+  // Filtered customer requests (Contact, Gifting, Concierge Inquiries)
+  const filteredRequests = useMemo(() => {
+    return requests.filter((req) => {
+      // 1. Status Filter
+      if (requestFilterStatus !== "all" && req.status !== requestFilterStatus) {
+        return false;
+      }
+      // 2. Type Filter
+      if (requestFilterType !== "all" && req.type.toLowerCase() !== requestFilterType.toLowerCase()) {
+        return false;
+      }
+      // 3. Search Query
+      if (requestSearchQuery.trim()) {
+        const query = requestSearchQuery.toLowerCase().trim();
+        const matchesId = req.id.toLowerCase().includes(query);
+        const matchesName = req.customerName.toLowerCase().includes(query);
+        const matchesEmail = req.customerEmail.toLowerCase().includes(query);
+        const matchesPhone = Boolean(req.customerPhone?.toLowerCase().includes(query));
+        const matchesSubject = Boolean(req.subject?.toLowerCase().includes(query));
+        const matchesMessage = Boolean(req.message?.toLowerCase().includes(query));
+        return matchesId || matchesName || matchesEmail || matchesPhone || matchesSubject || matchesMessage;
+      }
+      return true;
+    });
+  }, [requests, requestFilterStatus, requestFilterType, requestSearchQuery]);
+
+  const newRequestsCount = useMemo(() => {
+    return requests.filter((r) => r.status === "NEW").length;
+  }, [requests]);
+
+  const inProgressRequestsCount = useMemo(() => {
+    return requests.filter((r) => r.status === "IN PROGRESS").length;
+  }, [requests]);
+
+  const resolvedRequestsCount = useMemo(() => {
+    return requests.filter((r) => r.status === "RESOLVED").length;
+  }, [requests]);
+
+  const handleUpdateRequestStatus = async (
+    requestId: string,
+    newStatus: "NEW" | "IN PROGRESS" | "RESOLVED",
+    note?: string
+  ) => {
+    setIsUpdatingRequestStatus(true);
+    try {
+      const ref = doc(db, "requests", requestId);
+      const updateData: Record<string, unknown> = {
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+      };
+      if (typeof note === "string") {
+        updateData.notes = note;
+      }
+      await updateDoc(ref, updateData);
+      showToast("success", `Request #${requestId} status set to ${newStatus}.`);
+    } catch (err) {
+      console.error("Error updating request status:", err);
+      showToast("error", "Failed to update request status in Firestore.");
+    } finally {
+      setIsUpdatingRequestStatus(false);
+    }
+  };
+
+  const handleSaveRequestNote = async (requestId: string) => {
+    try {
+      const ref = doc(db, "requests", requestId);
+      await updateDoc(ref, {
+        notes: adminNoteInput,
+        updatedAt: new Date().toISOString(),
+      });
+      showToast("success", `Internal note saved for Request #${requestId}.`);
+    } catch (err) {
+      console.error("Error saving request note:", err);
+      showToast("error", "Failed to save note.");
+    }
+  };
+
   const pageTitleMap: Record<TabType, string> = {
     dashboard: "Dashboard Overview",
     products: "Tea Catalog Management",
@@ -1862,6 +2035,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
     accounts: "Customer Accounts",
     coupons: "Promotions & Coupons",
     reviews: "Customer Reviews & Ratings",
+    requests: "Customer Requests & Inquiries",
     removed: "Removed Products (Recycle Bin)",
   };
 
@@ -1998,6 +2172,21 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
             <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
             <span className="admin-nav-label">Reviews</span>
             {reviews.length > 0 && <span className="admin-nav-badge warning">{reviews.length}</span>}
+          </button>
+
+          <button
+            type="button"
+            id="admin-nav-requests"
+            className={`admin-nav-item ${(activeTab === "requests" || activeSection === "requests") ? "active" : ""}`}
+            onClick={() => handleTabChange("requests")}
+          >
+            <svg className="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M12 7v4" /><circle cx="12" cy="13" r="0.5" fill="currentColor" /></svg>
+            <span className="admin-nav-label">Requests</span>
+            {newRequestsCount > 0 ? (
+              <span className="admin-nav-badge warning">{newRequestsCount}</span>
+            ) : requests.length > 0 ? (
+              <span className="admin-nav-badge neutral">{requests.length}</span>
+            ) : null}
           </button>
 
           <button
@@ -4917,6 +5106,307 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
           )}
 
           {/* =========================================================
+              TAB: CUSTOMER REQUESTS & INQUIRIES (CONTACT & GIFTING)
+             ========================================================= */}
+          {activeTab === "requests" && (
+            <div className="admin-section-view">
+              <div className="admin-section-header">
+                <div>
+                  <h2 className="section-title">Customer Requests & Inquiries</h2>
+                  <p className="section-subtitle">
+                    Real-time Contact submissions, Gifting orders, and bespoke customer inquiries
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                  <span
+                    className="admin-stat-badge"
+                    style={{
+                      background: "rgba(16, 185, 129, 0.12)",
+                      color: "#10b981",
+                      border: "1px solid rgba(16, 185, 129, 0.3)",
+                    }}
+                  >
+                    ✦ {newRequestsCount} NEW
+                  </span>
+                  <span
+                    className="admin-stat-badge"
+                    style={{
+                      background: "rgba(245, 158, 11, 0.12)",
+                      color: "#f59e0b",
+                      border: "1px solid rgba(245, 158, 11, 0.3)",
+                    }}
+                  >
+                    {inProgressRequestsCount} IN PROGRESS
+                  </span>
+                  <span
+                    className="admin-stat-badge"
+                    style={{
+                      background: "rgba(100, 116, 139, 0.12)",
+                      color: "#64748b",
+                      border: "1px solid rgba(100, 116, 139, 0.3)",
+                    }}
+                  >
+                    {resolvedRequestsCount} RESOLVED
+                  </span>
+                </div>
+              </div>
+
+              {/* SEARCH & FILTERS TOOLBAR */}
+              <div className="admin-toolbar">
+                <div className="admin-search-wrapper">
+                  <svg className="admin-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="text"
+                    className="admin-search-input"
+                    placeholder="Search by ID, customer name, email, phone, subject..."
+                    value={requestSearchQuery}
+                    onChange={(e) => setRequestSearchQuery(e.target.value)}
+                  />
+                  {requestSearchQuery && (
+                    <button
+                      type="button"
+                      className="admin-search-clear"
+                      onClick={() => setRequestSearchQuery("")}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="admin-filter-group">
+                  <select
+                    className="admin-select"
+                    value={requestFilterStatus}
+                    onChange={(e) => setRequestFilterStatus(e.target.value as "all" | "NEW" | "IN PROGRESS" | "RESOLVED")}
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="NEW">New</option>
+                    <option value="IN PROGRESS">In Progress</option>
+                    <option value="RESOLVED">Resolved</option>
+                  </select>
+
+                  <select
+                    className="admin-select"
+                    value={requestFilterType}
+                    onChange={(e) => setRequestFilterType(e.target.value)}
+                  >
+                    <option value="all">All Types</option>
+                    <option value="Contact">Contact Form</option>
+                    <option value="Gifting">Gifting Request</option>
+                    <option value="Inquiry">General Inquiry</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* CONTENT LIST */}
+              {requestsLoading ? (
+                <div className="admin-empty-state">
+                  <div className="admin-loading-spinner" style={{ margin: "20px auto" }} />
+                  <p>Syncing requests in real-time...</p>
+                </div>
+              ) : filteredRequests.length === 0 ? (
+                <div className="admin-empty-state">
+                  <p>No customer requests found matching current filters.</p>
+                </div>
+              ) : (
+                <>
+                  {/* DESKTOP TABLE */}
+                  <div className="admin-table-container desktop-only">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Request ID</th>
+                          <th>Type</th>
+                          <th>Customer</th>
+                          <th>Subject / Message</th>
+                          <th>Submitted</th>
+                          <th>Status</th>
+                          <th className="td-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRequests.map((req) => (
+                          <tr
+                            key={req.id}
+                            onClick={() => {
+                              setSelectedRequest(req);
+                              setAdminNoteInput(req.notes || "");
+                            }}
+                            style={{ cursor: "pointer" }}
+                          >
+                            <td>
+                              <span className="request-id-badge">#{req.id.slice(0, 8)}</span>
+                            </td>
+                            <td>
+                              <span className={`request-type-badge ${req.type.toLowerCase()}`}>
+                                {req.type}
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column" }}>
+                                <strong style={{ color: "var(--admin-dark-green)" }}>{req.customerName}</strong>
+                                <span style={{ fontSize: "12px", color: "var(--admin-text-muted)" }}>{req.customerEmail}</span>
+                                {req.customerPhone && (
+                                  <span style={{ fontSize: "11px", color: "var(--admin-text-muted)" }}>📞 {req.customerPhone}</span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ maxWidth: "340px" }}>
+                                {req.subject && (
+                                  <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--admin-text-main)", marginBottom: "2px" }}>
+                                    {req.subject}
+                                  </div>
+                                )}
+                                {req.quantity && (
+                                  <span style={{ fontSize: "11px", color: "var(--admin-gold)", fontWeight: 600, display: "inline-block", marginRight: "6px" }}>
+                                    Qty: {req.quantity} units
+                                  </span>
+                                )}
+                                <p style={{ margin: 0, fontSize: "12px", color: "var(--admin-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {req.message || "(No message provided)"}
+                                </p>
+                              </div>
+                            </td>
+                            <td>
+                              <span style={{ fontSize: "12px", color: "var(--admin-text-muted)" }}>
+                                {req.createdAt ? new Date(req.createdAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "Recent"}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`request-status-badge ${req.status === "NEW" ? "new" : req.status === "IN PROGRESS" ? "in-progress" : "resolved"}`}>
+                                {req.status}
+                              </span>
+                            </td>
+                            <td className="td-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="table-actions-group">
+                                <button
+                                  type="button"
+                                  className="admin-btn-action"
+                                  onClick={() => {
+                                    setSelectedRequest(req);
+                                    setAdminNoteInput(req.notes || "");
+                                  }}
+                                >
+                                  View Details
+                                </button>
+                                {req.status !== "RESOLVED" ? (
+                                  <button
+                                    type="button"
+                                    className="admin-btn-action success"
+                                    onClick={() => handleUpdateRequestStatus(req.id, "RESOLVED")}
+                                    title="Mark Resolved"
+                                  >
+                                    Resolve
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="admin-btn-action"
+                                    onClick={() => handleUpdateRequestStatus(req.id, "IN PROGRESS")}
+                                    title="Reopen Request"
+                                  >
+                                    Reopen
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* MOBILE CARDS */}
+                  <div className="admin-mobile-cards-list mobile-only">
+                    {filteredRequests.map((req) => (
+                      <div
+                        className="admin-mobile-card"
+                        key={req.id}
+                        onClick={() => {
+                          setSelectedRequest(req);
+                          setAdminNoteInput(req.notes || "");
+                        }}
+                      >
+                        <div className="mobile-card-header">
+                          <div>
+                            <span className="request-id-badge">#{req.id.slice(0, 8)}</span>
+                            <span className={`request-type-badge ${req.type.toLowerCase()}`} style={{ marginLeft: "6px" }}>
+                              {req.type}
+                            </span>
+                          </div>
+                          <span className={`request-status-badge ${req.status === "NEW" ? "new" : req.status === "IN PROGRESS" ? "in-progress" : "resolved"}`}>
+                            {req.status}
+                          </span>
+                        </div>
+                        <div className="mobile-card-body">
+                          <div className="mobile-card-info-row">
+                            <span>Customer:</span>
+                            <strong>{req.customerName}</strong>
+                          </div>
+                          <div className="mobile-card-info-row">
+                            <span>Email:</span>
+                            <span>{req.customerEmail}</span>
+                          </div>
+                          {req.customerPhone && (
+                            <div className="mobile-card-info-row">
+                              <span>Phone:</span>
+                              <span>{req.customerPhone}</span>
+                            </div>
+                          )}
+                          {req.subject && (
+                            <div className="mobile-card-info-row">
+                              <span>Subject:</span>
+                              <strong style={{ fontSize: "12px" }}>{req.subject}</strong>
+                            </div>
+                          )}
+                          {req.quantity && (
+                            <div className="mobile-card-info-row">
+                              <span>Quantity:</span>
+                              <span>{req.quantity} units</span>
+                            </div>
+                          )}
+                          <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--admin-text-main)", background: "rgba(0,0,0,0.02)", padding: "8px", borderRadius: "6px" }}>
+                            {req.message || "(No message body)"}
+                          </div>
+                          <div className="mobile-card-info-row" style={{ marginTop: "8px", fontSize: "11px", color: "var(--admin-text-muted)" }}>
+                            <span>Submitted:</span>
+                            <span>{req.createdAt ? new Date(req.createdAt).toLocaleString() : "Recent"}</span>
+                          </div>
+                        </div>
+                        <div className="mobile-card-actions" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="admin-btn-secondary"
+                            onClick={() => {
+                              setSelectedRequest(req);
+                              setAdminNoteInput(req.notes || "");
+                            }}
+                          >
+                            View Details
+                          </button>
+                          {req.status !== "RESOLVED" && (
+                            <button
+                              type="button"
+                              className="admin-btn-action success"
+                              onClick={() => handleUpdateRequestStatus(req.id, "RESOLVED")}
+                            >
+                              Resolve
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* =========================================================
               TAB 9: REMOVED PRODUCTS (RECYCLE BIN)
              ========================================================= */}
           {activeTab === "removed" && (
@@ -5138,6 +5628,207 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
           )}
         </main>
       </div>
+
+      {/* =========================================================
+          MODAL: CUSTOMER REQUEST DOSSIER
+         ========================================================= */}
+      {selectedRequest &&
+        createPortal(
+          <div
+            className="admin-modal-overlay"
+            onClick={() => setSelectedRequest(null)}
+          >
+            <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header-luxury">
+                <div>
+                  <span className="modal-eyebrow">CUSTOMER INQUIRY DOSSIER</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px" }}>
+                    <h3 className="modal-title" style={{ margin: 0 }}>#{selectedRequest.id}</h3>
+                    <span className={`request-type-badge ${selectedRequest.type.toLowerCase()}`}>
+                      {selectedRequest.type}
+                    </span>
+                    <span className={`request-status-badge ${selectedRequest.status === "NEW" ? "new" : selectedRequest.status === "IN PROGRESS" ? "in-progress" : "resolved"}`}>
+                      {selectedRequest.status}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setSelectedRequest(null)}
+                  aria-label="Close modal"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="modal-body-scroll">
+                <div className="modal-grid-cards">
+                  {/* CUSTOMER CONTACT CARD */}
+                  <div className="modal-card">
+                    <h4 className="modal-card-title">Patron Details</h4>
+                    <div className="modal-info-list">
+                      <div className="modal-info-row">
+                        <span className="modal-info-label">Name:</span>
+                        <strong className="modal-info-val">{selectedRequest.customerName}</strong>
+                      </div>
+                      <div className="modal-info-row">
+                        <span className="modal-info-label">Email:</span>
+                        <a href={`mailto:${selectedRequest.customerEmail}`} className="modal-info-val" style={{ color: "var(--admin-dark-green)", textDecoration: "underline" }}>
+                          {selectedRequest.customerEmail}
+                        </a>
+                      </div>
+                      {selectedRequest.customerPhone && (
+                        <div className="modal-info-row">
+                          <span className="modal-info-label">Phone:</span>
+                          <a href={`tel:${selectedRequest.customerPhone}`} className="modal-info-val">
+                            {selectedRequest.customerPhone}
+                          </a>
+                        </div>
+                      )}
+                      <div className="modal-info-row">
+                        <span className="modal-info-label">Submitted:</span>
+                        <span className="modal-info-val">
+                          {selectedRequest.createdAt ? new Date(selectedRequest.createdAt).toLocaleString("en-IN", { dateStyle: "full", timeStyle: "medium" }) : "Recent"}
+                        </span>
+                      </div>
+                      {selectedRequest.updatedAt && (
+                        <div className="modal-info-row">
+                          <span className="modal-info-label">Last Updated:</span>
+                          <span className="modal-info-val">
+                            {new Date(selectedRequest.updatedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* STATUS SWITCHER & QUICK ACTIONS */}
+                  <div className="modal-card">
+                    <h4 className="modal-card-title">Lifecycle & Status</h4>
+                    <div style={{ marginBottom: "14px" }}>
+                      <span style={{ fontSize: "12px", color: "var(--admin-text-muted)", display: "block", marginBottom: "8px" }}>
+                        Update Request State:
+                      </span>
+                      <div className="request-status-switcher">
+                        <button
+                          type="button"
+                          className={`status-btn new ${selectedRequest.status === "NEW" ? "active" : ""}`}
+                          disabled={isUpdatingRequestStatus}
+                          onClick={() => handleUpdateRequestStatus(selectedRequest.id, "NEW")}
+                        >
+                          New
+                        </button>
+                        <button
+                          type="button"
+                          className={`status-btn in-progress ${selectedRequest.status === "IN PROGRESS" ? "active" : ""}`}
+                          disabled={isUpdatingRequestStatus}
+                          onClick={() => handleUpdateRequestStatus(selectedRequest.id, "IN PROGRESS")}
+                        >
+                          In Progress
+                        </button>
+                        <button
+                          type="button"
+                          className={`status-btn resolved ${selectedRequest.status === "RESOLVED" ? "active" : ""}`}
+                          disabled={isUpdatingRequestStatus}
+                          onClick={() => handleUpdateRequestStatus(selectedRequest.id, "RESOLVED")}
+                        >
+                          Resolved
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "16px" }}>
+                      <a
+                        href={`mailto:${selectedRequest.customerEmail}?subject=Regarding your Leafly inquiry (${selectedRequest.id})`}
+                        className="admin-btn-secondary"
+                        style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                      >
+                        ✉ Reply via Email
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* INQUIRY CONTENT & DETAILS */}
+                <div className="modal-card" style={{ marginTop: "16px" }}>
+                  <h4 className="modal-card-title">Request Content & Specification</h4>
+                  
+                  {selectedRequest.subject && (
+                    <div style={{ marginBottom: "12px" }}>
+                      <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--admin-text-muted)", fontWeight: 600 }}>Subject:</span>
+                      <div style={{ fontSize: "15px", fontWeight: 600, color: "var(--admin-dark-green)", marginTop: "2px" }}>
+                        {selectedRequest.subject}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedRequest.quantity && (
+                    <div style={{ marginBottom: "12px" }}>
+                      <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--admin-text-muted)", fontWeight: 600 }}>Requested Quantity:</span>
+                      <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--admin-gold)", marginTop: "2px" }}>
+                        {selectedRequest.quantity} units / bespoke hampers
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: "12px" }}>
+                    <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--admin-text-muted)", fontWeight: 600 }}>Customer Message:</span>
+                    <div className="request-dossier-box">
+                      {selectedRequest.message || "(No message entered)"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* INTERNAL ADMIN NOTES */}
+                <div className="modal-card" style={{ marginTop: "16px" }}>
+                  <h4 className="modal-card-title">Internal Admin Notes</h4>
+                  <p style={{ fontSize: "12px", color: "var(--admin-text-muted)", marginBottom: "8px" }}>
+                    Private notes visible only to Leafly sanctuary administrators:
+                  </p>
+                  <div className="request-admin-note-box">
+                    <textarea
+                      rows={3}
+                      value={adminNoteInput}
+                      onChange={(e) => setAdminNoteInput(e.target.value)}
+                      placeholder="Add internal resolution notes, tracking numbers, or follow-up details..."
+                      style={{
+                        width: "100%",
+                        border: "1px solid rgba(27, 59, 43, 0.2)",
+                        borderRadius: "8px",
+                        padding: "10px",
+                        fontFamily: "inherit",
+                        fontSize: "13px",
+                        boxSizing: "border-box",
+                        resize: "vertical"
+                      }}
+                    />
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
+                      <button
+                        type="button"
+                        className="admin-btn-primary"
+                        onClick={() => handleSaveRequestNote(selectedRequest.id)}
+                      >
+                        Save Note
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer-actions">
+                <button
+                  type="button"
+                  className="admin-btn-secondary"
+                  onClick={() => setSelectedRequest(null)}
+                >
+                  Close Dossier
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* =========================================================
           MODAL 1: ORDER DETAILS

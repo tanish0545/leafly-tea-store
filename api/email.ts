@@ -5,6 +5,7 @@ import {
   sendNewsletterNotification,
   sendWelcomeNotification,
 } from "./_lib/mailer.js";
+import { getAdminFirestore } from "./_lib/firebaseAdmin.js";
 import type {
   ContactEmailData,
   GiftingEmailData,
@@ -18,6 +19,8 @@ const recentNewsletterSubmissions = new Map<string, number>();
 interface EmailRequestBody {
   action?: string;
   type?: string;
+  referenceId?: string;
+  id?: string;
   // Contact & Gifting fields
   name?: string;
   email?: string;
@@ -218,7 +221,30 @@ export default async function handler(
       }
       recentContactSubmissions.set(dedupKey, now);
 
-      const referenceId = `CT-${Date.now().toString(36).toUpperCase()}`;
+      const referenceId = (body.referenceId || body.id || `CT-${Date.now().toString(36).toUpperCase()}`).trim();
+
+      // Safely ensure request is synced to Firestore 'requests' collection on server if Admin SDK is configured
+      try {
+        const adminDb = getAdminFirestore();
+        if (adminDb) {
+          await adminDb.collection("requests").doc(referenceId).set(
+            {
+              id: referenceId,
+              type: "Contact",
+              customerName: name,
+              customerEmail: email,
+              ...(phone ? { customerPhone: phone } : {}),
+              subject,
+              message,
+              status: "NEW",
+              createdAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+        }
+      } catch (dbErr) {
+        console.warn("[API Email] Server Firestore contact sync notice:", dbErr);
+      }
 
       const contactData: ContactEmailData = {
         name,
@@ -310,7 +336,30 @@ export default async function handler(
       }
       recentGiftingSubmissions.set(dedupKey, now);
 
-      const referenceId = `GF-${Date.now().toString(36).toUpperCase()}`;
+      const referenceId = (body.referenceId || body.id || `GF-${Date.now().toString(36).toUpperCase()}`).trim();
+
+      // Safely ensure request is synced to Firestore 'requests' collection on server if Admin SDK is configured
+      try {
+        const adminDb = getAdminFirestore();
+        if (adminDb) {
+          await adminDb.collection("requests").doc(referenceId).set(
+            {
+              id: referenceId,
+              type: "Gifting",
+              customerName: name,
+              customerEmail: email,
+              ...(phone ? { customerPhone: phone } : {}),
+              quantity,
+              ...(message ? { message } : {}),
+              status: "NEW",
+              createdAt: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+        }
+      } catch (dbErr) {
+        console.warn("[API Email] Server Firestore gifting sync notice:", dbErr);
+      }
 
       const giftingData: GiftingEmailData = {
         name,

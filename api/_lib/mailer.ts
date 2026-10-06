@@ -60,22 +60,23 @@ export type VerifySmtpResult = {
 };
 
 export const DEFAULT_CUSTOMER_SUPPORT_EMAIL = "myleaflytea@gmail.com";
+export const DEFAULT_ADMIN_EMAIL = "leaflydatabase@gmail.com";
 export const LEAFLY_HEADQUARTERS_ADDRESS = "Leafly near Balaji Symphony, Panvel, Maharashtra - 410206";
 
 /**
  * Returns the verified recipient for internal company & admin notifications.
- * Strictly defaults to myleaflytea@gmail.com.
- * leaflydatabase@gmail.com is an internal auth identity and is never used as contact or notification destination.
+ * Strictly delivers to leaflydatabase@gmail.com.
+ * Customer-facing communications use myleaflytea@gmail.com.
  */
 export function getAdminEmail(): string {
-  if (process.env.ADMIN_NOTIFICATION_EMAIL) {
+  if (process.env.ADMIN_NOTIFICATION_EMAIL && process.env.ADMIN_NOTIFICATION_EMAIL.trim()) {
     return process.env.ADMIN_NOTIFICATION_EMAIL.trim();
   }
   const configuredAdmin = process.env.ADMIN_EMAIL || process.env.VITE_ADMIN_EMAIL;
-  if (configuredAdmin && configuredAdmin.trim().toLowerCase() !== "leaflydatabase@gmail.com") {
+  if (configuredAdmin && configuredAdmin.trim()) {
     return configuredAdmin.trim();
   }
-  return DEFAULT_CUSTOMER_SUPPORT_EMAIL;
+  return DEFAULT_ADMIN_EMAIL;
 }
 
 /**
@@ -309,7 +310,7 @@ export async function sendOrderConfirmation(orderData: OrderEmailData): Promise<
 }
 
 /**
- * Dispatches admin order alert to myleaflytea@gmail.com with customer & item details.
+ * Dispatches admin order alert to leaflydatabase@gmail.com with customer & item details.
  */
 export async function sendAdminOrderNotification(orderData: OrderEmailData): Promise<MailResult> {
   const adminEmail = getAdminEmail();
