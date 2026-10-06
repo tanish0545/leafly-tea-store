@@ -354,7 +354,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
 
   // Lock background body & document scroll and listen for Escape key when any true modal is open
   useEffect(() => {
-    const isModalOpen = Boolean(selectedOrder || selectedAccount || showAdminLogoutConfirm || orderToDelete);
+    const isModalOpen = Boolean(selectedOrder || selectedAccount || selectedRequest || showAdminLogoutConfirm || orderToDelete);
     if (isModalOpen) {
       const originalBodyOverflow = document.body.style.overflow;
       const originalHtmlOverflow = document.documentElement.style.overflow;
@@ -365,6 +365,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
         if (e.key === "Escape") {
           setSelectedOrder(null);
           setSelectedAccount(null);
+          setSelectedRequest(null);
           setShowAdminLogoutConfirm(false);
           setOrderToDelete(null);
         }
@@ -377,7 +378,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
         window.removeEventListener("keydown", handleKeyDown);
       };
     }
-  }, [selectedOrder, selectedAccount, showAdminLogoutConfirm, orderToDelete]);
+  }, [selectedOrder, selectedAccount, selectedRequest, showAdminLogoutConfirm, orderToDelete]);
 
   // Keep latest browserAlertsEnabled in a ref so toggling it does not destroy and recreate Firestore listeners
   const browserAlertsEnabledRef = useRef(browserAlertsEnabled);
@@ -5117,35 +5118,14 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                     Real-time Contact submissions, Gifting orders, and bespoke customer inquiries
                   </p>
                 </div>
-                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-                  <span
-                    className="admin-stat-badge"
-                    style={{
-                      background: "rgba(16, 185, 129, 0.12)",
-                      color: "#10b981",
-                      border: "1px solid rgba(16, 185, 129, 0.3)",
-                    }}
-                  >
+                <div className="header-badge-wrap">
+                  <span className="admin-stat-badge positive">
                     ✦ {newRequestsCount} NEW
                   </span>
-                  <span
-                    className="admin-stat-badge"
-                    style={{
-                      background: "rgba(245, 158, 11, 0.12)",
-                      color: "#f59e0b",
-                      border: "1px solid rgba(245, 158, 11, 0.3)",
-                    }}
-                  >
+                  <span className="admin-stat-badge warning">
                     {inProgressRequestsCount} IN PROGRESS
                   </span>
-                  <span
-                    className="admin-stat-badge"
-                    style={{
-                      background: "rgba(100, 116, 139, 0.12)",
-                      color: "#64748b",
-                      border: "1px solid rgba(100, 116, 139, 0.3)",
-                    }}
-                  >
+                  <span className="admin-stat-badge neutral">
                     {resolvedRequestsCount} RESOLVED
                   </span>
                 </div>
@@ -5153,32 +5133,32 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
 
               {/* SEARCH & FILTERS TOOLBAR */}
               <div className="admin-toolbar">
-                <div className="admin-search-wrapper">
-                  <svg className="admin-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <div className="toolbar-search">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
                   <input
                     type="text"
-                    className="admin-search-input"
-                    placeholder="Search by ID, customer name, email, phone, subject..."
+                    placeholder="Search by ID, customer name, email..."
                     value={requestSearchQuery}
                     onChange={(e) => setRequestSearchQuery(e.target.value)}
                   />
                   {requestSearchQuery && (
                     <button
                       type="button"
-                      className="admin-search-clear"
+                      className="toolbar-clear"
                       onClick={() => setRequestSearchQuery("")}
+                      title="Clear search"
                     >
                       ✕
                     </button>
                   )}
                 </div>
 
-                <div className="admin-filter-group">
+                <div className="toolbar-filters">
                   <select
-                    className="admin-select"
+                    className="toolbar-select"
                     value={requestFilterStatus}
                     onChange={(e) => setRequestFilterStatus(e.target.value as "all" | "NEW" | "IN PROGRESS" | "RESOLVED")}
                   >
@@ -5189,7 +5169,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                   </select>
 
                   <select
-                    className="admin-select"
+                    className="toolbar-select"
                     value={requestFilterType}
                     onChange={(e) => setRequestFilterType(e.target.value)}
                   >
@@ -5198,33 +5178,72 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                     <option value="Gifting">Gifting Request</option>
                     <option value="Inquiry">General Inquiry</option>
                   </select>
+
+                  {(requestSearchQuery || requestFilterStatus !== "all" || requestFilterType !== "all") && (
+                    <button
+                      type="button"
+                      className="admin-btn-secondary"
+                      onClick={() => {
+                        setRequestSearchQuery("");
+                        setRequestFilterStatus("all");
+                        setRequestFilterType("all");
+                      }}
+                      style={{ padding: "8px 14px", fontSize: "12px", height: "38px" }}
+                    >
+                      Reset Filters
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* CONTENT LIST */}
               {requestsLoading ? (
-                <div className="admin-empty-state">
-                  <div className="admin-loading-spinner" style={{ margin: "20px auto" }} />
+                <div className="admin-empty-state-card">
+                  <div className="admin-loading-spinner" style={{ margin: "16px auto" }} />
                   <p>Syncing requests in real-time...</p>
                 </div>
+              ) : requests.length === 0 ? (
+                <div className="admin-empty-state-card" style={{ padding: "40px 24px", maxWidth: "600px", margin: "20px auto" }}>
+                  <span className="empty-icon" style={{ fontSize: "32px" }}>📬</span>
+                  <h3 style={{ fontSize: "18px" }}>No customer requests yet</h3>
+                  <p style={{ fontSize: "13px", maxWidth: "420px" }}>
+                    Contact submissions, gifting inquiries, and customer requests will appear here in real time.
+                  </p>
+                </div>
               ) : filteredRequests.length === 0 ? (
-                <div className="admin-empty-state">
-                  <p>No customer requests found matching current filters.</p>
+                <div className="admin-empty-state-card" style={{ padding: "40px 24px", maxWidth: "600px", margin: "20px auto" }}>
+                  <span className="empty-icon" style={{ fontSize: "32px" }}>🔍</span>
+                  <h3 style={{ fontSize: "18px" }}>No matching requests found</h3>
+                  <p style={{ fontSize: "13px", maxWidth: "420px" }}>
+                    Try refining your search query or reset the status and type filters.
+                  </p>
+                  <button
+                    type="button"
+                    className="admin-btn-secondary"
+                    onClick={() => {
+                      setRequestSearchQuery("");
+                      setRequestFilterStatus("all");
+                      setRequestFilterType("all");
+                    }}
+                    style={{ marginTop: "8px" }}
+                  >
+                    Reset Filters
+                  </button>
                 </div>
               ) : (
                 <>
                   {/* DESKTOP TABLE */}
-                  <div className="admin-table-container desktop-only">
+                  <div className="admin-table-container requests-table-scroll desktop-only">
                     <table className="admin-table">
                       <thead>
                         <tr>
-                          <th>Request ID</th>
-                          <th>Type</th>
-                          <th>Customer</th>
-                          <th>Subject / Message</th>
-                          <th>Submitted</th>
-                          <th>Status</th>
-                          <th className="td-right">Actions</th>
+                          <th style={{ width: "120px" }}>Request ID</th>
+                          <th style={{ width: "200px" }}>Customer</th>
+                          <th style={{ width: "110px" }}>Type</th>
+                          <th>Subject / Request</th>
+                          <th style={{ width: "140px" }}>Date</th>
+                          <th style={{ width: "130px" }}>Status</th>
+                          <th className="td-right" style={{ width: "160px" }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -5241,39 +5260,44 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                               <span className="request-id-badge">#{req.id.slice(0, 8)}</span>
                             </td>
                             <td>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                <strong className="cell-main-text">{req.customerName}</strong>
+                                <span className="cell-subtext">{req.customerEmail}</span>
+                                {req.customerPhone && (
+                                  <span className="cell-subtext" style={{ color: "var(--admin-gold)" }}>
+                                    📞 {req.customerPhone}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
                               <span className={`request-type-badge ${req.type.toLowerCase()}`}>
                                 {req.type}
                               </span>
                             </td>
                             <td>
-                              <div style={{ display: "flex", flexDirection: "column" }}>
-                                <strong style={{ color: "var(--admin-dark-green)" }}>{req.customerName}</strong>
-                                <span style={{ fontSize: "12px", color: "var(--admin-text-muted)" }}>{req.customerEmail}</span>
-                                {req.customerPhone && (
-                                  <span style={{ fontSize: "11px", color: "var(--admin-text-muted)" }}>📞 {req.customerPhone}</span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
                               <div style={{ maxWidth: "340px" }}>
                                 {req.subject && (
-                                  <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--admin-text-main)", marginBottom: "2px" }}>
+                                  <span className="cell-main-text" style={{ fontSize: "13px", marginBottom: "2px" }}>
                                     {req.subject}
-                                  </div>
+                                  </span>
                                 )}
                                 {req.quantity && (
-                                  <span style={{ fontSize: "11px", color: "var(--admin-gold)", fontWeight: 600, display: "inline-block", marginRight: "6px" }}>
+                                  <span style={{ fontSize: "11px", color: "var(--admin-gold)", fontWeight: 700, display: "inline-block", marginRight: "6px" }}>
                                     Qty: {req.quantity} units
                                   </span>
                                 )}
-                                <p style={{ margin: 0, fontSize: "12px", color: "var(--admin-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                <p style={{ margin: 0, fontSize: "12.5px", color: "var(--admin-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   {req.message || "(No message provided)"}
                                 </p>
                               </div>
                             </td>
                             <td>
-                              <span style={{ fontSize: "12px", color: "var(--admin-text-muted)" }}>
-                                {req.createdAt ? new Date(req.createdAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "Recent"}
+                              <span className="cell-main-text" style={{ fontSize: "12px", fontWeight: 500 }}>
+                                {req.createdAt ? new Date(req.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Recent"}
+                              </span>
+                              <span className="cell-subtext">
+                                {req.createdAt ? new Date(req.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
                               </span>
                             </td>
                             <td>
@@ -5290,15 +5314,16 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                                     setSelectedRequest(req);
                                     setAdminNoteInput(req.notes || "");
                                   }}
+                                  title="View Request Details"
                                 >
-                                  View Details
+                                  View
                                 </button>
                                 {req.status !== "RESOLVED" ? (
                                   <button
                                     type="button"
                                     className="admin-btn-action success"
                                     onClick={() => handleUpdateRequestStatus(req.id, "RESOLVED")}
-                                    title="Mark Resolved"
+                                    title="Mark as Resolved"
                                   >
                                     Resolve
                                   </button>
@@ -5332,9 +5357,9 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                         }}
                       >
                         <div className="mobile-card-header">
-                          <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <span className="request-id-badge">#{req.id.slice(0, 8)}</span>
-                            <span className={`request-type-badge ${req.type.toLowerCase()}`} style={{ marginLeft: "6px" }}>
+                            <span className={`request-type-badge ${req.type.toLowerCase()}`}>
                               {req.type}
                             </span>
                           </div>
@@ -5345,16 +5370,16 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                         <div className="mobile-card-body">
                           <div className="mobile-card-info-row">
                             <span>Customer:</span>
-                            <strong>{req.customerName}</strong>
+                            <strong className="cell-main-text">{req.customerName}</strong>
                           </div>
                           <div className="mobile-card-info-row">
                             <span>Email:</span>
-                            <span>{req.customerEmail}</span>
+                            <span className="cell-subtext" style={{ fontSize: "12px" }}>{req.customerEmail}</span>
                           </div>
                           {req.customerPhone && (
                             <div className="mobile-card-info-row">
                               <span>Phone:</span>
-                              <span>{req.customerPhone}</span>
+                              <span style={{ fontSize: "12px", color: "var(--admin-gold)" }}>{req.customerPhone}</span>
                             </div>
                           )}
                           {req.subject && (
@@ -5366,15 +5391,17 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                           {req.quantity && (
                             <div className="mobile-card-info-row">
                               <span>Quantity:</span>
-                              <span>{req.quantity} units</span>
+                              <span style={{ fontWeight: 600 }}>{req.quantity} units</span>
                             </div>
                           )}
-                          <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--admin-text-main)", background: "rgba(0,0,0,0.02)", padding: "8px", borderRadius: "6px" }}>
-                            {req.message || "(No message body)"}
-                          </div>
-                          <div className="mobile-card-info-row" style={{ marginTop: "8px", fontSize: "11px", color: "var(--admin-text-muted)" }}>
+                          {req.message && (
+                            <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--admin-text-main)", background: "#faf7f0", padding: "8px 10px", borderRadius: "6px", border: "1px solid var(--admin-border-subtle)" }}>
+                              {req.message}
+                            </div>
+                          )}
+                          <div className="mobile-card-info-row" style={{ marginTop: "6px", fontSize: "11px", color: "var(--admin-text-muted)" }}>
                             <span>Submitted:</span>
-                            <span>{req.createdAt ? new Date(req.createdAt).toLocaleString() : "Recent"}</span>
+                            <span>{req.createdAt ? new Date(req.createdAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "Recent"}</span>
                           </div>
                         </div>
                         <div className="mobile-card-actions" onClick={(e) => e.stopPropagation()}>
@@ -5388,13 +5415,21 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                           >
                             View Details
                           </button>
-                          {req.status !== "RESOLVED" && (
+                          {req.status !== "RESOLVED" ? (
                             <button
                               type="button"
                               className="admin-btn-action success"
                               onClick={() => handleUpdateRequestStatus(req.id, "RESOLVED")}
                             >
                               Resolve
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="admin-btn-action"
+                              onClick={() => handleUpdateRequestStatus(req.id, "IN PROGRESS")}
+                            >
+                              Reopen
                             </button>
                           )}
                         </div>
@@ -5637,12 +5672,15 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
           <div
             className="admin-modal-overlay"
             onClick={() => setSelectedRequest(null)}
+            ref={(el) => {
+              if (el) el.scrollTop = 0;
+            }}
           >
             <div className="admin-modal-dialog" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header-luxury">
                 <div>
                   <span className="modal-eyebrow">CUSTOMER INQUIRY DOSSIER</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "4px", flexWrap: "wrap" }}>
                     <h3 className="modal-title" style={{ margin: 0 }}>#{selectedRequest.id}</h3>
                     <span className={`request-type-badge ${selectedRequest.type.toLowerCase()}`}>
                       {selectedRequest.type}
@@ -5662,7 +5700,12 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                 </button>
               </div>
 
-              <div className="modal-body-scroll">
+              <div
+                className="modal-body-scroll"
+                ref={(el) => {
+                  if (el) el.scrollTop = 0;
+                }}
+              >
                 <div className="modal-grid-cards">
                   {/* CUSTOMER CONTACT CARD */}
                   <div className="modal-card">
@@ -5816,7 +5859,14 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                 </div>
               </div>
 
-              <div className="modal-footer-actions">
+              <div className="modal-footer-luxury">
+                <a
+                  href={`mailto:${selectedRequest.customerEmail}?subject=Regarding your Leafly inquiry (${selectedRequest.id})`}
+                  className="admin-btn-secondary"
+                  style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                >
+                  ✉ Reply via Email
+                </a>
                 <button
                   type="button"
                   className="admin-btn-secondary"

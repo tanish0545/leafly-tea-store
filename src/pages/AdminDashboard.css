@@ -3933,10 +3933,9 @@
 }
 
 .request-status-badge.new {
-  background: rgba(201, 162, 75, 0.16);
-  color: #926915;
-  border: 1px solid rgba(201, 162, 75, 0.4);
-  box-shadow: 0 0 10px rgba(201, 162, 75, 0.15);
+  background: rgba(46, 125, 50, 0.12);
+  color: #2e7d32;
+  border: 1px solid rgba(46, 125, 50, 0.3);
 }
 
 .request-status-badge.new::before {
@@ -3945,14 +3944,13 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #c9a24b;
-  box-shadow: 0 0 6px #c9a24b;
+  background: #2e7d32;
 }
 
 .request-status-badge.in-progress {
-  background: rgba(30, 90, 160, 0.12);
-  color: #1e5aa0;
-  border: 1px solid rgba(30, 90, 160, 0.3);
+  background: rgba(201, 162, 75, 0.15);
+  color: #8c671b;
+  border: 1px solid rgba(201, 162, 75, 0.4);
 }
 
 .request-status-badge.in-progress::before {
@@ -3961,13 +3959,13 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #1e5aa0;
+  background: #c9a24b;
 }
 
 .request-status-badge.resolved {
-  background: rgba(46, 125, 50, 0.12);
-  color: #2e7d32;
-  border: 1px solid rgba(46, 125, 50, 0.3);
+  background: rgba(100, 116, 139, 0.12);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.3);
 }
 
 .request-status-badge.resolved::before {
@@ -3976,7 +3974,11 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #2e7d32;
+  background: #64748b;
+}
+
+.requests-table-scroll .admin-table {
+  min-width: 840px;
 }
 
 .request-type-badge {
@@ -4055,7 +4057,12 @@
   border-left: 3px solid var(--admin-gold);
   border-radius: 6px;
   padding: 16px 20px;
-  margin-top: 16px;
+  margin-top: 10px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--admin-forest);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .request-dossier-box h4 {
@@ -4083,9 +4090,9 @@
   flex-wrap: wrap;
 }
 
-.request-status-btn {
-  padding: 7px 14px;
-  border-radius: 6px;
+.request-status-switcher .status-btn {
+  padding: 7px 16px;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.3px;
@@ -4096,28 +4103,28 @@
   transition: all 150ms ease;
 }
 
-.request-status-btn:hover {
+.request-status-switcher .status-btn:hover {
   border-color: var(--admin-gold);
 }
 
-.request-status-btn.active.new {
+.request-status-switcher .status-btn.active.new {
+  background: #2e7d32;
+  color: #ffffff;
+  border-color: #2e7d32;
+  font-weight: 700;
+}
+
+.request-status-switcher .status-btn.active.in-progress {
   background: #c9a24b;
   color: #0b2b1e;
   border-color: #c9a24b;
   font-weight: 700;
 }
 
-.request-status-btn.active.in-progress {
-  background: #1e5aa0;
+.request-status-switcher .status-btn.active.resolved {
+  background: #64748b;
   color: #ffffff;
-  border-color: #1e5aa0;
-  font-weight: 700;
-}
-
-.request-status-btn.active.resolved {
-  background: #2e7d32;
-  color: #ffffff;
-  border-color: #2e7d32;
+  border-color: #64748b;
   font-weight: 700;
 }
 
