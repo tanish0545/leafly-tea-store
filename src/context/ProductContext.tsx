@@ -182,8 +182,8 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           }
         }
       },
-      (err) => {
-        console.warn("Could not listen to system/catalog_meta:", err);
+      () => {
+        // Silently ignore for non-admin visitors who do not have system collection access
       }
     );
 

@@ -10,7 +10,9 @@ import { ApiService } from "../lib/apiClient";
 import DeliveryAnimation from "../components/DeliveryAnimation";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
+import logo from "../assets/leafly-logo.png";
 import "./OrderSuccess.css";
+import "./Orders.css";
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -25,7 +27,8 @@ export default function OrderSuccess() {
 
   const { latestOrder } = useOrderContext();
   const { clearCart } = useCart();
-  const { currentUser, firebaseUser } = useAuth();
+  const { currentUser, firebaseUser, isAuthenticated } = useAuth();
+  const [showInvoice, setShowInvoice] = useState(false);
 
   // 1. Resolve order: priority to context latestOrder, fallback to sessionStorage
   const [persistedOrder, setPersistedOrder] = useState<Order | null>(() => {
@@ -58,10 +61,23 @@ export default function OrderSuccess() {
 
   const order = latestOrder || persistedOrder;
 
+  useEffect(() => {
+    if (showInvoice) {
+      document.body.classList.add("invoice-open");
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+      return () => {
+        document.body.classList.remove("invoice-open");
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+      };
+    }
+  }, [showInvoice]);
+
   // One-shot cart clear for COD orders.
   // Uses a ref flag so this fires EXACTLY ONCE on mount, regardless of clearCart identity.
-  // Do NOT put clearCart in the dependency array — that was the root cause of the
-  // infinite re-render loop that made navigation buttons appear frozen.
   const cartClearedRef = useRef(false);
   useEffect(() => {
     if (!urlOrderId && !cartClearedRef.current) {
@@ -145,6 +161,7 @@ export default function OrderSuccess() {
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [feedback, setFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -162,11 +179,12 @@ export default function OrderSuccess() {
 
   const handleSubmitRating = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || isSubmitted) return;
     setIsSubmitting(true);
+    setReviewError(null);
 
     const activeOrder = order;
     const currentUid = firebaseUser?.uid || currentUser?.uid || activeOrder?.userId || null;
-    const currentEmail = activeOrder?.customerEmail || firebaseUser?.email || currentUser?.email || "";
     const customerName =
       activeOrder?.shippingAddress?.fullName ||
       activeOrder?.customerName ||
@@ -184,7 +202,6 @@ export default function OrderSuccess() {
       orderId,
       userId: currentUid,
       customerName,
-      customerEmail: currentEmail,
       productName,
       productId: String(productId),
       rating: Number(rating) || 5,
@@ -194,42 +211,26 @@ export default function OrderSuccess() {
     };
 
     try {
-      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
-      stored.unshift(reviewPayload);
-      localStorage.setItem("leafly_saved_reviews", JSON.stringify(stored.slice(0, 100)));
-      sessionStorage.setItem(`leafly_review_${orderId}`, "true");
-    } catch {
-      // ignore
-    }
-
-    try {
       await setDoc(doc(db, "reviews", reviewPayload.id), {
         ...reviewPayload,
         timestamp: serverTimestamp(),
       });
+      sessionStorage.setItem(`leafly_review_${orderId}`, "true");
+      setIsSubmitted(true);
     } catch (err) {
       try {
         await addDoc(collection(db, "reviews"), {
           ...reviewPayload,
           timestamp: serverTimestamp(),
         });
+        sessionStorage.setItem(`leafly_review_${orderId}`, "true");
+        setIsSubmitted(true);
       } catch (innerErr) {
-        console.warn("Could not save review to Firestore; persisted locally:", innerErr);
+        console.error("Failed to save review to Firestore:", innerErr);
+        setReviewError("Failed to submit review. Please check your connection and try again.");
       }
     } finally {
-      // Broadcast new review to other active tabs (Admin Dashboard, etc.)
-      try {
-        if (typeof BroadcastChannel !== "undefined") {
-          const channel = new BroadcastChannel("leafly_reviews_sync");
-          channel.postMessage({ type: "NEW_REVIEW", review: reviewPayload });
-          channel.close();
-        }
-      } catch {
-        // ignore
-      }
-
       setIsSubmitting(false);
-      setIsSubmitted(true);
     }
   };
 
@@ -376,11 +377,92 @@ export default function OrderSuccess() {
           </div>
         </div>
 
+        {order.customerEmail ? (
+          <div style={{
+            margin: "0 0 24px 0",
+            padding: "16px 20px",
+            background: "rgba(22, 101, 52, 0.06)",
+            border: "1px solid rgba(22, 101, 52, 0.2)",
+            borderRadius: "10px",
+            textAlign: "left"
+          }}>
+            <span style={{ fontSize: "11px", letterSpacing: "1.2px", textTransform: "uppercase", color: "#166534", fontWeight: 700, display: "block", marginBottom: "4px" }}>
+              ✓ Order Confirmation &amp; Tax Invoice Dispatched
+            </span>
+            <p style={{ margin: 0, fontSize: "14px", color: "#1c2b22", lineHeight: 1.5 }}>
+              Your order confirmation receipt and tax invoice details have been dispatched to <strong>{order.customerEmail}</strong>.
+            </p>
+          </div>
+        ) : null}
+
+        {!isAuthenticated && order.customerEmail ? (
+          <div
+            style={{
+              margin: "0 0 24px 0",
+              padding: "20px 24px",
+              background: "#f7f9f6",
+              border: "1px solid #c2d6cb",
+              borderLeft: "4px solid #166534",
+              borderRadius: "10px",
+              textAlign: "left",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "11px",
+                letterSpacing: "1.2px",
+                textTransform: "uppercase",
+                color: "#166534",
+                fontWeight: 700,
+                display: "block",
+                marginBottom: "6px",
+              }}
+            >
+              ✦ CUSTOMER ACCOUNT ESTABLISHED
+            </span>
+            <h3
+              style={{
+                margin: "0 0 8px 0",
+                fontSize: "17px",
+                color: "#166534",
+                fontFamily: "Georgia, serif",
+              }}
+            >
+              Your Leafly Account Has Been Created
+            </h3>
+            <p style={{ margin: "0 0 10px 0", fontSize: "14px", color: "#2d3748", lineHeight: 1.6 }}>
+              We have automatically established your personal customer account with your email{" "}
+              <strong>{order.customerEmail}</strong>. A password setup link has been dispatched to your inbox so you can set your password and access your tea sanctuary anytime.
+            </p>
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "14px" }}>
+              <button
+                type="button"
+                className="order-success-primary"
+                style={{ fontSize: "12px", padding: "10px 20px", width: "auto" }}
+                onClick={() => navigate("/login", { state: { email: order.customerEmail } })}
+              >
+                SIGN IN / SET PASSWORD →
+              </button>
+              <button
+                type="button"
+                className="order-success-secondary"
+                style={{ fontSize: "12px", padding: "10px 20px", width: "auto" }}
+                onClick={() => navigate("/profile")}
+              >
+                VIEW ACCOUNT STATUS →
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="order-success-actions">
+          <button type="button" className="order-success-primary" onClick={() => setShowInvoice(true)}>
+            📄 VIEW / PRINT INVOICE
+          </button>
           <button type="button" className="order-success-secondary" onClick={() => navigate("/orders")}>
             VIEW MY ORDERS
           </button>
-          <button type="button" className="order-success-primary" onClick={() => navigate("/shop")}>
+          <button type="button" className="order-success-secondary" onClick={() => navigate("/shop")}>
             CONTINUE SHOPPING
           </button>
         </div>
@@ -442,11 +524,171 @@ export default function OrderSuccess() {
                 >
                   {isSubmitting ? "Submitting..." : "Submit Experience Review"}
                 </button>
+                {reviewError && (
+                  <p style={{ color: "#c53030", fontSize: "12px", marginTop: "8px" }}>
+                    {reviewError}
+                  </p>
+                )}
               </div>
             </form>
           )}
         </section>
       </div>
+
+      {/* AUTHORITATIVE INVOICE MODAL FOR GUESTS & LOGGED-IN CUSTOMERS */}
+      {showInvoice && order && (
+        <div 
+          className="invoice-modal-overlay" 
+          onClick={() => setShowInvoice(false)}
+          ref={(el) => {
+            if (el) el.scrollTop = 0;
+          }}
+        >
+          <div className="invoice-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="invoice-modal-actions no-print">
+              <button
+                type="button"
+                className="invoice-print-btn"
+                onClick={() => window.print()}
+              >
+                🖨️ Print / Save as PDF
+              </button>
+              <button
+                type="button"
+                className="invoice-close-btn"
+                onClick={() => setShowInvoice(false)}
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* PRINTABLE INVOICE SHEET */}
+            <div className="invoice-sheet" id="printable-invoice">
+              <header className="invoice-header">
+                <div className="invoice-brand-col">
+                  <div className="invoice-logo-row">
+                    <img src={logo} alt="Leafly" className="invoice-logo-img" />
+                    <div>
+                      <h2 className="invoice-brand-name">LEAFLY</h2>
+                      <p className="invoice-brand-sub">TEA SANCTUARY & BOTANICALS</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="invoice-meta-top">
+                  <h3>TAX INVOICE / RECEIPT</h3>
+                  <p><strong>Invoice #:</strong> INV-{order.id}</p>
+                  <p><strong>Order Date:</strong> {new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                  <p>
+                    <strong>Order Status:</strong>{" "}
+                    <span className="invoice-status-pill">
+                      {order.orderStatus || order.status || "Confirmed"}
+                    </span>
+                  </p>
+                </div>
+              </header>
+
+              <div className="invoice-parties-grid">
+                <div className="invoice-party-col">
+                  <h4>SOLD BY:</h4>
+                  <strong>Leafly</strong>
+                  <p>Near Balaji Symphony,</p>
+                  <p>Panvel - 410206,</p>
+                  <p>Maharashtra, India</p>
+                  <p>myleaflytea@gmail.com</p>
+                </div>
+                <div className="invoice-party-col">
+                  <h4>BILLED TO / DELIVERED TO:</h4>
+                  <strong>{order.shippingAddress?.fullName || order.customerName || "Valued Customer"}</strong>
+                  {order.shippingAddress?.addressLine1 && (
+                    <p>
+                      {order.shippingAddress.addressLine1}
+                      {order.shippingAddress.addressLine2 ? `, ${order.shippingAddress.addressLine2}` : ""}
+                    </p>
+                  )}
+                  {order.shippingAddress?.city && (
+                    <p>
+                      {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.postalCode}
+                    </p>
+                  )}
+                  {order.customerEmail && <p>{order.customerEmail}</p>}
+                  {order.customerPhone && <p>{order.customerPhone}</p>}
+                </div>
+              </div>
+
+              {order.deliveryInstructions ? (
+                <div className="invoice-instructions-callout">
+                  <strong>Delivery Instructions:</strong> {order.deliveryInstructions}
+                </div>
+              ) : null}
+
+              {/* ITEMS TABLE */}
+              <table className="invoice-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "32px" }}>#</th>
+                    <th>Item Description</th>
+                    <th>Weight / Variant</th>
+                    <th style={{ textAlign: "center", width: "45px" }}>Qty</th>
+                    <th style={{ textAlign: "right", width: "90px" }}>Unit Price</th>
+                    <th style={{ textAlign: "right", width: "95px" }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {order.items.map((item, idx) => (
+                    <tr key={idx}>
+                      <td>{idx + 1}</td>
+                      <td>
+                        <strong className="invoice-item-name">{item.name}</strong>
+                        {item.category && <small className="invoice-item-cat">{item.category} Selection</small>}
+                      </td>
+                      <td>{item.variant || item.weight || "100g"}</td>
+                      <td style={{ textAlign: "center" }}>{item.quantity}</td>
+                      <td style={{ textAlign: "right" }}>{currencyFormatter.format(item.price)}</td>
+                      <td style={{ textAlign: "right" }}>{currencyFormatter.format(item.price * item.quantity)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* FINANCIAL SUMMARY TABLE */}
+              <div className="invoice-totals-section">
+                <div className="invoice-payment-info">
+                  <h4>PAYMENT & DISPATCH SUMMARY</h4>
+                  <p><strong>Payment Method:</strong> {order.paymentMethod ? (order.paymentMethod === "cod" ? "PAY ON DELIVERY" : order.paymentMethod.toUpperCase()) : "PAY ON DELIVERY"}</p>
+                  <p><strong>Payment Status:</strong> {order.paymentStatus || "Confirmed"}</p>
+                  <p><strong>Delivery Method:</strong> {order.deliveryMethod || "Standard Delivery"}</p>
+                </div>
+
+                <div className="invoice-totals-box">
+                  <div className="invoice-totals-row">
+                    <span>Subtotal:</span>
+                    <span>{currencyFormatter.format(order.subtotal || order.total)}</span>
+                  </div>
+                  {order.discount ? (
+                    <div className="invoice-totals-row invoice-discount-row">
+                      <span>Discount {order.couponCode ? `(${order.couponCode})` : ""}:</span>
+                      <span>- {currencyFormatter.format(order.discount)}</span>
+                    </div>
+                  ) : null}
+                  <div className="invoice-totals-row">
+                    <span>Delivery Fee:</span>
+                    <span>{order.deliveryFee ? currencyFormatter.format(order.deliveryFee) : "FREE"}</span>
+                  </div>
+                  <div className="invoice-totals-row invoice-grand-total">
+                    <span>Final Amount:</span>
+                    <span>{currencyFormatter.format(order.total)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <footer className="invoice-footer">
+                <p>Thank you for steepening your ritual with Leafly. Steep pure, savor quietness.</p>
+                <small>This is an authentic computer-generated tax invoice and requires no physical signature.</small>
+              </footer>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </main>

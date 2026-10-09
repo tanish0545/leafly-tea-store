@@ -182,6 +182,100 @@ export default function ProductDetail() {
             }
           : undefined));
 
+  /* --- customer reviews & tasting notes -------------------- */
+  const [reviews, setReviews] = useState<CustomerReview[]>([]);
+  const [isWritingReview, setIsWritingReview] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewHoverRating, setReviewHoverRating] = useState<number | null>(null);
+  const [reviewName, setReviewName] = useState(currentUser?.name || currentUser?.displayName || "");
+  const [reviewFeedback, setReviewFeedback] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewSuccessMsg, setReviewSuccessMsg] = useState<string | null>(null);
+  const [reviewErrorMsg, setReviewErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (currentUser?.name || currentUser?.displayName) {
+      setReviewName(currentUser.name || currentUser.displayName || "");
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!product) return;
+
+    const isMatch = (r: any) => {
+      if (!product) return false;
+      const targetId = String(product.id || "").trim().toLowerCase();
+      const targetSlug = getProductSlug(product).trim().toLowerCase();
+      const targetName = (product.name || "").trim().toLowerCase();
+
+      // Check all identifier candidates across existing documents
+      const rProdId = String(r.productId ?? r.product_id ?? "").trim().toLowerCase();
+      const rSlug = String(r.slug ?? r.productSlug ?? r.product_slug ?? "").trim().toLowerCase();
+      const rProdName = String(r.productName ?? r.product_name ?? r.title ?? "").trim().toLowerCase();
+
+      const matchesId = Boolean(targetId && rProdId === targetId);
+      const matchesSlug = Boolean(
+        (targetSlug && rSlug === targetSlug) ||
+        (targetSlug && rProdId === targetSlug)
+      );
+      const matchesName = Boolean(
+        (targetName && rProdName === targetName) ||
+        (targetName && rProdId === targetName)
+      );
+
+      const status = typeof r.status === "string" ? r.status.trim().toLowerCase() : "";
+      // Public visitors only see approved reviews (or reviews where status is default/approved)
+      const isVisible = !status || status === "approved";
+
+      return (matchesId || matchesSlug || matchesName) && isVisible;
+    };
+
+    const mapReview = (d: any, fallbackId: string): CustomerReview => {
+      const rawRating = Number(d.rating);
+      const safeRating = !isNaN(rawRating) && rawRating >= 1 && rawRating <= 5 ? Math.round(rawRating) : 5;
+      const resolvedDate = d.createdAt || (d.timestamp?.toDate ? d.timestamp.toDate().toISOString() : new Date().toISOString());
+
+      return {
+        id: d.id || fallbackId,
+        customerName: d.customerName || d.author || d.userName || d.name || "Verified Patron",
+        rating: safeRating,
+        feedback: d.feedback || d.comment || d.review || d.text || "",
+        createdAt: resolvedDate,
+        status: d.status || "Approved",
+      };
+    };
+
+    // Real-time Firestore sync with single authoritative source (no localStorage cache)
+    const reviewsCol = collection(db, "reviews");
+    const unsubscribe = onSnapshot(
+      reviewsCol,
+      (snapshot) => {
+        const fetched: CustomerReview[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (isMatch(d)) {
+            fetched.push(mapReview(d, docSnap.id));
+          }
+        });
+
+        fetched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setReviews(fetched);
+      },
+      (err) => {
+        console.error("Could not load real-time reviews from Firestore:", err);
+      }
+    );
+    return () => unsubscribe();
+  }, [product?.id, product?.name]);
+
+  const avgRating = useMemo(() => {
+    if (!product || reviews.length === 0) return (product?.rating ?? 4.9).toFixed(1);
+    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+    return (sum / reviews.length).toFixed(1);
+  }, [product?.rating, reviews]);
+
+  const totalReviewCount = reviews.length > 0 ? reviews.length : (product?.reviewCount ?? 0);
+
   /* --- product not found ----------------------------------- */
 
   if (!product || product.isRemoved) {
@@ -275,137 +369,16 @@ export default function ProductDetail() {
     ? Math.round(((currentOldPrice - currentPrice) / currentOldPrice) * 100)
     : null;
 
-  /* --- customer reviews & tasting notes -------------------- */
-  const [reviews, setReviews] = useState<CustomerReview[]>([]);
-  const [isWritingReview, setIsWritingReview] = useState(false);
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewHoverRating, setReviewHoverRating] = useState<number | null>(null);
-  const [reviewName, setReviewName] = useState(currentUser?.name || currentUser?.displayName || "");
-  const [reviewFeedback, setReviewFeedback] = useState("");
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [reviewSuccessMsg, setReviewSuccessMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (currentUser?.name || currentUser?.displayName) {
-      setReviewName(currentUser.name || currentUser.displayName || "");
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
-    if (!product) return;
-
-    const isMatch = (r: any) => {
-      if (!product) return false;
-      const targetId = String(product.id || "").trim().toLowerCase();
-      const targetSlug = getProductSlug(product).trim().toLowerCase();
-      const targetName = (product.name || "").trim().toLowerCase();
-
-      // Check all identifier candidates across existing documents
-      const rProdId = String(r.productId ?? r.product_id ?? "").trim().toLowerCase();
-      const rSlug = String(r.slug ?? r.productSlug ?? r.product_slug ?? "").trim().toLowerCase();
-      const rProdName = String(r.productName ?? r.product_name ?? r.title ?? "").trim().toLowerCase();
-
-      const matchesId = Boolean(targetId && rProdId === targetId);
-      const matchesSlug = Boolean(
-        (targetSlug && rSlug === targetSlug) ||
-        (targetSlug && rProdId === targetSlug)
-      );
-      const matchesName = Boolean(
-        (targetName && rProdName === targetName) ||
-        (targetName && rProdId === targetName)
-      );
-
-      const status = typeof r.status === "string" ? r.status.trim().toLowerCase() : "";
-      const isNotHidden = status !== "hidden" && status !== "rejected";
-
-      return (matchesId || matchesSlug || matchesName) && isNotHidden;
-    };
-
-    const mapReview = (d: any, fallbackId: string): CustomerReview => {
-      const rawRating = Number(d.rating);
-      const safeRating = !isNaN(rawRating) && rawRating >= 1 && rawRating <= 5 ? Math.round(rawRating) : 5;
-      const resolvedDate = d.createdAt || (d.timestamp?.toDate ? d.timestamp.toDate().toISOString() : new Date().toISOString());
-
-      return {
-        id: d.id || fallbackId,
-        customerName: d.customerName || d.author || d.userName || d.name || "Verified Patron",
-        customerEmail: d.customerEmail || d.email || "",
-        rating: safeRating,
-        feedback: d.feedback || d.comment || d.review || d.text || "",
-        createdAt: resolvedDate,
-        status: d.status || "Approved",
-      };
-    };
-
-    // 1. Initial load from localStorage so customer reviews are immediately visible
-    try {
-      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
-      if (Array.isArray(stored)) {
-        const localMatched: CustomerReview[] = stored
-          .filter(isMatch)
-          .map((r: any, idx: number) => mapReview(r, `local-${idx}-${Date.now()}`));
-        if (localMatched.length > 0) {
-          setReviews(localMatched);
-        }
-      }
-    } catch {
-      // ignore storage error
-    }
-
-    // 2. Real-time Firestore sync
-    const reviewsCol = collection(db, "reviews");
-    const unsubscribe = onSnapshot(
-      reviewsCol,
-      (snapshot) => {
-        const fetched: CustomerReview[] = [];
-        snapshot.forEach((docSnap) => {
-          const d = docSnap.data();
-          if (isMatch(d)) {
-            fetched.push(mapReview(d, docSnap.id));
-          }
-        });
-
-        // Merge with local reviews for zero-data-loss resiliency
-        try {
-          const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
-          const firestoreIds = new Set(fetched.map((f) => f.id));
-          if (Array.isArray(stored)) {
-            stored.forEach((r: any, idx: number) => {
-              if (isMatch(r) && !firestoreIds.has(r.id)) {
-                fetched.push(mapReview(r, `local-${idx}-${Date.now()}`));
-              }
-            });
-          }
-        } catch {
-          // ignore
-        }
-
-        fetched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setReviews(fetched);
-      },
-      (err) => {
-        console.warn("Could not load real-time reviews from Firestore:", err);
-      }
-    );
-    return () => unsubscribe();
-  }, [product?.id, product?.name]);
-
-  const avgRating = useMemo(() => {
-    if (reviews.length === 0) return (product?.rating ?? 4.9).toFixed(1);
-    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
-    return (sum / reviews.length).toFixed(1);
-  }, [product?.rating, reviews]);
-
-  const totalReviewCount = reviews.length > 0 ? reviews.length : (product?.reviewCount ?? 0);
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!product || !reviewFeedback.trim()) return;
+    if (!product || !reviewFeedback.trim() || reviewSubmitting) return;
     setReviewSubmitting(true);
     setReviewSuccessMsg(null);
+    setReviewErrorMsg(null);
 
     const authorName = reviewName.trim() || currentUser?.name || currentUser?.displayName || "Verified Patron";
-    const authorEmail = currentUser?.email || firebaseUser?.email || "";
     const currentUid = firebaseUser?.uid || currentUser?.uid || null;
     const newRevId = `rev-${Date.now()}`;
     const newCreatedAt = new Date().toISOString();
@@ -417,31 +390,20 @@ export default function ProductDetail() {
       rating: Number(reviewRating) || 5,
       feedback: reviewFeedback.trim(),
       customerName: authorName,
-      customerEmail: authorEmail,
       userId: currentUid,
       status: "Approved" as const,
       createdAt: newCreatedAt,
     };
 
-    // Always persist to localStorage first for zero-data-loss resiliency
-    try {
-      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
-      stored.unshift(reviewPayload);
-      localStorage.setItem("leafly_saved_reviews", JSON.stringify(stored.slice(0, 100)));
-    } catch {
-      // ignore storage failure
-    }
-
-    // Optimistically update view
-    setReviews((prev) => [reviewPayload, ...prev.filter((p) => p.id !== newRevId)]);
-
-    // Write to Firestore with document ID matching reviewPayload.id
+    // Write directly to Firestore without exposing email or caching to localStorage
     try {
       await setDoc(doc(db, "reviews", newRevId), {
         ...reviewPayload,
         timestamp: serverTimestamp(),
       });
       setReviewSuccessMsg("Thank you! Your tasting review has been published.");
+      setReviewFeedback("");
+      setIsWritingReview(false);
     } catch (err) {
       try {
         await addDoc(collection(db, "reviews"), {
@@ -449,24 +411,13 @@ export default function ProductDetail() {
           timestamp: serverTimestamp(),
         });
         setReviewSuccessMsg("Thank you! Your tasting review has been published.");
+        setReviewFeedback("");
+        setIsWritingReview(false);
       } catch (innerErr) {
-        console.warn("Firestore write pending rules deployment; review saved locally:", innerErr);
-        setReviewSuccessMsg("Thank you! Your tasting review has been recorded.");
+        console.error("Firestore review submission error:", innerErr);
+        setReviewErrorMsg("Failed to publish review to the server. Please check your connection and try again.");
       }
     } finally {
-      // Broadcast new review to other active tabs (Admin Dashboard, etc.)
-      try {
-        if (typeof BroadcastChannel !== "undefined") {
-          const channel = new BroadcastChannel("leafly_reviews_sync");
-          channel.postMessage({ type: "NEW_REVIEW", review: reviewPayload });
-          channel.close();
-        }
-      } catch {
-        // ignore
-      }
-
-      setReviewFeedback("");
-      setIsWritingReview(false);
       setReviewSubmitting(false);
     }
   };
@@ -918,6 +869,12 @@ export default function ProductDetail() {
           {reviewSuccessMsg && (
             <div className="pdp-review-alert success" role="alert">
               <span>✓</span> {reviewSuccessMsg}
+            </div>
+          )}
+
+          {reviewErrorMsg && (
+            <div className="pdp-review-alert error" role="alert" style={{ background: "rgba(239, 68, 68, 0.12)", color: "#991b1b", padding: "12px 16px", borderRadius: "8px", margin: "12px 0", fontSize: "14px", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+              <span>✖</span> {reviewErrorMsg}
             </div>
           )}
 

@@ -7,21 +7,25 @@ import {
   reauthenticateWithCredential,
   EmailAuthProvider,
 } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, googleProvider, db } from "../lib/firebase";
 import { useProducts } from "../context/ProductContext";
 import { useOrderContext } from "../context/OrderContext";
 import { useAuth, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
 import { useCoupons } from "../context/CouponContext";
 import { validatePhoneNumber } from "../lib/validation";
+import type { Order } from "../types/contracts";
+import { ApiService } from "../lib/apiClient";
 import mainImage from "../assets/main.webp";
 import image2 from "../assets/image2.webp";
 import image3 from "../assets/image3.webp";
 import image5 from "../assets/image5.webp";
+import logo from "../assets/leafly-logo.webp";
 import Footer from "../components/Footer";
 import PhoneInput from "../components/PhoneInput";
 import SEO from "../components/SEO";
 import "./Profile.css";
+import "./Orders.css";
 
 type SidebarItemId =
   | "overview"
@@ -162,11 +166,145 @@ const promiseItems = [
 
 const NOTIF_STORAGE_KEY = "leafly_profile_notifs_v1";
 
+const currencyFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+});
+
 export default function Profile() {
   const navigate = useNavigate();
-  const { user, loading, isAuthenticated, logout, updateUserProfile } = useAuth();
-  const { orders } = useOrderContext();
+  const { user, loading, isAuthenticated, logout, updateUserProfile, sendPasswordReset } = useAuth();
+  const { orders, latestOrder } = useOrderContext();
   const { products } = useProducts();
+
+  // Guest order management state
+  const [sessionOrder, setSessionOrder] = useState<Order | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("leafly_last_order");
+        if (stored) return JSON.parse(stored) as Order;
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (latestOrder) {
+      setSessionOrder(latestOrder);
+    }
+  }, [latestOrder]);
+
+  const [lookupOrderId, setLookupOrderId] = useState("");
+  const [lookupEmail, setLookupEmail] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupOrder, setLookupOrder] = useState<Order | null>(null);
+  const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
+
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendNotice, setResendNotice] = useState<string | null>(null);
+
+  const provisionedInfo = useMemo(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("leafly_account_provisioned");
+        if (stored) return JSON.parse(stored) as { email: string; uid: string; isNewAccount: boolean; passwordSetupLink?: string };
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  }, []);
+
+  const activeCustomerEmail = useMemo(() => {
+    return (
+      sessionOrder?.customerEmail ||
+      sessionOrder?.email ||
+      latestOrder?.customerEmail ||
+      latestOrder?.email ||
+      provisionedInfo?.email ||
+      ""
+    );
+  }, [sessionOrder, latestOrder, provisionedInfo]);
+
+  const handleResendSetupEmail = async () => {
+    if (!activeCustomerEmail) return;
+    setResendLoading(true);
+    setResendNotice(null);
+    try {
+      await sendPasswordReset(activeCustomerEmail);
+      setResendNotice(`A password setup / reset email has been dispatched to ${activeCustomerEmail}. Please check your inbox.`);
+    } catch (err: unknown) {
+      console.warn("Resend setup notice:", err);
+      try {
+        await ApiService.provisionAccount({
+          email: activeCustomerEmail,
+          customerName: sessionOrder?.shippingAddress?.fullName || sessionOrder?.customerName || "Customer",
+        });
+        setResendNotice(`A password setup / reset email has been dispatched to ${activeCustomerEmail}. Please check your inbox.`);
+      } catch {
+        setResendNotice(`Unable to dispatch setup link right now. You can also request one on the Sign In page.`);
+      }
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedInvoiceOrder) {
+      document.body.classList.add("invoice-open");
+      const prevBody = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.classList.remove("invoice-open");
+        document.body.style.overflow = prevBody;
+      };
+    }
+  }, [selectedInvoiceOrder]);
+
+  const handleLookupOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = lookupOrderId.trim();
+    const cleanEmail = lookupEmail.trim().toLowerCase();
+
+    if (!cleanId) {
+      setLookupError("Please enter your Order ID.");
+      return;
+    }
+    if (!cleanEmail) {
+      setLookupError("Please enter the email address used during checkout.");
+      return;
+    }
+
+    setLookupLoading(true);
+    setLookupError(null);
+    setLookupOrder(null);
+
+    try {
+      const snap = await getDoc(doc(db, "orders", cleanId));
+      if (!snap.exists()) {
+        setLookupError(`No order found with ID #${cleanId}. Please check your order confirmation email.`);
+        return;
+      }
+      const orderData = { id: snap.id, ...snap.data() } as Order;
+      const orderEmail = (orderData.customerEmail || orderData.email || "").trim().toLowerCase();
+
+      if (orderEmail !== cleanEmail) {
+        setLookupError(`The email address provided does not match the order records for #${cleanId}.`);
+        return;
+      }
+
+      setLookupOrder(orderData);
+    } catch (err: unknown) {
+      console.warn("Guest order lookup notice:", err);
+      setLookupError("Unable to retrieve order. Please check your network connection and try again.");
+    } finally {
+      setLookupLoading(false);
+    }
+  };
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -349,12 +487,8 @@ export default function Profile() {
     }
   };
 
-  // Protected route enforcement
-  useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      navigate("/login", { replace: true, state: { from: { pathname: "/profile" } } });
-    }
-  }, [loading, isAuthenticated, navigate]);
+  // Unauthenticated visitors remain on Profile to view their provisioned account setup status,
+  // recent order details, and order lookup tool without premature redirection.
 
   const orderSummary = useMemo(() => {
     const delivered = orders.filter((order) => order.status === "Delivered").length;
@@ -687,7 +821,558 @@ export default function Profile() {
   }
 
   if (!isAuthenticated) {
-    return null;
+    const activeOrderForInvoice = selectedInvoiceOrder;
+    return (
+      <main className="profile-page">
+        <SEO
+          title="Guest Order Status | Leafly"
+          description="View your guest orders, download tax invoices, and track delivery status."
+          noindex={true}
+        />
+        <div className="profile-page-shell" style={{ display: "block", maxWidth: "960px", margin: "0 auto", padding: "2rem 1.5rem 5rem" }}>
+          {/* GUEST HERO HEADER */}
+          <div style={{
+            background: "linear-gradient(145deg, #0b2b1e 0%, #133e2c 100%)",
+            color: "#f7f3ec",
+            borderRadius: "16px",
+            padding: "2.5rem 2rem",
+            marginBottom: "2rem",
+            boxShadow: "0 10px 30px rgba(11, 43, 30, 0.15)",
+            position: "relative",
+            overflow: "hidden"
+          }}>
+            <div style={{
+              position: "absolute",
+              right: "-20px",
+              bottom: "-30px",
+              width: "220px",
+              height: "220px",
+              background: "radial-gradient(circle, rgba(201, 162, 75, 0.15) 0%, transparent 70%)",
+              borderRadius: "50%",
+              pointerEvents: "none"
+            }} />
+            <p style={{
+              fontSize: "12px",
+              letterSpacing: "2.5px",
+              color: "#c9a24b",
+              fontWeight: 700,
+              textTransform: "uppercase",
+              margin: "0 0 8px 0"
+            }}>
+              ✦ ORDER MANAGEMENT · ACCOUNT SANCTUARY
+            </p>
+            <h1 style={{
+              fontSize: "clamp(24px, 4vw, 34px)",
+              fontFamily: "Georgia, serif",
+              margin: "0 0 12px 0",
+              fontWeight: 500,
+              letterSpacing: "0.5px"
+            }}>
+              Order &amp; Account Sanctuary
+            </h1>
+            <p style={{
+              fontSize: "15px",
+              color: "#d0dbd4",
+              maxWidth: "640px",
+              lineHeight: 1.6,
+              margin: 0
+            }}>
+              {activeCustomerEmail
+                ? `Your Leafly customer account has been established for ${activeCustomerEmail}. Inspect your harvest order below, download your official GST invoice, or set your password to log in and access all your orders anytime.`
+                : "Inspect your active order below, download your official GST invoice, or securely look up any past order using your Order ID and checkout email."}
+            </p>
+          </div>
+
+          {/* CUSTOMER ACCOUNT ESTABLISHED / SETUP PENDING CARD */}
+          {activeCustomerEmail && (
+            <div style={{
+              background: "#ffffff",
+              border: "1px solid #bbf7d0",
+              borderLeft: "5px solid #166534",
+              borderRadius: "14px",
+              padding: "1.75rem",
+              marginBottom: "2rem",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.04)"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "0.75rem" }}>
+                <div>
+                  <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "1.2px", color: "#166534", textTransform: "uppercase" }}>
+                    ✦ CUSTOMER ACCOUNT ESTABLISHED
+                  </span>
+                  <h2 style={{ fontSize: "20px", fontFamily: "Georgia, serif", color: "#0b2b1e", margin: "4px 0" }}>
+                    Account Login: {activeCustomerEmail}
+                  </h2>
+                </div>
+                <span style={{
+                  padding: "4px 12px",
+                  borderRadius: "20px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  background: provisionedInfo?.isNewAccount === false ? "rgba(16, 185, 129, 0.15)" : "rgba(201, 162, 75, 0.18)",
+                  color: provisionedInfo?.isNewAccount === false ? "#065f46" : "#855a12",
+                  border: "1px solid " + (provisionedInfo?.isNewAccount === false ? "rgba(16, 185, 129, 0.3)" : "rgba(201, 162, 75, 0.4)")
+                }}>
+                  {provisionedInfo?.isNewAccount === false ? "Linked to Existing Account" : "Password Setup Pending"}
+                </span>
+              </div>
+              <p style={{ fontSize: "13.5px", color: "#4a5550", margin: "0 0 1.25rem 0", lineHeight: 1.6 }}>
+                Every guest checkout automatically establishes a customer account using your real email address (<strong>{activeCustomerEmail}</strong>). To sign in and access your permanent tea sanctuary, set your private password using the link sent to your inbox or click below.
+              </p>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => navigate("/login", { state: { email: activeCustomerEmail } })}
+                  style={{
+                    background: "#0b2b1e",
+                    color: "#ffffff",
+                    padding: "9px 20px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    border: "none"
+                  }}
+                >
+                  SIGN IN / SET PASSWORD →
+                </button>
+                <button
+                  type="button"
+                  disabled={resendLoading}
+                  onClick={handleResendSetupEmail}
+                  style={{
+                    background: "rgba(201, 162, 75, 0.12)",
+                    color: "#855a12",
+                    border: "1px solid rgba(201, 162, 75, 0.4)",
+                    padding: "9px 18px",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: resendLoading ? "wait" : "pointer"
+                  }}
+                >
+                  {resendLoading ? "DISPATCHING..." : "RESEND PASSWORD SETUP EMAIL"}
+                </button>
+                {resendNotice && (
+                  <span style={{ fontSize: "13px", color: "#166534", fontWeight: 600 }}>
+                    ✓ {resendNotice}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 1: RECENT SESSION ORDER (IF AVAILABLE) */}
+          {(sessionOrder || latestOrder) && (
+            <div style={{
+              background: "#ffffff",
+              border: "1px solid rgba(11, 43, 30, 0.1)",
+              borderRadius: "14px",
+              padding: "1.75rem",
+              marginBottom: "2rem",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.04)"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "1rem", borderBottom: "1px solid #f0eae1", paddingBottom: "1rem" }}>
+                <div>
+                  <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "1px", color: "#8c6823", textTransform: "uppercase" }}>RECENT SESSION ORDER</span>
+                  <h2 style={{ fontSize: "20px", fontFamily: "Georgia, serif", color: "#0b2b1e", margin: "4px 0" }}>
+                    Order #{sessionOrder?.id || latestOrder?.id}
+                  </h2>
+                  <p style={{ fontSize: "12.5px", color: "#6a7b72", margin: 0 }}>
+                    Placed on {new Date(sessionOrder?.createdAt || latestOrder?.createdAt || Date.now()).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                  </p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{
+                    padding: "4px 12px",
+                    borderRadius: "20px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    background: "rgba(16, 185, 129, 0.12)",
+                    color: "#065f46",
+                    border: "1px solid rgba(16, 185, 129, 0.3)"
+                  }}>
+                    {sessionOrder?.orderStatus || sessionOrder?.status || latestOrder?.orderStatus || latestOrder?.status || "Confirmed"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInvoiceOrder(sessionOrder || latestOrder)}
+                    style={{
+                      background: "rgba(201, 162, 75, 0.15)",
+                      border: "1px solid rgba(201, 162, 75, 0.4)",
+                      color: "#855a12",
+                      padding: "6px 14px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    📄 View / Print Tax Invoice
+                  </button>
+                </div>
+              </div>
+
+              {/* Order summary info */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", fontSize: "13px", color: "#4a5550", marginBottom: "1.25rem" }}>
+                <div>
+                  <strong style={{ display: "block", color: "#0b2b1e", marginBottom: "3px" }}>Delivery Recipient:</strong>
+                  <span>{sessionOrder?.shippingAddress?.fullName || sessionOrder?.customerName || latestOrder?.shippingAddress?.fullName || "Valued Customer"}</span>
+                </div>
+                <div>
+                  <strong style={{ display: "block", color: "#0b2b1e", marginBottom: "3px" }}>Recipient Email:</strong>
+                  <span style={{ color: "#0b2b1e", fontWeight: 600 }}>{sessionOrder?.customerEmail || sessionOrder?.email || latestOrder?.customerEmail || "Entered at checkout"}</span>
+                </div>
+                <div>
+                  <strong style={{ display: "block", color: "#0b2b1e", marginBottom: "3px" }}>Payment Method:</strong>
+                  <span>{sessionOrder?.paymentMethod === "cod" ? "Pay on Delivery (COD)" : sessionOrder?.paymentMethod || latestOrder?.paymentMethod || "Pay on Delivery"}</span>
+                </div>
+                <div>
+                  <strong style={{ display: "block", color: "#0b2b1e", marginBottom: "3px" }}>Total Amount:</strong>
+                  <strong style={{ color: "#0b2b1e", fontSize: "15px" }}>{currencyFormatter.format(sessionOrder?.total || latestOrder?.total || 0)}</strong>
+                </div>
+              </div>
+
+              {/* Items Preview */}
+              <div style={{ background: "#fcfbfa", borderRadius: "8px", padding: "12px 16px", border: "1px solid #f0eae1" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "1px", color: "#6a7b72", textTransform: "uppercase" }}>ITEMS IN THIS HARVEST:</span>
+                <ul style={{ margin: "8px 0 0 0", paddingLeft: "18px", fontSize: "13px", color: "#22382f" }}>
+                  {(sessionOrder?.items || latestOrder?.items || []).map((item, idx) => (
+                    <li key={idx} style={{ marginBottom: "4px" }}>
+                      <strong>{item.name}</strong> {item.variant ? `(${item.variant})` : ""} × {item.quantity} — {currencyFormatter.format(item.price * item.quantity)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 2: TRACK ANY GUEST ORDER (LOOKUP) */}
+          <div style={{
+            background: "#ffffff",
+            border: "1px solid rgba(11, 43, 30, 0.1)",
+            borderRadius: "14px",
+            padding: "1.75rem",
+            marginBottom: "2rem",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.04)"
+          }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "1.5px", color: "#8c6823", textTransform: "uppercase" }}>
+              ✦ ORDER RETRIEVAL
+            </span>
+            <h2 style={{ fontSize: "20px", fontFamily: "Georgia, serif", color: "#0b2b1e", margin: "6px 0 8px 0" }}>
+              Track Past Guest Order
+            </h2>
+            <p style={{ fontSize: "13.5px", color: "#5d6d64", margin: "0 0 1.25rem 0", lineHeight: 1.5 }}>
+              Enter your Order ID (e.g. ORD-...) and the real email address you entered during checkout to securely look up your order details and invoice.
+            </p>
+
+            <form onSubmit={handleLookupOrder} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "12px", alignItems: "flex-end" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", fontWeight: 600, color: "#0b2b1e" }}>
+                <span>Order ID *</span>
+                <input
+                  type="text"
+                  placeholder="e.g. ORD-20261009-4821"
+                  value={lookupOrderId}
+                  onChange={(e) => {
+                    setLookupOrderId(e.target.value);
+                    setLookupError(null);
+                  }}
+                  style={{
+                    padding: "10px 12px",
+                    border: "1px solid #dcd3c4",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    outline: "none"
+                  }}
+                  required
+                />
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", fontWeight: 600, color: "#0b2b1e" }}>
+                <span>Checkout Email Address *</span>
+                <input
+                  type="email"
+                  placeholder="e.g. name@example.com"
+                  value={lookupEmail}
+                  onChange={(e) => {
+                    setLookupEmail(e.target.value);
+                    setLookupError(null);
+                  }}
+                  style={{
+                    padding: "10px 12px",
+                    border: "1px solid #dcd3c4",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    outline: "none"
+                  }}
+                  required
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={lookupLoading}
+                style={{
+                  background: "#0b2b1e",
+                  color: "#ffffff",
+                  padding: "11px 20px",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  letterSpacing: "1px",
+                  cursor: lookupLoading ? "wait" : "pointer",
+                  height: "42px"
+                }}
+              >
+                {lookupLoading ? "SEARCHING..." : "LOOKUP ORDER"}
+              </button>
+            </form>
+
+            {lookupError && (
+              <div style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(220, 38, 38, 0.08)", color: "#b91c1c", borderRadius: "6px", fontSize: "12.5px" }}>
+                ⚠️ {lookupError}
+              </div>
+            )}
+
+            {lookupOrder && (
+              <div style={{
+                marginTop: "1.5rem",
+                padding: "1.25rem",
+                background: "#f9f8f5",
+                borderRadius: "10px",
+                border: "1px solid #e8e0d4"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "10px" }}>
+                  <h3 style={{ margin: 0, fontSize: "17px", color: "#0b2b1e", fontFamily: "Georgia, serif" }}>
+                    Found: Order #{lookupOrder.id}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInvoiceOrder(lookupOrder)}
+                    style={{
+                      background: "#c9a24b",
+                      color: "#0b2b1e",
+                      border: "none",
+                      padding: "6px 14px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    📄 View / Print Tax Invoice
+                  </button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px", fontSize: "12.5px", color: "#3e4d45", marginBottom: "10px" }}>
+                  <div><strong>Status:</strong> {lookupOrder.orderStatus || lookupOrder.status || "Confirmed"}</div>
+                  <div><strong>Date:</strong> {new Date(lookupOrder.createdAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}</div>
+                  <div><strong>Recipient:</strong> {lookupOrder.shippingAddress?.fullName || lookupOrder.customerName}</div>
+                  <div><strong>Recipient Email:</strong> {lookupOrder.customerEmail || lookupOrder.email}</div>
+                  <div><strong>Total:</strong> {currencyFormatter.format(lookupOrder.total)}</div>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12.5px", color: "#4a5550" }}>
+                  {lookupOrder.items.map((i, idx) => (
+                    <li key={idx}>
+                      {i.name} {i.variant ? `(${i.variant})` : ""} × {i.quantity}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 3: INVITATION TO SIGN IN / SET PASSWORD */}
+          <div style={{
+            background: "linear-gradient(135deg, rgba(201, 162, 75, 0.12) 0%, rgba(201, 162, 75, 0.04) 100%)",
+            border: "1px solid rgba(201, 162, 75, 0.35)",
+            borderRadius: "14px",
+            padding: "1.75rem",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "1.25rem"
+          }}>
+            <div>
+              <h3 style={{ fontFamily: "Georgia, serif", fontSize: "18px", color: "#0b2b1e", margin: "0 0 4px 0" }}>
+                Ready to access your permanent customer account?
+              </h3>
+              <p style={{ fontSize: "13.5px", color: "#6a7b72", margin: 0, maxWidth: "560px" }}>
+                Sign in using your checkout email {activeCustomerEmail ? `(${activeCustomerEmail})` : ""} after completing password setup to view your lifetime orders, save delivery addresses, and enjoy member vouchers.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => navigate("/login", { state: activeCustomerEmail ? { email: activeCustomerEmail } : undefined })}
+                style={{
+                  background: "#0b2b1e",
+                  color: "#ffffff",
+                  padding: "10px 20px",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
+                SIGN IN WITH EMAIL →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* PRINTABLE INVOICE MODAL FOR GUESTS */}
+        {activeOrderForInvoice && (
+          <div
+            className="invoice-modal-backdrop"
+            onClick={() => setSelectedInvoiceOrder(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Tax Invoice for Order ${activeOrderForInvoice.id}`}
+          >
+            <div
+              className="invoice-modal-dialog"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="invoice-action-bar no-print">
+                <button
+                  type="button"
+                  className="invoice-print-btn"
+                  onClick={() => window.print()}
+                >
+                  🖨️ Print / Save PDF
+                </button>
+                <button
+                  type="button"
+                  className="invoice-close-btn"
+                  onClick={() => setSelectedInvoiceOrder(null)}
+                >
+                  ✕ Close
+                </button>
+              </div>
+
+              {/* PRINTABLE INVOICE SHEET */}
+              <div className="invoice-sheet" id="printable-invoice">
+                <header className="invoice-header">
+                  <div className="invoice-brand-col">
+                    <div className="invoice-logo-row">
+                      <img src={logo} alt="Leafly" className="invoice-logo-img" />
+                      <div>
+                        <h2 className="invoice-brand-name">LEAFLY</h2>
+                        <p className="invoice-brand-sub">TEA SANCTUARY & BOTANICALS</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="invoice-meta-top">
+                    <h3>TAX INVOICE / RECEIPT</h3>
+                    <p><strong>Invoice #:</strong> INV-{activeOrderForInvoice.id}</p>
+                    <p><strong>Order Date:</strong> {new Date(activeOrderForInvoice.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                    <p>
+                      <strong>Order Status:</strong>{" "}
+                      <span className="invoice-status-pill">
+                        {activeOrderForInvoice.orderStatus || activeOrderForInvoice.status || "Confirmed"}
+                      </span>
+                    </p>
+                  </div>
+                </header>
+
+                <div className="invoice-parties-grid">
+                  <div className="invoice-party-col">
+                    <h4>SOLD BY:</h4>
+                    <strong>Leafly</strong>
+                    <p>Near Balaji Symphony,</p>
+                    <p>Panvel - 410206,</p>
+                    <p>Maharashtra, India</p>
+                    <p>myleaflytea@gmail.com</p>
+                  </div>
+                  <div className="invoice-party-col">
+                    <h4>BILLED TO / DELIVERED TO:</h4>
+                    <strong>{activeOrderForInvoice.shippingAddress?.fullName || activeOrderForInvoice.customerName || "Valued Customer"}</strong>
+                    <p>{activeOrderForInvoice.shippingAddress?.addressLine1}</p>
+                    {activeOrderForInvoice.shippingAddress?.addressLine2 ? <p>{activeOrderForInvoice.shippingAddress.addressLine2}</p> : null}
+                    <p>{activeOrderForInvoice.shippingAddress?.city}, {activeOrderForInvoice.shippingAddress?.state} {activeOrderForInvoice.shippingAddress?.postalCode}</p>
+                    <p>{activeOrderForInvoice.shippingAddress?.country || "India"}</p>
+                    <p style={{ marginTop: "4px" }}><strong>Email:</strong> {activeOrderForInvoice.customerEmail || activeOrderForInvoice.email || "N/A"}</p>
+                    {activeOrderForInvoice.customerPhone ? <p><strong>Phone:</strong> {activeOrderForInvoice.customerPhone}</p> : null}
+                  </div>
+                </div>
+
+                {activeOrderForInvoice.deliveryInstructions ? (
+                  <div className="invoice-instructions-callout">
+                    <strong>Delivery Instructions:</strong> {activeOrderForInvoice.deliveryInstructions}
+                  </div>
+                ) : null}
+
+                {/* ITEMS TABLE */}
+                <table className="invoice-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: "32px" }}>#</th>
+                      <th>Item Description</th>
+                      <th>Weight / Variant</th>
+                      <th style={{ textAlign: "center", width: "45px" }}>Qty</th>
+                      <th style={{ textAlign: "right", width: "90px" }}>Unit Price</th>
+                      <th style={{ textAlign: "right", width: "95px" }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeOrderForInvoice.items.map((item, idx) => (
+                      <tr key={idx}>
+                        <td>{idx + 1}</td>
+                        <td>
+                          <strong className="invoice-item-name">{item.name}</strong>
+                          {item.category && <small className="invoice-item-cat">{item.category} Selection</small>}
+                        </td>
+                        <td>{item.variant || item.weight || "100g"}</td>
+                        <td style={{ textAlign: "center" }}>{item.quantity}</td>
+                        <td style={{ textAlign: "right" }}>{currencyFormatter.format(item.price)}</td>
+                        <td style={{ textAlign: "right" }}>{currencyFormatter.format(item.price * item.quantity)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* FINANCIAL SUMMARY TABLE */}
+                <div className="invoice-totals-section">
+                  <div className="invoice-payment-info">
+                    <h4>PAYMENT & DISPATCH SUMMARY</h4>
+                    <p><strong>Payment Method:</strong> {activeOrderForInvoice.paymentMethod ? (activeOrderForInvoice.paymentMethod === "cod" ? "PAY ON DELIVERY" : activeOrderForInvoice.paymentMethod.toUpperCase()) : "PAY ON DELIVERY"}</p>
+                    <p><strong>Payment Status:</strong> {activeOrderForInvoice.paymentStatus || "Confirmed"}</p>
+                    <p><strong>Delivery Method:</strong> {activeOrderForInvoice.deliveryMethod || "Standard Delivery"}</p>
+                  </div>
+
+                  <div className="invoice-totals-box">
+                    <div className="invoice-totals-row">
+                      <span>Subtotal:</span>
+                      <span>{currencyFormatter.format(activeOrderForInvoice.subtotal || activeOrderForInvoice.total)}</span>
+                    </div>
+                    {activeOrderForInvoice.discount ? (
+                      <div className="invoice-totals-row invoice-discount-row">
+                        <span>Discount {activeOrderForInvoice.couponCode ? `(${activeOrderForInvoice.couponCode})` : ""}:</span>
+                        <span>- {currencyFormatter.format(activeOrderForInvoice.discount)}</span>
+                      </div>
+                    ) : null}
+                    <div className="invoice-totals-row">
+                      <span>Delivery Fee:</span>
+                      <span>{activeOrderForInvoice.deliveryFee ? currencyFormatter.format(activeOrderForInvoice.deliveryFee) : "FREE"}</span>
+                    </div>
+                    <div className="invoice-totals-row invoice-grand-total">
+                      <span>Final Amount:</span>
+                      <span>{currencyFormatter.format(activeOrderForInvoice.total)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <footer className="invoice-footer">
+                  <p>Thank you for steepening your ritual with Leafly. Steep pure, savor quietness.</p>
+                  <small>This is an authentic computer-generated tax invoice and requires no physical signature.</small>
+                </footer>
+              </div>
+            </div>
+          </div>
+        )}
+        <Footer />
+      </main>
+    );
   }
 
   return (

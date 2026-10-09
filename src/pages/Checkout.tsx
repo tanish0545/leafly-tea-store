@@ -8,10 +8,11 @@ import {
   type ShippingAddress,
 } from "../context/OrderContext";
 import PhoneInput from "../components/PhoneInput";
-import { useAuth } from "../context/AuthContext";
-import { validatePhoneNumber, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../lib/validation";
+import { useAuth, isShadowOrGuestEmail } from "../context/AuthContext";
+import { validatePhoneNumber } from "../lib/validation";
 import { COUNTRIES_LIST, INDIAN_STATES_AND_CITIES } from "../data/indianLocations";
 import { auth, db } from "../lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { NotificationService } from "../lib/notifications";
 import { ApiService } from "../lib/apiClient";
@@ -38,7 +39,13 @@ function cleanFirestoreObject<T extends Record<string, unknown>>(obj: T): Record
   const cleaned: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      if (Array.isArray(value)) {
+        cleaned[key] = value.map((item) =>
+          item !== null && typeof item === "object"
+            ? cleanFirestoreObject(item as Record<string, unknown>)
+            : item
+        );
+      } else if (value !== null && typeof value === "object") {
         cleaned[key] = cleanFirestoreObject(value as Record<string, unknown>);
       } else {
         cleaned[key] = value;
@@ -48,8 +55,8 @@ function cleanFirestoreObject<T extends Record<string, unknown>>(obj: T): Record
   return cleaned;
 }
 
-function getSavedAddressesKey(uid?: string | null): string | null {
-  return uid ? `leafly_saved_addresses_${uid}` : null;
+function getSavedAddressesKey(uid?: string | null): string {
+  return uid ? `leafly_saved_addresses_${uid}` : "leafly_saved_addresses_guest";
 }
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
@@ -66,7 +73,6 @@ function generateOrderId() {
 
 function readSavedAddresses(uid?: string | null): ShippingAddress[] {
   const key = getSavedAddressesKey(uid);
-  if (!key) return [];
   try {
     const saved = localStorage.getItem(key);
     if (!saved) {
@@ -94,7 +100,7 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { items, subtotal } = useCart();
   const { addOrder } = useOrderContext();
-  const { currentUser, firebaseUser, loading: authLoading, isAuthenticated } = useAuth();
+  const { currentUser, firebaseUser } = useAuth();
   const { validateUserCoupon, markCouponUsed } = useCoupons();
 
   const [couponInput, setCouponInput] = useState("");
@@ -107,28 +113,38 @@ export default function Checkout() {
   const [couponError, setCouponError] = useState("");
   const [couponSuccess, setCouponSuccess] = useState("");
 
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      navigate("/login", { replace: true, state: { from: { pathname: "/checkout" } } });
-    }
-  }, [authLoading, isAuthenticated, navigate]);
+  // Guest checkout: login is optional. Unauthenticated customers can checkout directly.
+  const isRealRegisteredUser = Boolean(
+    currentUser &&
+    firebaseUser &&
+    !firebaseUser.isAnonymous &&
+    !isShadowOrGuestEmail(currentUser.email) &&
+    !isShadowOrGuestEmail(firebaseUser.email) &&
+    !isShadowOrGuestEmail(auth.currentUser?.email)
+  );
 
-  const resolvedAuthEmail = currentUser?.email || firebaseUser?.email || auth.currentUser?.email || "";
-  const resolvedAuthPhone = currentUser?.phone || currentUser?.phoneNumber || firebaseUser?.phoneNumber || "";
+  const resolvedAuthEmail = isRealRegisteredUser
+    ? (currentUser?.email || firebaseUser?.email || auth.currentUser?.email || "").trim()
+    : "";
+  const resolvedAuthPhone = isRealRegisteredUser
+    ? (currentUser?.phone || currentUser?.phoneNumber || firebaseUser?.phoneNumber || "").trim()
+    : "";
 
   const [email, setEmail] = useState(() => resolvedAuthEmail);
   const [phone, setPhone] = useState(() => resolvedAuthPhone);
 
   useEffect(() => {
-    const authEmail = currentUser?.email || firebaseUser?.email || auth.currentUser?.email;
-    if (authEmail && (!email || email !== authEmail)) {
-      setEmail(authEmail);
+    if (isRealRegisteredUser) {
+      const authEmail = currentUser?.email || firebaseUser?.email || auth.currentUser?.email;
+      if (authEmail && (!email || email !== authEmail)) {
+        setEmail(authEmail);
+      }
+      const authPhone = currentUser?.phone || currentUser?.phoneNumber || firebaseUser?.phoneNumber;
+      if (authPhone && (!phone || phone !== authPhone)) {
+        setPhone(authPhone);
+      }
     }
-    const authPhone = currentUser?.phone || currentUser?.phoneNumber || firebaseUser?.phoneNumber;
-    if (authPhone && (!phone || phone !== authPhone)) {
-      setPhone(authPhone);
-    }
-  }, [currentUser, firebaseUser, email, phone]);
+  }, [isRealRegisteredUser, currentUser, firebaseUser, email, phone]);
 
   // ────────────────────────────────────────────────────────
   // FEATURE FLAG: Set to true to re-enable Cashfree online payment.
@@ -211,29 +227,28 @@ export default function Checkout() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isBursting, setIsBursting] = useState(false);
   const orderCompletedRef = useRef(false);
+  const pendingOrderIdRef = useRef<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
 
   const [shippingAddress, setShippingAddress] = useState<AddressForm>(() => {
-    if (currentUser?.uid) {
-      const savedAddresses = readSavedAddresses(currentUser.uid);
-      if (savedAddresses.length > 0) {
-        const lastSaved = savedAddresses[0];
-        return {
-          fullName: lastSaved.fullName || currentUser?.displayName || currentUser?.name || "",
-          addressLine1: lastSaved.addressLine1 || "",
-          addressLine2: lastSaved.addressLine2 || "",
-          city: lastSaved.city || "Mumbai",
-          state: lastSaved.state || "Maharashtra",
-          postalCode: lastSaved.postalCode || "",
-          country: lastSaved.country || "India",
-        };
-      }
+    const activeUid = currentUser?.uid || firebaseUser?.uid || null;
+    const savedAddresses = readSavedAddresses(activeUid);
+    if (savedAddresses.length > 0) {
+      const lastSaved = savedAddresses[0];
       return {
-        ...defaultAddress,
-        fullName: currentUser?.displayName || currentUser?.name || "",
+        fullName: lastSaved.fullName || currentUser?.displayName || currentUser?.name || "",
+        addressLine1: lastSaved.addressLine1 || "",
+        addressLine2: lastSaved.addressLine2 || "",
+        city: lastSaved.city || "Mumbai",
+        state: lastSaved.state || "Maharashtra",
+        postalCode: lastSaved.postalCode || "",
+        country: lastSaved.country || "India",
       };
     }
-    return { ...defaultAddress };
+    return {
+      ...defaultAddress,
+      fullName: currentUser?.displayName || currentUser?.name || "",
+    };
   });
 
   const prevUidRef = useRef<string | undefined>(currentUser?.uid);
@@ -243,7 +258,7 @@ export default function Checkout() {
     const prevUid = prevUidRef.current;
     prevUidRef.current = currentUser?.uid;
 
-    const activeUid = currentUser?.uid || firebaseUser?.uid;
+    const activeUid = isRealRegisteredUser ? (currentUser?.uid || firebaseUser?.uid) : null;
     if (activeUid) {
       setEmail(resolvedAuthEmail || "");
       setPhone(resolvedAuthPhone || "");
@@ -424,14 +439,11 @@ export default function Checkout() {
 
   const validateCheckout = () => {
     const nextErrors: FormErrors = {};
-    const effectiveEmail = (email.trim() || resolvedAuthEmail || "").toLowerCase();
-    const isAuthEmail = Boolean(
-      resolvedAuthEmail && (effectiveEmail === resolvedAuthEmail.toLowerCase() || !email.trim())
-    );
+    const effectiveEmail = (resolvedAuthEmail || email.trim()).toLowerCase();
     if (!effectiveEmail) {
-      nextErrors.email = "Email is required.";
-    } else if (!isAuthEmail && !isValidGmailAddress(effectiveEmail)) {
-      nextErrors.email = GMAIL_ERROR_MESSAGE;
+      nextErrors.email = "Email address is required for order confirmation and invoice delivery.";
+    } else if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(effectiveEmail)) {
+      nextErrors.email = "Please enter a valid email address (e.g. name@example.com).";
     }
 
     const trimmedName = shippingAddress.fullName.trim();
@@ -522,25 +534,59 @@ export default function Checkout() {
     orderSubtotal: number,
     orderDeliveryFee: number
   ): Promise<Order> => {
-    const currentUid = auth.currentUser?.uid || currentUser?.uid;
-    if (!currentUid) {
-      throw new Error("Authentication session expired. Please sign in to complete your order.");
+    let effectiveUserId = isRealRegisteredUser ? (auth.currentUser?.uid || currentUser?.uid || "guest") : "guest";
+    const cleanCustomerEmail = (resolvedAuthEmail || email.trim()).toLowerCase();
+    let isNewAccountCreated = false;
+
+    let provisionedIdToken: string | undefined = undefined;
+
+    if (!isRealRegisteredUser) {
+      try {
+        const provRes = await ApiService.provisionAccount({
+          email: cleanCustomerEmail,
+          customerName: shippingAddress.fullName.trim(),
+          orderId,
+        });
+        if (provRes && provRes.uid) {
+          effectiveUserId = provRes.uid;
+          isNewAccountCreated = Boolean(provRes.isNewAccount);
+          provisionedIdToken = provRes.idToken || undefined;
+          sessionStorage.setItem(
+            "leafly_account_provisioned",
+            JSON.stringify({
+              email: cleanCustomerEmail,
+              uid: provRes.uid,
+              isNewAccount: provRes.isNewAccount,
+              passwordSetupLink: provRes.passwordSetupLink || null,
+            })
+          );
+
+          if (provRes.isNewAccount && provRes.sessionSecret) {
+            try {
+              await signInWithEmailAndPassword(auth, cleanCustomerEmail, provRes.sessionSecret);
+              console.info(`[Checkout] Client SDK authenticated for online order as: ${cleanCustomerEmail}`);
+            } catch (signErr) {
+              console.warn("[Checkout] Online order client auto-login notice:", signErr);
+            }
+          }
+        }
+      } catch (provErr) {
+        console.warn("[Checkout] Pre-provisioning online order notice:", provErr);
+      }
     }
 
     const order: Order = {
       id: orderId,
-      userId: currentUid,
-      customerId: currentUid,
+      userId: effectiveUserId,
+      customerId: effectiveUserId,
+      isGuest: !isRealRegisteredUser && effectiveUserId === "guest",
+      guestProvisioned: !isRealRegisteredUser,
+      accountCreated: isNewAccountCreated,
+      accountSetupPending: isNewAccountCreated,
       customerName: shippingAddress.fullName.trim(),
-      customerEmail: (
-        resolvedAuthEmail ||
-        email.trim() ||
-        currentUser?.email ||
-        firebaseUser?.email ||
-        auth.currentUser?.email ||
-        ""
-      ).toLowerCase(),
-      customerPhone: phone.trim() || currentUser?.phone || undefined,
+      customerEmail: cleanCustomerEmail,
+      email: cleanCustomerEmail,
+      customerPhone: phone.trim() || (isRealRegisteredUser ? (currentUser?.phone || undefined) : undefined),
       createdAt: new Date().toISOString(),
       status: "Processing",
       orderStatus: "Processing",
@@ -575,44 +621,72 @@ export default function Checkout() {
       },
     };
 
-    if (saveAddress && currentUid) {
-      const storageKey = getSavedAddressesKey(currentUid);
-      if (storageKey) {
-        const savedAddresses = readSavedAddresses(currentUid);
-        const nextSaved = [
-          {
-            fullName: order.shippingAddress.fullName,
-            addressLine1: order.shippingAddress.addressLine1,
-            addressLine2: order.shippingAddress.addressLine2,
-            city: order.shippingAddress.city,
-            state: order.shippingAddress.state,
-            postalCode: order.shippingAddress.postalCode,
-            country: order.shippingAddress.country,
-          },
-          ...savedAddresses.filter(
-            (address) =>
-              !(
-                address.fullName === order.shippingAddress.fullName &&
-                address.addressLine1 === order.shippingAddress.addressLine1 &&
-                address.city === order.shippingAddress.city &&
-                address.postalCode === order.shippingAddress.postalCode
-              )
-          ),
-        ].slice(0, 5);
+    if (saveAddress) {
+      const storageKey = getSavedAddressesKey(effectiveUserId);
+      const savedAddresses = readSavedAddresses(effectiveUserId);
+      const nextSaved = [
+        {
+          fullName: order.shippingAddress.fullName,
+          addressLine1: order.shippingAddress.addressLine1,
+          addressLine2: order.shippingAddress.addressLine2,
+          city: order.shippingAddress.city,
+          state: order.shippingAddress.state,
+          postalCode: order.shippingAddress.postalCode,
+          country: order.shippingAddress.country,
+        },
+        ...savedAddresses.filter(
+          (address) =>
+            !(
+              address.fullName === order.shippingAddress.fullName &&
+              address.addressLine1 === order.shippingAddress.addressLine1 &&
+              address.city === order.shippingAddress.city &&
+              address.postalCode === order.shippingAddress.postalCode
+            )
+        ),
+      ].slice(0, 5);
 
-        localStorage.setItem(storageKey, JSON.stringify(nextSaved));
-      }
+      localStorage.setItem(storageKey, JSON.stringify(nextSaved));
     }
 
     // Persist initial order to Firestore
+    let orderPersisted = false;
     const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
-    await setDoc(doc(db, "orders", order.id), cleanOrder);
+    try {
+      await setDoc(doc(db, "orders", order.id), cleanOrder);
+      orderPersisted = true;
+      console.info(`[Checkout] Online order #${order.id} recorded in Firestore.`);
+    } catch (saveError: any) {
+      console.error("[Checkout Failure] Stage: online_order_initial_persistence", {
+        stage: "setDoc(orders)",
+        errorCode: saveError?.code,
+        errorMessage: saveError?.message,
+        orderId: order.id,
+        isGuest: order.isGuest,
+      }, saveError);
+
+      try {
+        const token = auth.currentUser
+          ? await auth.currentUser.getIdToken().catch(() => undefined)
+          : provisionedIdToken;
+        const apiRes = await ApiService.createOrderViaApi(cleanOrder, token);
+        if (apiRes && apiRes.success) {
+          orderPersisted = true;
+          console.info(`[Checkout] Online order #${order.id} recorded via API server fallback.`);
+        }
+      } catch (apiErr) {
+        console.warn("[Checkout] API fallback notice:", apiErr);
+      }
+
+      if (!orderPersisted) {
+        throw saveError;
+      }
+    }
 
     if (appliedCoupon) {
       try {
         await markCouponUsed(appliedCoupon.code);
       } catch (couponErr) {
-        console.warn("Could not mark coupon as used:", couponErr);
+        console.warn("[Checkout] Could not mark coupon as used:", couponErr);
       }
     }
 
@@ -648,12 +722,16 @@ export default function Checkout() {
             });
           }
         } catch (stockError) {
-          console.error(`Failed to update stock for item ${item.productId}:`, stockError);
+          console.warn(`[Checkout] Failed to update stock for item ${item.productId}:`, stockError);
         }
       }
     }
 
-    addOrder(order);
+    try {
+      addOrder(order);
+    } catch (ctxErr) {
+      console.warn("[Checkout] Error updating local order context:", ctxErr);
+    }
     try {
       sessionStorage.setItem("leafly_last_order", JSON.stringify(order));
     } catch {
@@ -670,28 +748,60 @@ export default function Checkout() {
     orderSubtotal: number,
     orderDeliveryFee: number
   ) => {
-    const currentUid = auth.currentUser?.uid || currentUser?.uid;
-    if (!currentUid) {
-      setIsProcessing(false);
-      setIsBursting(false);
-      setErrors({ submit: "Authentication session expired. Please sign in to complete your order." });
-      return;
+    let effectiveUserId = isRealRegisteredUser ? (auth.currentUser?.uid || currentUser?.uid || "guest") : "guest";
+    const cleanCustomerEmail = (resolvedAuthEmail || email.trim()).toLowerCase();
+    let isNewAccountCreated = false;
+
+    let provisionedIdToken: string | undefined = undefined;
+
+    // Automatically provision customer account for guest checkouts
+    if (!isRealRegisteredUser) {
+      try {
+        const provRes = await ApiService.provisionAccount({
+          email: cleanCustomerEmail,
+          customerName: shippingAddress.fullName.trim(),
+          orderId,
+        });
+        if (provRes && provRes.uid) {
+          effectiveUserId = provRes.uid;
+          isNewAccountCreated = Boolean(provRes.isNewAccount);
+          provisionedIdToken = provRes.idToken || undefined;
+          sessionStorage.setItem(
+            "leafly_account_provisioned",
+            JSON.stringify({
+              email: cleanCustomerEmail,
+              uid: provRes.uid,
+              isNewAccount: provRes.isNewAccount,
+              passwordSetupLink: provRes.passwordSetupLink || null,
+            })
+          );
+
+          if (provRes.isNewAccount && provRes.sessionSecret) {
+            try {
+              await signInWithEmailAndPassword(auth, cleanCustomerEmail, provRes.sessionSecret);
+              console.info(`[Checkout] Client SDK authenticated as provisioned user: ${cleanCustomerEmail}`);
+            } catch (signErr) {
+              console.warn("[Checkout] Client auto-login notice (proceeding with server fallback):", signErr);
+            }
+          }
+        }
+      } catch (provErr) {
+        console.warn("[Checkout] Pre-provisioning COD order notice:", provErr);
+      }
     }
 
     const order: Order = {
       id: orderId,
-      userId: currentUid,
-      customerId: currentUid,
+      userId: effectiveUserId,
+      customerId: effectiveUserId,
+      isGuest: !isRealRegisteredUser && effectiveUserId === "guest",
+      guestProvisioned: !isRealRegisteredUser,
+      accountCreated: isNewAccountCreated,
+      accountSetupPending: isNewAccountCreated,
       customerName: shippingAddress.fullName.trim(),
-      customerEmail: (
-        resolvedAuthEmail ||
-        email.trim() ||
-        currentUser?.email ||
-        firebaseUser?.email ||
-        auth.currentUser?.email ||
-        ""
-      ).toLowerCase(),
-      customerPhone: phone.trim() || currentUser?.phone || undefined,
+      customerEmail: cleanCustomerEmail,
+      email: cleanCustomerEmail,
+      customerPhone: phone.trim() || (isRealRegisteredUser ? (currentUser?.phone || undefined) : undefined),
       createdAt: new Date().toISOString(),
       status: "Confirmed",
       orderStatus: "Confirmed",
@@ -726,85 +836,152 @@ export default function Checkout() {
       },
     };
 
-    if (saveAddress && currentUid) {
-      const storageKey = getSavedAddressesKey(currentUid);
-      if (storageKey) {
-        const savedAddresses = readSavedAddresses(currentUid);
-        const nextSaved = [
-          {
-            fullName: order.shippingAddress.fullName,
-            addressLine1: order.shippingAddress.addressLine1,
-            addressLine2: order.shippingAddress.addressLine2,
-            city: order.shippingAddress.city,
-            state: order.shippingAddress.state,
-            postalCode: order.shippingAddress.postalCode,
-            country: order.shippingAddress.country,
-          },
-          ...savedAddresses.filter(
-            (address) =>
-              !(
-                address.fullName === order.shippingAddress.fullName &&
-                address.addressLine1 === order.shippingAddress.addressLine1 &&
-                address.city === order.shippingAddress.city &&
-                address.postalCode === order.shippingAddress.postalCode
-              )
-          ),
-        ].slice(0, 5);
+    if (saveAddress) {
+      const storageKey = getSavedAddressesKey(effectiveUserId);
+      const savedAddresses = readSavedAddresses(effectiveUserId);
+      const nextSaved = [
+        {
+          fullName: order.shippingAddress.fullName,
+          addressLine1: order.shippingAddress.addressLine1,
+          addressLine2: order.shippingAddress.addressLine2,
+          city: order.shippingAddress.city,
+          state: order.shippingAddress.state,
+          postalCode: order.shippingAddress.postalCode,
+          country: order.shippingAddress.country,
+        },
+        ...savedAddresses.filter(
+          (address) =>
+            !(
+              address.fullName === order.shippingAddress.fullName &&
+              address.addressLine1 === order.shippingAddress.addressLine1 &&
+              address.city === order.shippingAddress.city &&
+              address.postalCode === order.shippingAddress.postalCode
+            )
+        ),
+      ].slice(0, 5);
 
-        localStorage.setItem(storageKey, JSON.stringify(nextSaved));
-      }
+      localStorage.setItem(storageKey, JSON.stringify(nextSaved));
     }
+
+    let orderPersisted = false;
+    let persistenceError: any = null;
 
     try {
       const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
       await setDoc(doc(db, "orders", order.id), cleanOrder);
+      orderPersisted = true;
+      console.info(`[Checkout] COD order #${order.id} recorded in Firestore via client SDK.`);
+    } catch (saveError: any) {
+      persistenceError = saveError;
+      console.error("[Checkout Failure] Stage: order_persistence_client", {
+        stage: "setDoc(orders)",
+        errorCode: saveError?.code,
+        errorMessage: saveError?.message,
+        orderId: order.id,
+        isGuest: order.isGuest,
+      }, saveError);
 
-      if (appliedCoupon) {
+      // Attempt server API fallback with authorization
+      try {
+        const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
+        const token = auth.currentUser
+          ? await auth.currentUser.getIdToken().catch(() => undefined)
+          : provisionedIdToken;
+        const apiRes = await ApiService.createOrderViaApi(cleanOrder, token);
+        if (apiRes && apiRes.success) {
+          orderPersisted = true;
+          console.info(`[Checkout] COD order #${order.id} recorded via backend API fallback.`);
+        } else {
+          console.error("[Checkout Failure] Stage: order_persistence_api_fallback", apiRes?.error);
+        }
+      } catch (apiErr: any) {
+        console.error("[Checkout Failure] Stage: order_persistence_api_exception", {
+          message: apiErr?.message,
+          status: apiErr?.status,
+        }, apiErr);
+      }
+    }
+
+    if (!orderPersisted) {
+      console.error("[Checkout Failure] Stage: order_persistence_failed", {
+        orderId: order.id,
+        errorCode: persistenceError?.code,
+        errorMessage: persistenceError?.message,
+      });
+      setIsProcessing(false);
+      setIsBursting(false);
+
+      const isPermissionDenied =
+        persistenceError?.code === "permission-denied" ||
+        persistenceError?.message?.includes("insufficient permissions");
+
+      const userMsg = isPermissionDenied
+        ? "Unable to authorize order placement. Please check your connection or sign in and try again."
+        : "Failed to place order. Please check your connection and try again.";
+
+      setErrors({ submit: userMsg });
+      return;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ORDER PERSISTED: All subsequent tasks are isolated and must never abort order
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    // 1. Coupon usage (non-critical)
+    if (appliedCoupon) {
+      try {
+        await markCouponUsed(appliedCoupon.code);
+      } catch (couponErr) {
+        console.warn("[Checkout] Non-critical: Could not mark coupon as used:", couponErr);
+      }
+    }
+
+    // 2. Inventory decrement (non-critical)
+    for (const item of order.items) {
+      if (item.productId) {
+        const idStr = String(item.productId);
         try {
-          await markCouponUsed(appliedCoupon.code);
-        } catch (couponErr) {
-          console.warn("Could not mark coupon as used:", couponErr);
-        }
-      }
-      for (const item of order.items) {
-        if (item.productId) {
-          const idStr = String(item.productId);
-          try {
-            let docRef = doc(db, "products", idStr);
-            let snap = await getDoc(docRef);
-            if (!snap.exists()) {
-              const twRef = doc(db, "teaware", idStr);
-              const twSnap = await getDoc(twRef);
-              if (twSnap.exists()) {
-                docRef = twRef;
-                snap = twSnap;
-              }
+          let docRef = doc(db, "products", idStr);
+          let snap = await getDoc(docRef);
+          if (!snap.exists()) {
+            const twRef = doc(db, "teaware", idStr);
+            const twSnap = await getDoc(twRef);
+            if (twSnap.exists()) {
+              docRef = twRef;
+              snap = twSnap;
             }
-            if (!snap.exists()) {
-              const hRef = doc(db, "hampers", idStr);
-              const hSnap = await getDoc(hRef);
-              if (hSnap.exists()) {
-                docRef = hRef;
-                snap = hSnap;
-              }
-            }
-            if (snap.exists()) {
-              const currentStock = typeof snap.data().stock === "number" ? snap.data().stock : 10;
-              const newStock = Math.max(0, currentStock - item.quantity);
-              await updateDoc(docRef, {
-                stock: newStock,
-                inStock: newStock > 0,
-              });
-            }
-          } catch (stockError) {
-            console.error(`Failed to update stock for item ${item.productId}:`, stockError);
           }
+          if (!snap.exists()) {
+            const hRef = doc(db, "hampers", idStr);
+            const hSnap = await getDoc(hRef);
+            if (hSnap.exists()) {
+              docRef = hRef;
+              snap = hSnap;
+            }
+          }
+          if (snap.exists()) {
+            const currentStock = typeof snap.data().stock === "number" ? snap.data().stock : 10;
+            const newStock = Math.max(0, currentStock - item.quantity);
+            await updateDoc(docRef, {
+              stock: newStock,
+              inStock: newStock > 0,
+            });
+          }
+        } catch (stockError) {
+          console.warn(`[Checkout] Non-critical: Failed to update stock for item ${item.productId}:`, stockError);
         }
       }
+    }
 
+    // 3. Local order context update (non-critical)
+    try {
       await addOrder(order);
+    } catch (ctxErr) {
+      console.warn("[Checkout] Non-critical: Error adding order to local context:", ctxErr);
+    }
 
-      // Trigger Notifications (Fire and Forget)
+    // 4. Notifications (Fire and Forget — non-critical)
+    try {
       NotificationService.sendOrderConfirmationEmail({
         id: order.id,
         customerName: order.shippingAddress.fullName,
@@ -826,8 +1003,14 @@ export default function Checkout() {
           price: i.price,
         })),
         createdAt: order.createdAt,
+        accountCreated: order.accountCreated,
+        passwordSetupLink: (JSON.parse(sessionStorage.getItem("leafly_account_provisioned") || "{}"))?.passwordSetupLink || undefined,
       });
+    } catch (emailErr) {
+      console.warn("[Checkout] Non-critical: Failed to trigger email notification:", emailErr);
+    }
 
+    try {
       NotificationService.sendOrderConfirmationSMS({
         id: order.id,
         customerName: order.shippingAddress.fullName,
@@ -835,21 +1018,21 @@ export default function Checkout() {
         phone: order.customerPhone || "",
         total: order.total,
       });
-
-      try {
-        sessionStorage.setItem("leafly_last_order", JSON.stringify(order));
-      } catch {
-        // ignore
-      }
-
-      orderCompletedRef.current = true;
-      navigate("/order-success", { replace: true });
-    } catch (error) {
-      console.error("Error saving order to Firestore:", error);
-      setIsProcessing(false);
-      setIsBursting(false);
-      setErrors({ submit: "Failed to place order. Please check your connection and try again." });
+    } catch (smsErr) {
+      console.warn("[Checkout] Non-critical: Failed to trigger SMS notification:", smsErr);
     }
+
+    // 5. Session storage cache (non-critical)
+    try {
+      sessionStorage.setItem("leafly_last_order", JSON.stringify(order));
+    } catch {
+      // ignore
+    }
+
+    // Order successfully persisted and recorded: clear retry lock and proceed to success screen
+    pendingOrderIdRef.current = null;
+    orderCompletedRef.current = true;
+    navigate("/order-success", { replace: true });
   };
 
   const handlePlaceOrder = async () => {
@@ -960,7 +1143,8 @@ export default function Checkout() {
       }
     }
 
-    const orderId = generateOrderId();
+    const orderId = pendingOrderIdRef.current || generateOrderId();
+    pendingOrderIdRef.current = orderId;
 
     // ==========================================
     // 1. CASH ON DELIVERY (COD) FLOW
@@ -1154,16 +1338,16 @@ export default function Checkout() {
 
       <div className="checkout-layout">
         <section className="checkout-column">
-          {!currentUser && (
-            <div className="checkout-auth-banner" role="alert">
+          {!isRealRegisteredUser && (
+            <div className="checkout-auth-banner" role="region" aria-label="Guest Checkout Info">
               <div className="checkout-auth-banner-content">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#c9a24b" strokeWidth="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
                 <div>
-                  <strong>Authentication Required to Order</strong>
-                  <p>Please log in or create an account to complete your checkout.</p>
+                  <strong>✦ Guest Checkout Active</strong>
+                  <p>Login is optional! Complete your purchase directly as a guest, or sign in to track in your dashboard.</p>
                 </div>
               </div>
               <button
@@ -1185,10 +1369,12 @@ export default function Checkout() {
             <div className="checkout-field-grid two-up">
               <label className="checkout-field">
                 <span>
-                  Email <span style={{ color: "#c53030" }}>*</span> {resolvedAuthEmail ? "(Tied to your verified account)" : ""}
+                  Email Address <span style={{ color: "#c53030" }}>*</span>
+                  {resolvedAuthEmail ? " (Tied to your verified account)" : ""}
                 </span>
                 <input
                   type="email"
+                  placeholder="e.g. name@example.com"
                   value={email}
                   onChange={(event) => {
                     setEmail(event.target.value);
@@ -1203,8 +1389,15 @@ export default function Checkout() {
                   readOnly={Boolean(resolvedAuthEmail)}
                   style={resolvedAuthEmail ? { backgroundColor: "#f3efe6", cursor: "not-allowed" } : undefined}
                   aria-invalid={Boolean(errors.email)}
+                  required
                 />
-                {errors.email && <small>{errors.email}</small>}
+                {errors.email ? (
+                  <small>{errors.email}</small>
+                ) : (
+                  <small style={{ color: "#6a7b72", fontSize: "11px" }}>
+                    Your order confirmation receipt and tax invoice PDF will be sent here.
+                  </small>
+                )}
               </label>
 
               <PhoneInput

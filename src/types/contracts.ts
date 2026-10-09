@@ -179,11 +179,17 @@ export interface Order {
   id: string;
   userId?: string;
   customerId?: string;
+  isGuest?: boolean;
+  guestProvisioned?: boolean;
+  accountCreated?: boolean;
+  accountSetupPending?: boolean;
   customerName?: string;
   customerEmail?: string;
+  email?: string;
   customerPhone?: string;
   createdAt: string;
   updatedAt?: string;
+  confirmationEmailSentAt?: string;
   orderStatus?: OrderStatus;
   status?: OrderStatus | string;
   items: OrderItem[];

@@ -5,7 +5,7 @@ import {
   sendOrderStatusUpdate,
   type MailResult,
 } from "./_lib/mailer.js";
-import { updateServerOrder, getServerOrder } from "./_lib/firebaseAdmin.js";
+import { updateServerOrder, getServerOrder, getAdminFirestore, provisionCustomerAccount, saveServerOrder } from "./_lib/firebaseAdmin.js";
 import type { Order } from "../src/types/contracts.js";
 import type {
   OrderEmailData,
@@ -39,6 +39,8 @@ interface OrderActionRequestBody {
   shippingAddress?: OrderEmailData["shippingAddress"];
   items?: OrderEmailItem[];
   createdAt?: string;
+  accountCreated?: boolean;
+  passwordSetupLink?: string;
 }
 
 export default async function handler(
@@ -102,10 +104,114 @@ export default async function handler(
     }
 
     // Normalize action alias
-    if (action === "order-notification" || action === "placed" || action === "create") {
+    if (action === "order-notification" || action === "placed") {
       action = "notification";
     } else if (action === "order-status-notification" || action === "update") {
       action = "status";
+    } else if (action === "create" || action === "create-order" || action === "place-order") {
+      action = "create";
+    } else if (action === "provision" || action === "provision-account" || action === "create-account") {
+      action = "provision";
+    }
+
+    // =========================================================================
+    // 0a. AUTOMATIC CUSTOMER ACCOUNT PROVISIONING
+    // =========================================================================
+    if (action === "provision") {
+      const email = String(body.email || body.customerEmail || "").trim().toLowerCase();
+      const customerName = String(
+        body.customerName || body.shippingAddress?.fullName || ""
+      ).trim();
+      const orderId = String(body.orderId || body.id || "").trim();
+
+      if (!email) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Email is required for account provisioning." }));
+        return;
+      }
+
+      const provisionResult = await provisionCustomerAccount(
+        email,
+        customerName,
+        orderId || undefined
+      );
+
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(provisionResult));
+      return;
+    }
+
+    // =========================================================================
+    // 0. ORDER CREATION / PERSISTENCE (Server-Side Fallback)
+    // =========================================================================
+    if (action === "create") {
+      const id = String(body.id || body.orderId || "").trim();
+      const customerName = String(
+        body.customerName || body.shippingAddress?.fullName || ""
+      ).trim();
+      const email = String(body.email || body.customerEmail || "").trim().toLowerCase();
+
+      if (!id) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Order ID is required." }));
+        return;
+      }
+
+      const clientToken =
+        (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")
+          ? req.headers.authorization.slice(7).trim()
+          : undefined) ||
+        ((body as any).idToken ? String((body as any).idToken).trim() : undefined);
+
+      const orderPayload = {
+        ...body,
+        id,
+        updatedAt: new Date().toISOString(),
+      };
+      delete (orderPayload as any).action;
+      delete (orderPayload as any).type;
+      delete (orderPayload as any).idToken;
+
+      const saveResult = await saveServerOrder(orderPayload, clientToken);
+      if (!saveResult.success) {
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: saveResult.error || "Failed to persist order to database." }));
+        return;
+      }
+
+      console.info(`[Leafly Orders API] Order #${id} successfully stored in Firestore via server.`);
+
+      if (id && customerName) {
+        const orderData: OrderEmailData = {
+          id,
+          customerName,
+          email: email || undefined,
+          phone: body.phone || body.customerPhone || undefined,
+          total: Number(body.total) || 0,
+          subtotal: typeof body.subtotal === "number" ? body.subtotal : undefined,
+          deliveryFee: typeof body.deliveryFee === "number" ? body.deliveryFee : undefined,
+          discount: typeof body.discount === "number" ? body.discount : undefined,
+          couponCode: body.couponCode ? String(body.couponCode) : undefined,
+          paymentMethod: body.paymentMethod ? String(body.paymentMethod) : undefined,
+          paymentStatus: body.paymentStatus ? String(body.paymentStatus) : undefined,
+          shippingAddress: body.shippingAddress,
+          items: body.items,
+          createdAt: body.createdAt || new Date().toISOString(),
+        };
+        sendAdminOrderNotification(orderData).catch((e) => console.warn("[Orders API] Admin alert notice:", e));
+        if (email) {
+          sendOrderConfirmation(orderData).catch((e) => console.warn("[Orders API] Customer receipt notice:", e));
+        }
+      }
+
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ success: true, orderId: id }));
+      return;
     }
 
     // =========================================================================
@@ -175,6 +281,24 @@ export default async function handler(
         return;
       }
 
+      // Auto-provision or associate customer account
+      let isNewAccountCreated = Boolean(body.accountCreated);
+      let setupLink: string | undefined = body.passwordSetupLink || undefined;
+
+      if (email) {
+        try {
+          const provResult = await provisionCustomerAccount(email, customerName, id);
+          if (provResult.isNewAccount) {
+            isNewAccountCreated = true;
+          }
+          if (provResult.passwordSetupLink) {
+            setupLink = provResult.passwordSetupLink;
+          }
+        } catch (provErr) {
+          console.warn("[Orders API] Auto-provisioning notice:", provErr);
+        }
+      }
+
       const orderData: OrderEmailData = {
         id,
         customerName,
@@ -190,6 +314,8 @@ export default async function handler(
         shippingAddress,
         items,
         createdAt,
+        accountCreated: isNewAccountCreated,
+        passwordSetupLink: setupLink,
       };
 
       // 1. Dispatch Admin Order Alert

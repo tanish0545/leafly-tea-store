@@ -51,12 +51,17 @@ export type OrderNotificationPayload = OrderEmailData;
 /**
  * Helper to execute backend serverless API call with a fallback
  */
-async function postApi<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+async function postApi<T>(
+  endpoint: string,
+  body: Record<string, unknown>,
+  customHeaders?: Record<string, string>
+): Promise<T> {
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
+      ...(customHeaders || {}),
     },
     body: JSON.stringify(body),
   });
@@ -257,6 +262,75 @@ export const ApiService = {
   },
 
   /**
+   * Automatically provisions customer account from real checkout email
+   */
+  async provisionAccount(payload: {
+    email: string;
+    customerName: string;
+    orderId?: string;
+  }): Promise<{
+    success: boolean;
+    uid: string | null;
+    isNewAccount: boolean;
+    sessionSecret?: string | null;
+    idToken?: string | null;
+    refreshToken?: string | null;
+    passwordSetupLink?: string | null;
+    error?: string;
+  }> {
+    try {
+      return await postApi<{
+        success: boolean;
+        uid: string | null;
+        isNewAccount: boolean;
+        sessionSecret?: string | null;
+        idToken?: string | null;
+        refreshToken?: string | null;
+        passwordSetupLink?: string | null;
+        error?: string;
+      }>("/api/orders?action=provision", {
+        action: "provision",
+        ...payload,
+      });
+    } catch (err) {
+      console.warn("[ApiService] Account provisioning notice:", err);
+      return {
+        success: false,
+        uid: null,
+        isNewAccount: false,
+        error: err instanceof Error ? err.message : "Account provisioning service unavailable",
+      };
+    }
+  },
+
+  /**
+   * Authoritative server-side order creation fallback
+   */
+  async createOrderViaApi(
+    order: Record<string, unknown>,
+    idToken?: string
+  ): Promise<{ success: boolean; orderId?: string; error?: string }> {
+    try {
+      const headers: Record<string, string> = {};
+      if (idToken) {
+        headers["Authorization"] = `Bearer ${idToken}`;
+      }
+      return await postApi<{ success: boolean; orderId?: string; error?: string }>(
+        "/api/orders?action=create",
+        {
+          action: "create",
+          ...order,
+          ...(idToken ? { idToken } : {}),
+        },
+        headers
+      );
+    } catch (err) {
+      console.warn("[ApiService] Server order creation fallback notice:", err);
+      return { success: false, error: err instanceof Error ? err.message : "Failed to create order via API" };
+    }
+  },
+
+  /**
    * Dispatches customer transactional order status update email when admin updates status
    */
   async notifyOrderStatusUpdate(payload: {
@@ -361,6 +435,60 @@ export const ApiService = {
       customerEmail: customerData?.email,
       customerName: customerData?.name,
     });
+  },
+};
+
+/**
+ * AdminService — Server-side user management operations.
+ * All methods require the current admin's Firebase ID token for authorization.
+ * The token is never stored; it is forwarded as a Bearer header so the server
+ * can verify admin identity before performing privileged operations.
+ */
+export const AdminService = {
+  /**
+   * Permanently removes a customer's Firebase Auth account and soft-deletes
+   * their Firestore profile.  All orders and financial records are PRESERVED.
+   *
+   * @param uid         Firebase UID of the account to remove
+   * @param adminToken  Current admin user's Firebase ID token (from getIdToken())
+   * @param reason      Optional human-readable reason for the audit log
+   */
+  async removeUser(
+    uid: string,
+    adminToken: string,
+    reason = "Removed by administrator"
+  ): Promise<{
+    success: boolean;
+    status?: "completed" | "partial_failure" | "error";
+    authDeleted: boolean;
+    firestoreUpdated: boolean;
+    authWarning?: string | null;
+    message?: string;
+    error?: string;
+  }> {
+    try {
+      return await postApi<{
+        success: boolean;
+        status?: "completed" | "partial_failure" | "error";
+        authDeleted: boolean;
+        firestoreUpdated: boolean;
+        authWarning?: string | null;
+        message?: string;
+        error?: string;
+      }>(
+        "/api/users?action=remove",
+        { action: "remove", uid, reason },
+        { Authorization: `Bearer ${adminToken}` }
+      );
+    } catch (err) {
+      console.warn("[AdminService] removeUser error:", err);
+      return {
+        success: false,
+        authDeleted: false,
+        firestoreUpdated: false,
+        error: err instanceof Error ? err.message : "User removal request failed",
+      };
+    }
   },
 };
 

@@ -4,7 +4,7 @@ import logo from "../assets/leafly-logo.webp";
 import teaPlantationImg from "../assets/tea-plantation-hero.jpg";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
-import { useAuth, formatAuthError, isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../context/AuthContext";
+import { useAuth, formatAuthError, isValidGmailAddress, isValidEmailAddress } from "../context/AuthContext";
 import "./Login.css";
 
 export default function Login() {
@@ -13,7 +13,7 @@ export default function Login() {
   const { login, loginWithGoogle, sendPasswordReset, isAuthenticated, user } = useAuth();
 
   // Email / Password Form State
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => (location.state as { email?: string })?.email || "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -27,6 +27,11 @@ export default function Login() {
   });
 
   useEffect(() => {
+    const passedEmail = (location.state as { email?: string })?.email;
+    if (passedEmail) {
+      setEmail(passedEmail);
+      setForgotEmail(passedEmail);
+    }
     const msg = (location.state as { message?: string })?.message;
     if (msg) {
       setSuccessMessage(msg);
@@ -76,8 +81,8 @@ export default function Login() {
       return;
     }
 
-    if (!isValidGmailAddress(cleanEmail)) {
-      setErrorMessage(GMAIL_ERROR_MESSAGE);
+    if (!isValidEmailAddress(cleanEmail) && !isValidGmailAddress(cleanEmail)) {
+      setErrorMessage("Please enter a valid email address.");
       return;
     }
 
@@ -117,12 +122,12 @@ export default function Login() {
 
     const cleanForgot = forgotEmail.trim();
     if (!cleanForgot) {
-      setForgotMessage({ type: "error", text: "Please enter your registered Gmail address." });
+      setForgotMessage({ type: "error", text: "Please enter your registered email address." });
       return;
     }
 
-    if (!isValidGmailAddress(cleanForgot)) {
-      setForgotMessage({ type: "error", text: GMAIL_ERROR_MESSAGE });
+    if (!isValidEmailAddress(cleanForgot) && !isValidGmailAddress(cleanForgot)) {
+      setForgotMessage({ type: "error", text: "Please enter a valid email address." });
       return;
     }
 

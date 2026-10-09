@@ -10,7 +10,8 @@ import { type TeawareItem, type TeawareCategory } from "../data/teaware";
 import { type GiftHamper } from "../data/gifting";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../lib/firebase";
-import { ApiService } from "../lib/apiClient";
+import { ApiService, AdminService } from "../lib/apiClient";
+import { getAuth } from "firebase/auth";
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, getDoc } from "firebase/firestore";
 import type { Order, OrderStatus } from "../types/contracts";
 import SEO from "../components/SEO";
@@ -219,13 +220,13 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
   }, [section, location.pathname, location.search, propActiveSection, propActiveTab, activeTab]);
 
   // Toast notification state
-  const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error" | "info" | "warning"; message: string } | null>(null);
 
-  const showToast = (type: "success" | "error" | "info", message: string) => {
+  const showToast = (type: "success" | "error" | "info" | "warning", message: string) => {
     setToast({ type, message });
     setTimeout(() => {
       setToast((prev) => (prev?.message === message ? null : prev));
-    }, 4500);
+    }, 6000);
   };
 
   // Editing States
@@ -288,6 +289,9 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
   const [accountSearchQuery, setAccountSearchQuery] = useState("");
   const [accountFilterProvider, setAccountFilterProvider] = useState("all");
   const [selectedAccount, setSelectedAccount] = useState<AccountUser | null>(null);
+  const [accountToRemove, setAccountToRemove] = useState<AccountUser | null>(null);
+  const [removeInProgress, setRemoveInProgress] = useState(false);
+  const [removeReason, setRemoveReason] = useState("");
   const [showAdminLogoutConfirm, setShowAdminLogoutConfirm] = useState(false);
   const savedModalScrollPosRef = useRef<number>(0);
 
@@ -354,9 +358,66 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
     setShowAdminLogoutConfirm(false);
   };
 
+  const handleOpenRemoveConfirm = (acc: AccountUser) => {
+    setRemoveReason("");
+    setAccountToRemove(acc);
+  };
+
+  const handleCloseRemoveConfirm = () => {
+    if (removeInProgress) return;
+    setAccountToRemove(null);
+    setRemoveReason("");
+  };
+
+  const handleRemoveUser = async () => {
+    if (!accountToRemove || removeInProgress) return;
+    setRemoveInProgress(true);
+    try {
+      // Obtain current admin's ID token for server-side authorization
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        showToast("error", "Admin session expired. Please sign in again.");
+        setRemoveInProgress(false);
+        return;
+      }
+      const idToken = await currentUser.getIdToken(true);
+      const reason = removeReason.trim() || "Removed by administrator";
+      const result = await AdminService.removeUser(accountToRemove.uid, idToken, reason);
+      if (result.success && result.authDeleted) {
+        showToast(
+          "success",
+          `Customer "${accountToRemove.name}" account and login credentials removed successfully.`
+        );
+        setAccountToRemove(null);
+        setRemoveReason("");
+      } else if (result.firestoreUpdated && !result.authDeleted) {
+        showToast(
+          "warning",
+          `Profile archived in database, but Firebase Authentication account was NOT deleted: ${result.authWarning || result.error || "Server service-account credentials required."}`
+        );
+        setAccountToRemove(null);
+        setRemoveReason("");
+      } else {
+        showToast(
+          "error",
+          result.error || "Failed to remove customer account. Please try again."
+        );
+      }
+    } catch (err) {
+      console.error("[Admin] Remove user error:", err);
+      showToast(
+        "error",
+        err instanceof Error ? err.message : "An unexpected error occurred."
+      );
+    } finally {
+      setRemoveInProgress(false);
+    }
+  };
+
   // Lock background body & document scroll and listen for Escape key when any true modal is open
   useEffect(() => {
-    const isModalOpen = Boolean(selectedOrder || selectedAccount || selectedRequest || showAdminLogoutConfirm || orderToDelete);
+    const isModalOpen = Boolean(selectedOrder || selectedAccount || selectedRequest || showAdminLogoutConfirm || orderToDelete || accountToRemove);
     if (isModalOpen) {
       const originalBodyOverflow = document.body.style.overflow;
       const originalHtmlOverflow = document.documentElement.style.overflow;
@@ -370,6 +431,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
           setSelectedRequest(null);
           setShowAdminLogoutConfirm(false);
           setOrderToDelete(null);
+          if (!removeInProgress) setAccountToRemove(null);
         }
       };
 
@@ -380,7 +442,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
         window.removeEventListener("keydown", handleKeyDown);
       };
     }
-  }, [selectedOrder, selectedAccount, selectedRequest, showAdminLogoutConfirm, orderToDelete]);
+  }, [selectedOrder, selectedAccount, selectedRequest, showAdminLogoutConfirm, orderToDelete, accountToRemove, removeInProgress]);
 
   // Keep latest browserAlertsEnabled in a ref so toggling it does not destroy and recreate Firestore listeners
   const browserAlertsEnabledRef = useRef(browserAlertsEnabled);
@@ -576,82 +638,6 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
     };
   }, [authLoading, isAuthenticated, isAdmin]);
 
-  // Immediate mount load of reviews from localStorage so Admin Reviews has instant data
-  useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
-      if (Array.isArray(stored) && stored.length > 0) {
-        setReviews((prev) => (prev.length === 0 ? stored : prev));
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // Real-time cross-tab synchronization via BroadcastChannel & storage events
-  useEffect(() => {
-    const handleSync = (newReview: ReviewItem) => {
-      setReviews((prev) => {
-        const exists = prev.some((r) => r.id === newReview.id || (r.orderId && r.orderId === newReview.orderId && r.feedback === newReview.feedback));
-        if (exists) {
-          return prev.map((r) => r.id === newReview.id ? { ...r, ...newReview } : r);
-        }
-        return [newReview, ...prev];
-      });
-    };
-
-    let channel: BroadcastChannel | null = null;
-    try {
-      if (typeof BroadcastChannel !== "undefined") {
-        channel = new BroadcastChannel("leafly_reviews_sync");
-        channel.onmessage = (event) => {
-          if (event.data?.type === "NEW_REVIEW" && event.data.review) {
-            handleSync(event.data.review);
-          } else if (event.data?.type === "UPDATE_REVIEW" && event.data.review) {
-            handleSync(event.data.review);
-          } else if (event.data?.type === "DELETE_REVIEW" && event.data.reviewId) {
-            setReviews((prev) => prev.filter((r) => r.id !== event.data.reviewId));
-          }
-        };
-      }
-    } catch {
-      // ignore
-    }
-
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === "leafly_saved_reviews" && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) {
-            setReviews((prev) => {
-              const currentIds = new Set(prev.map((r) => r.id));
-              const merged = [...prev];
-              parsed.forEach((item: any) => {
-                if (!currentIds.has(item.id)) {
-                  merged.unshift(item);
-                  currentIds.add(item.id);
-                }
-              });
-              merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-              return merged;
-            });
-          }
-        } catch {
-          // ignore
-        }
-      }
-    };
-
-    window.addEventListener("storage", handleStorage);
-
-    return () => {
-      if (channel) {
-        channel.close();
-      }
-      window.removeEventListener("storage", handleStorage);
-    };
-  }, []);
-
   // Real-time Firestore customer reviews synchronization
   useEffect(() => {
     if (authLoading || !isAuthenticated || !isAdmin) return;
@@ -678,26 +664,6 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
             createdAt: resolvedDate,
           };
         });
-
-        // Merge with local reviews for zero-data-loss resiliency
-        try {
-          const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
-          const firestoreIds = new Set(snapshot.docs.map((doc) => doc.id));
-          snapshot.docs.forEach((doc) => {
-            const data = doc.data();
-            if (data?.id) firestoreIds.add(data.id);
-          });
-
-          if (Array.isArray(stored)) {
-            stored.forEach((localR: any) => {
-              if (!firestoreIds.has(localR.id)) {
-                fetchedReviews.push(localR);
-              }
-            });
-          }
-        } catch {
-          // ignore
-        }
 
         fetchedReviews.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setReviews(fetchedReviews);
@@ -1448,31 +1414,9 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
         updatedAt: new Date().toISOString(),
       });
       showToast("success", `Review status changed to ${nextStatus}.`);
-    } catch {
-      showToast("info", `Review status updated to ${nextStatus}.`);
-    }
-    // Synchronize local state & localStorage immediately
-    setReviews((prev) =>
-      prev.map((r) => (r.id === review.id ? { ...r, status: nextStatus } : r))
-    );
-    try {
-      const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
-      const updated = stored.map((r: any) =>
-        r.id === review.id ? { ...r, status: nextStatus } : r
-      );
-      localStorage.setItem("leafly_saved_reviews", JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
-    // Broadcast status update to other open tabs
-    try {
-      if (typeof BroadcastChannel !== "undefined") {
-        const channel = new BroadcastChannel("leafly_reviews_sync");
-        channel.postMessage({ type: "UPDATE_REVIEW", review: { ...review, status: nextStatus } });
-        channel.close();
-      }
-    } catch {
-      // ignore
+    } catch (error) {
+      console.error("Error updating review status:", error);
+      showToast("error", `Failed to update review status in database.`);
     }
   };
 
@@ -1481,27 +1425,9 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
       try {
         await deleteDoc(doc(db, "reviews", reviewId));
         showToast("success", "Review deleted successfully.");
-      } catch {
-        showToast("info", "Review removed from active list.");
-      }
-      // Synchronize local state & localStorage immediately
-      setReviews((prev) => prev.filter((r) => r.id !== reviewId));
-      try {
-        const stored = JSON.parse(localStorage.getItem("leafly_saved_reviews") || "[]");
-        const updated = stored.filter((r: any) => r.id !== reviewId);
-        localStorage.setItem("leafly_saved_reviews", JSON.stringify(updated));
-      } catch {
-        // ignore
-      }
-      // Broadcast deletion to other open tabs
-      try {
-        if (typeof BroadcastChannel !== "undefined") {
-          const channel = new BroadcastChannel("leafly_reviews_sync");
-          channel.postMessage({ type: "DELETE_REVIEW", reviewId });
-          channel.close();
-        }
-      } catch {
-        // ignore
+      } catch (error) {
+        console.error("Error deleting review:", error);
+        showToast("error", "Failed to delete review from database.");
       }
     }
   };
@@ -2099,7 +2025,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
       {/* FLOATING TOAST NOTIFICATION */}
       {toast && (
         <div className={`admin-toast-banner ${toast.type}`} role="alert">
-          <span className="toast-icon">{toast.type === "success" ? "✓" : toast.type === "error" ? "⚠" : "ℹ"}</span>
+          <span className="toast-icon">{toast.type === "success" ? "✓" : toast.type === "error" ? "✕" : toast.type === "warning" ? "⚠" : "ℹ"}</span>
           <span className="toast-message">{toast.message}</span>
           <button type="button" className="toast-close" onClick={() => setToast(null)} aria-label="Dismiss notification">✕</button>
         </div>
@@ -2889,7 +2815,12 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                               </td>
                               <td>
                                 <strong className="cell-main-text">{order.shippingAddress?.fullName || order.customerName || "Patron"}</strong>
-                                <span className="cell-subtext">{order.customerEmail || "No Email"}</span>
+                                <span className="cell-subtext">{order.customerEmail || order.email || "No Email"}</span>
+                                {Boolean(order.isGuest || order.userId === "guest") && (
+                                  <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px", background: "rgba(185, 132, 40, 0.15)", color: "#b98428", display: "inline-block", width: "fit-content", marginTop: "2px" }}>
+                                    GUEST
+                                  </span>
+                                )}
                                 <span className="cell-subtext">
                                   {order.shippingAddress?.city ? `${order.shippingAddress.city}, ${order.shippingAddress.state}` : "Direct Order"}
                                 </span>
@@ -4639,13 +4570,25 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                                 </span>
                               </td>
                               <td>
-                                <button
-                                  type="button"
-                                  className="admin-btn-action"
-                                  onClick={() => handleOpenAccountDetails(acc)}
-                                >
-                                  Profile
-                                </button>
+                                <div className="table-actions-group">
+                                  <button
+                                    type="button"
+                                    className="admin-btn-action"
+                                    onClick={() => handleOpenAccountDetails(acc)}
+                                  >
+                                    Profile
+                                  </button>
+                                  {acc.status !== "Deleted" && (
+                                    <button
+                                      type="button"
+                                      className="admin-btn-danger"
+                                      title={`Remove ${acc.name}'s account`}
+                                      onClick={() => handleOpenRemoveConfirm(acc)}
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -4706,6 +4649,16 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                             >
                               View Full Profile
                             </button>
+                            {acc.status !== "Deleted" && (
+                              <button
+                                type="button"
+                                className="admin-btn-danger full-width"
+                                style={{ marginTop: "8px" }}
+                                onClick={() => handleOpenRemoveConfirm(acc)}
+                              >
+                                Remove Account
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -5964,8 +5917,14 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                       <strong>{selectedOrder.shippingAddress?.fullName || selectedOrder.customerName || "Patron"}</strong>
                     </div>
                     <div className="modal-info-line">
+                      <span>Type:</span>
+                      <strong style={{ color: (selectedOrder.isGuest || selectedOrder.userId === "guest") ? "#b98428" : "#166534" }}>
+                        {(selectedOrder.isGuest || selectedOrder.userId === "guest") ? "Guest Checkout" : "Registered Member"}
+                      </strong>
+                    </div>
+                    <div className="modal-info-line">
                       <span>Email:</span>
-                      <strong>{selectedOrder.customerEmail || "Not Provided"}</strong>
+                      <strong>{selectedOrder.customerEmail || selectedOrder.email || "Not Provided"}</strong>
                     </div>
                     <div className="modal-info-line">
                       <span>Phone:</span>
@@ -6216,12 +6175,106 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
               </div>
 
               <div className="modal-footer-luxury">
+                {selectedAccount.status !== "Deleted" && (
+                  <button
+                    type="button"
+                    className="admin-btn-danger"
+                    style={{ marginRight: "auto" }}
+                    onClick={() => {
+                      handleCloseAccountDetails();
+                      handleOpenRemoveConfirm(selectedAccount);
+                    }}
+                  >
+                    Remove Account
+                  </button>
+                )}
                 <button
                   type="button"
                   className="admin-btn-secondary"
                   onClick={handleCloseAccountDetails}
                 >
                   Close Profile
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* =========================================================
+          MODAL: REMOVE USER CONFIRMATION
+         ========================================================= */}
+      {accountToRemove &&
+        createPortal(
+          <div
+            className="admin-modal-overlay"
+            onClick={handleCloseRemoveConfirm}
+            ref={(el) => { if (el) el.scrollTop = 0; }}
+          >
+            <div
+              className="admin-logout-modal-dialog"
+              style={{ maxWidth: "460px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span className="modal-eyebrow" style={{ color: "#e53e3e" }}>IRREVERSIBLE ACTION</span>
+              <h3 className="modal-title" style={{ fontSize: "20px" }}>Remove Customer Account</h3>
+              <p style={{ margin: "4px 0 10px", fontSize: "14px", color: "var(--admin-muted)", lineHeight: 1.6 }}>
+                You are about to remove{" "}
+                <strong style={{ color: "var(--admin-text)" }}>{accountToRemove.name}</strong>
+                {" "}(<span style={{ color: "var(--admin-gold)" }}>{accountToRemove.email}</span>).
+              </p>
+              <p style={{ margin: "0 0 14px", fontSize: "13px", color: "var(--admin-muted)", lineHeight: 1.5 }}>
+                Their Firebase Authentication account will be permanently deleted.
+                All orders and payment records are <strong>preserved</strong> for accounting.
+              </p>
+
+              {/* Optional reason input */}
+              <div style={{ marginBottom: "18px" }}>
+                <label
+                  htmlFor="remove-reason-input"
+                  style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "6px", color: "var(--admin-muted)" }}
+                >
+                  Reason for removal (optional, logged in audit trail)
+                </label>
+                <input
+                  id="remove-reason-input"
+                  type="text"
+                  placeholder="e.g. Duplicate account, fraudulent activity..."
+                  value={removeReason}
+                  onChange={(e) => setRemoveReason(e.target.value)}
+                  disabled={removeInProgress}
+                  maxLength={200}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--admin-border)",
+                    background: "var(--admin-surface)",
+                    color: "var(--admin-text)",
+                    fontSize: "13px",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  className="admin-btn-secondary"
+                  style={{ flex: 1 }}
+                  onClick={handleCloseRemoveConfirm}
+                  disabled={removeInProgress}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="admin-btn-danger"
+                  style={{ flex: 1, padding: "11px 18px", fontSize: "13px" }}
+                  onClick={handleRemoveUser}
+                  disabled={removeInProgress}
+                >
+                  {removeInProgress ? "Removing..." : "Remove Account"}
                 </button>
               </div>
             </div>

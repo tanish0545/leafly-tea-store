@@ -425,6 +425,7 @@ export interface OrderEmailData {
   id: string;
   customerName: string;
   email?: string;
+  customerEmail?: string;
   phone?: string;
   total: number;
   subtotal?: number;
@@ -444,6 +445,8 @@ export interface OrderEmailData {
   };
   items?: OrderEmailItem[];
   createdAt?: string;
+  accountCreated?: boolean;
+  passwordSetupLink?: string;
 }
 
 export interface OrderStatusEmailData {
@@ -462,6 +465,7 @@ export interface OrderStatusEmailData {
 }
 
 export function getOrderConfirmationCustomerEmail(data: OrderEmailData): { subject: string; html: string } {
+  const recipientEmail = data.email || data.customerEmail || "";
   const isPaid = (data.paymentStatus || "").toLowerCase() === "paid";
   const isCOD =
     (data.paymentMethod || "").toLowerCase().includes("cod") ||
@@ -633,6 +637,35 @@ export function getOrderConfirmationCustomerEmail(data: OrderEmailData): { subje
     </table>
 
     ${addressHtml}
+
+    ${data.accountCreated ? `
+    <!-- Account Created Notice (Requirement 2) -->
+    <div style="margin: 24px 0; padding: 20px 22px; background-color: #f7f9f6; border: 1px solid #c2d6cb; border-left: 4px solid ${LEAFLY_GREEN}; border-radius: 6px;">
+      <strong style="color: ${LEAFLY_GREEN}; font-size: 14px; display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px;">
+        ✦ Your Leafly Customer Account is Ready
+      </strong>
+      <p style="margin: 0 0 12px; font-size: 13.5px; color: ${LEAFLY_TEXT}; line-height: 1.6;">
+        A personal Leafly account has been automatically created for your email <strong>${recipientEmail}</strong>. You can securely set your password to track your fresh harvests, download tax invoices, and access member benefits.
+      </p>
+      ${data.passwordSetupLink ? `
+      <div style="margin: 14px 0 6px;">
+        <a href="${data.passwordSetupLink}" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #ffffff; font-size: 13px; font-weight: 600; padding: 12px 24px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD};">
+          Set Your Password Securely →
+        </a>
+      </div>` : `
+      <p style="margin: 0; font-size: 12.5px; color: ${LEAFLY_MUTED}; line-height: 1.5;">
+        A secure password setup link has been dispatched to your email. You can also establish your password anytime at the <a href="https://leaflytea.in/login" style="color: ${LEAFLY_GOLD}; font-weight: 600;">Leafly Sign In Page</a>.
+      </p>`}
+    </div>` : (recipientEmail ? `
+    <!-- Existing Account Notice -->
+    <div style="margin: 24px 0; padding: 16px 20px; background-color: #fbfbf9; border: 1px solid ${LEAFLY_BORDER}; border-left: 3px solid ${LEAFLY_GOLD}; border-radius: 6px;">
+      <strong style="color: ${LEAFLY_GREEN}; font-size: 13px; display: block; margin-bottom: 4px;">
+        ✦ Linked to Your Leafly Account
+      </strong>
+      <p style="margin: 0; font-size: 13px; color: ${LEAFLY_TEXT}; line-height: 1.5;">
+        This order has been associated with your Leafly account (<strong>${recipientEmail}</strong>). Simply sign in with your password to view your updated tea order history.
+      </p>
+    </div>` : "")}
 
     <p style="font-size: 14px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 20px 0 24px;">
       You can track your order status anytime from your <a href="https://leaflytea.in/orders" style="color: ${LEAFLY_GOLD}; font-weight: 600;">Leafly Orders Page</a>.

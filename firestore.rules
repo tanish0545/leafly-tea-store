@@ -49,20 +49,32 @@ service cloud.firestore {
     }
 
     // 2. Orders collection:
-    // Customers can only create orders that correspond to their authenticated identity.
+    // Customers can create orders (authenticated or guest with valid fields).
     // Customers can read their own orders and cancel them.
     // Authorized Admins have full access.
     match /orders/{orderId} {
-      allow create: if isAuthenticated() && (
-        request.resource.data.get('userId', '') == request.auth.uid ||
-        request.resource.data.get('customerId', '') == request.auth.uid ||
-        request.resource.data.get('uid', '') == request.auth.uid ||
-        request.resource.data.get('userUid', '') == request.auth.uid ||
-        (request.resource.data.get('customerEmail', '') != '' && request.auth.token.email != null && (
-          request.resource.data.customerEmail == request.auth.token.email ||
-          request.resource.data.customerEmail.lower() == request.auth.token.email.lower()
-        )) ||
-        isAdmin()
+      allow create: if (
+        isAuthenticated() && (
+          request.resource.data.get('userId', '') == request.auth.uid ||
+          request.resource.data.get('customerId', '') == request.auth.uid ||
+          request.resource.data.get('uid', '') == request.auth.uid ||
+          request.resource.data.get('userUid', '') == request.auth.uid ||
+          (request.resource.data.get('customerEmail', '') != '' && request.auth.token.email != null && (
+            request.resource.data.customerEmail == request.auth.token.email ||
+            request.resource.data.customerEmail.lower() == request.auth.token.email.lower()
+          )) ||
+          isAdmin()
+        )
+      ) || (
+        request.resource.data.customerEmail is string &&
+        request.resource.data.customerEmail.size() > 3 &&
+        request.resource.data.customerName is string &&
+        request.resource.data.customerName.size() > 0 &&
+        request.resource.data.total is number &&
+        request.resource.data.total >= 0 &&
+        request.resource.data.items is list &&
+        request.resource.data.items.size() > 0 &&
+        (request.resource.data.get('isGuest', false) == true || request.resource.data.get('userId', '') == 'guest')
       );
       allow read: if isAuthenticated() && (
         resource.data.get('userId', '') == request.auth.uid ||
@@ -108,12 +120,11 @@ service cloud.firestore {
 
     // 3. Products collection:
     // Publicly readable. Admin has full write access.
-    // Authenticated customers can decrement stock & inStock when an order is placed.
+    // Customers can decrement stock & inStock when an order is placed.
     match /products/{productId} {
       allow read: if true;
       allow write: if isAdmin();
-      allow update: if isAuthenticated() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'inStock']);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'inStock']);
     }
 
     // 4. Coupons collection:
@@ -125,22 +136,20 @@ service cloud.firestore {
 
     // 5. Teaware collection:
     // Publicly readable. Admin has full write access.
-    // Authenticated customers can decrement stock & inStock during checkout when purchased.
+    // Customers can decrement stock & inStock during checkout when purchased.
     match /teaware/{itemId} {
       allow read: if true;
       allow write: if isAdmin();
-      allow update: if isAuthenticated() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'inStock']);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'inStock']);
     }
 
     // 6. Hampers collection:
     // Publicly readable. Admin has full write access.
-    // Authenticated customers can decrement stock & inStock during checkout.
+    // Customers can decrement stock & inStock during checkout.
     match /hampers/{hamperId} {
       allow read: if true;
       allow write: if isAdmin();
-      allow update: if isAuthenticated() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'inStock']);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'inStock']);
     }
 
     // 7. Reviews collection:
@@ -148,16 +157,16 @@ service cloud.firestore {
     // Customers can submit their own reviews; Admins have full moderation/deletion rights.
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isAuthenticated() || isAdmin() || (
+      allow create: if (
+        request.resource.data.rating is number &&
+        request.resource.data.rating >= 1 &&
+        request.resource.data.rating <= 5 &&
+        request.resource.data.productId is string &&
+        request.resource.data.feedback is string &&
+        request.resource.data.feedback.size() > 0 &&
         request.resource.data.get('customerName', '') != ''
       );
-      allow update, delete: if isAdmin() || (
-        isAuthenticated() && (
-          resource.data.get('userId', '') == request.auth.uid ||
-          (resource.data.get('customerEmail', '') != '' && request.auth.token.email != null &&
-           resource.data.customerEmail.lower() == request.auth.token.email.lower())
-        )
-      );
+      allow update, delete: if isAdmin();
     }
 
     // 8. Newsletter Subscribers:

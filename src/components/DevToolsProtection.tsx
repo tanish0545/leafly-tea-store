@@ -103,21 +103,7 @@ export default function DevToolsProtection() {
       // - Docked to bottom: height shrinks significantly while width difference is standard borders (< 40px)
       const isDockedBottom = rawHeightDiff > 220 && rawWidthDiff < 40;
 
-      // Undocked / Console evaluation check
-      let isConsoleOpen = false;
-      try {
-        const probe = /./;
-        probe.toString = function () {
-          isConsoleOpen = true;
-          return "";
-        };
-        // Console evaluation triggers toString when DevTools console panel is active
-        console.table({ probe });
-      } catch {
-        // Fallback safely
-      }
-
-      const isOpen = isDockedSide || isDockedBottom || isConsoleOpen;
+      const isOpen = isDockedSide || isDockedBottom;
       updateDevToolsState(isOpen);
     };
 
@@ -130,8 +116,8 @@ export default function DevToolsProtection() {
     // Initial check
     checkDevTools();
 
-    // Gentle 800ms polling to catch DevTools opening/closing without user interaction
-    const intervalId = window.setInterval(checkDevTools, 800);
+    // Periodic check to catch DevTools opening/closing
+    const intervalId = window.setInterval(checkDevTools, 2000);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown, { capture: true });

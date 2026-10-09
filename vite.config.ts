@@ -44,6 +44,13 @@ function apiDevMiddleware() {
             const mod = await server.ssrLoadModule('./api/cashfree-webhook.ts');
             return await mod.default(req, res);
           }
+          if (
+            urlPath === '/api/users' ||
+            urlPath === '/api/users/remove'
+          ) {
+            const mod = await server.ssrLoadModule('./api/users.ts');
+            return await mod.default(req, res);
+          }
         } catch (err) {
           console.error(`[API Dev Middleware Error on ${urlPath}]:`, err);
           res.statusCode = 500;
@@ -133,6 +140,32 @@ export default defineConfig(({ mode }) => {
     ],
     define: {
       __APP_BUILD_TIME__: JSON.stringify(Date.now()),
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('firebase')) {
+                return 'vendor-firebase';
+              }
+              if (id.includes('@cashfreepayments')) {
+                return 'vendor-cashfree';
+              }
+              if (
+                id.includes('react') ||
+                id.includes('react-dom') ||
+                id.includes('react-router-dom') ||
+                id.includes('react-helmet-async')
+              ) {
+                return 'vendor-react';
+              }
+              return 'vendor-libs';
+            }
+          },
+        },
+      },
+      chunkSizeWarningLimit: 600,
     },
   };
 })

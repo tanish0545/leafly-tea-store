@@ -17,6 +17,17 @@ export function isValidGmailAddress(email: string | null | undefined): boolean {
   return gmailRegex.test(trimmed);
 }
 
+/**
+ * Validates that an email address has a valid standard format.
+ * Trims leading/trailing whitespace and is strictly case-insensitive.
+ */
+export function isValidEmailAddress(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const trimmed = email.trim();
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return emailRegex.test(trimmed);
+}
+
 // ==========================================
 // PHONE NUMBER VALIDATION RULES
 // ==========================================

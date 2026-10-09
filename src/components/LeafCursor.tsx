@@ -29,6 +29,10 @@ export default function LeafCursor() {
     setIsTouchDevice(checkTouch());
   }, []);
 
+  const visibleRef = useRef(false);
+  const cursorStateRef = useRef<"normal" | "hover" | "cart" | "clicking">("normal");
+  const isTextInputRef = useRef(false);
+
   useEffect(() => {
     if (isAdmin || isTouchDevice) {
       document.documentElement.classList.remove("has-leaf-cursor");
@@ -41,7 +45,10 @@ export default function LeafCursor() {
 
     const onMouseMove = (e: MouseEvent) => {
       target.current = { x: e.clientX, y: e.clientY };
-      if (!visible) setVisible(true);
+      if (!visibleRef.current) {
+        visibleRef.current = true;
+        setVisible(true);
+      }
 
       // Inspect hovered target to determine state
       const targetEl = e.target as HTMLElement | null;
@@ -56,11 +63,14 @@ export default function LeafCursor() {
       const isTextArea = targetEl.tagName === "TEXTAREA";
       const isEditable = targetEl.isContentEditable;
 
-      if (isInput || isTextArea || isEditable) {
-        setIsTextInput(true);
+      const nextIsTextInput = Boolean(isInput || isTextArea || isEditable);
+      if (isTextInputRef.current !== nextIsTextInput) {
+        isTextInputRef.current = nextIsTextInput;
+        setIsTextInput(nextIsTextInput);
+      }
+
+      if (nextIsTextInput) {
         return;
-      } else {
-        setIsTextInput(false);
       }
 
       // Detect clickable or cart elements
@@ -73,29 +83,45 @@ export default function LeafCursor() {
         )
       );
 
+      let nextState: "normal" | "hover" | "cart" | "clicking" = "normal";
       if (isCartBtn) {
-        setCursorState("cart");
+        nextState = "cart";
       } else if (isClickable) {
-        setCursorState("hover");
-      } else {
-        setCursorState("normal");
+        nextState = "hover";
+      }
+
+      if (cursorStateRef.current !== nextState) {
+        cursorStateRef.current = nextState;
+        setCursorState(nextState);
       }
     };
 
     const onMouseDown = () => {
-      setCursorState("clicking");
+      if (cursorStateRef.current !== "clicking") {
+        cursorStateRef.current = "clicking";
+        setCursorState("clicking");
+      }
     };
 
     const onMouseUp = () => {
-      setCursorState("normal");
+      if (cursorStateRef.current !== "normal") {
+        cursorStateRef.current = "normal";
+        setCursorState("normal");
+      }
     };
 
     const onMouseLeave = () => {
-      setVisible(false);
+      if (visibleRef.current) {
+        visibleRef.current = false;
+        setVisible(false);
+      }
     };
 
     const onMouseEnter = () => {
-      setVisible(true);
+      if (!visibleRef.current) {
+        visibleRef.current = true;
+        setVisible(true);
+      }
     };
 
     // Smooth animation loop

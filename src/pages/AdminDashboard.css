@@ -2337,6 +2337,12 @@
   border: 1px solid rgba(3, 169, 244, 0.4);
 }
 
+.admin-toast-banner.warning {
+  background: #3a2e0b;
+  color: #fff9e6;
+  border: 1px solid rgba(255, 193, 7, 0.4);
+}
+
 .toast-icon {
   display: inline-flex;
   align-items: center;

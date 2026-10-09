@@ -19,12 +19,12 @@ import { auth, googleProvider, db } from "../lib/firebase";
 import { doc, setDoc, onSnapshot } from "firebase/firestore";
 import type { AuthUser, SignupProfileData } from "../types/contracts";
 
-import { isValidGmailAddress, GMAIL_ERROR_MESSAGE } from "../lib/validation";
+import { isValidGmailAddress, isValidEmailAddress, GMAIL_ERROR_MESSAGE } from "../lib/validation";
 import { ApiService } from "../lib/apiClient";
 import { sanitizeAuthUrl } from "../utils/urlSanitizer";
 
 export type { AuthUser, SignupProfileData };
-export { isValidGmailAddress, GMAIL_ERROR_MESSAGE };
+export { isValidGmailAddress, isValidEmailAddress, GMAIL_ERROR_MESSAGE };
 
 export function formatAuthError(error: unknown): string {
   if (!error) return "An unexpected error occurred.";
@@ -111,11 +111,17 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || "leaflydatabase@gmail.com";
 
+export function isShadowOrGuestEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const lower = email.toLowerCase().trim();
+  return lower.startsWith("leafly_guest_") || lower.includes("leafly_guest_") || lower.endsWith("@guest.leafly.com");
+}
+
 function mapFirebaseUserToAuthUser(
   fbUser: FirebaseUser | null,
   firestoreData?: Partial<AuthUser> | Record<string, unknown> | null
 ): AuthUser | null {
-  if (!fbUser) return null;
+  if (!fbUser || fbUser.isAnonymous || isShadowOrGuestEmail(fbUser.email)) return null;
   const isUserAdmin = fbUser.email?.toLowerCase() === adminEmail.toLowerCase();
   const rawDoc = firestoreData as Record<string, unknown> | null | undefined;
   const displayName =
@@ -219,6 +225,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let unsubscribeDoc: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (currentFbUser) => {
+      // Purge any legacy shadow guest accounts automatically
+      if (currentFbUser && isShadowOrGuestEmail(currentFbUser.email)) {
+        console.info("[Auth] Detected legacy shadow guest session; signing out:", currentFbUser.email);
+        firebaseSignOut(auth).catch(() => {});
+        setFirebaseUser(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
       setFirebaseUser(currentFbUser);
 
       if (unsubscribeDoc) {
@@ -226,7 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         unsubscribeDoc = null;
       }
 
-      if (currentFbUser) {
+      if (currentFbUser && !currentFbUser.isAnonymous) {
         unsubscribeDoc = onSnapshot(
           doc(db, "users", currentFbUser.uid),
           (docSnap) => {
@@ -300,8 +316,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, pass: string) => {
     const cleanEmail = email.trim();
-    if (!isValidGmailAddress(cleanEmail)) {
-      throw new Error(GMAIL_ERROR_MESSAGE);
+    if (!isValidGmailAddress(cleanEmail) && !isValidEmailAddress(cleanEmail)) {
+      throw new Error("Please enter a valid email address.");
     }
     setLoading(true);
     try {
@@ -483,8 +499,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const sendPasswordReset = async (email: string) => {
     const cleanEmail = email.trim();
-    if (!isValidGmailAddress(cleanEmail)) {
-      throw new Error(GMAIL_ERROR_MESSAGE);
+    if (!isValidGmailAddress(cleanEmail) && !isValidEmailAddress(cleanEmail)) {
+      throw new Error("Please enter a valid email address.");
     }
     try {
       const actionCodeSettings = {
@@ -543,7 +559,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     currentUser: user,
     firebaseUser,
     loading,
-    isAuthenticated: Boolean(user),
+    isAuthenticated: Boolean(
+      user &&
+      firebaseUser &&
+      !firebaseUser.isAnonymous &&
+      !isShadowOrGuestEmail(firebaseUser.email) &&
+      !isShadowOrGuestEmail(user.email)
+    ),
     isAdmin: Boolean(user?.isAdmin),
     login,
     signup,

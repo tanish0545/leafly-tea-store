@@ -140,11 +140,7 @@ export default function Orders() {
   const { loading: authLoading, isAuthenticated } = useAuth();
   const { orders, cancelOrder } = useOrderContext();
 
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      navigate("/login", { replace: true, state: { from: { pathname: "/orders" } } });
-    }
-  }, [authLoading, isAuthenticated, navigate]);
+  // If unauthenticated, render guest notice rather than harsh redirect
 
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
@@ -226,7 +222,20 @@ export default function Orders() {
         </div>
       )}
 
-      {sortedOrders.length === 0 ? (
+      {!isAuthenticated && !authLoading ? (
+        <div className="orders-empty">
+          <h2>Sign In to View Orders</h2>
+          <p>Please sign in to view your complete order history. If you placed an order as a guest, you can look up your order or view your session receipt in the Guest Sanctuary.</p>
+          <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap", marginTop: "16px" }}>
+            <button type="button" className="orders-primary-button" onClick={() => navigate("/profile")}>
+              GUEST ORDER LOOKUP &amp; SANCTUARY
+            </button>
+            <button type="button" className="orders-secondary-button" onClick={() => navigate("/login", { state: { from: { pathname: "/orders" } } })}>
+              SIGN IN / REGISTER
+            </button>
+          </div>
+        </div>
+      ) : sortedOrders.length === 0 ? (
         <div className="orders-empty">
           <h2>No orders yet</h2>
           <p>Your tea sanctuary is waiting. Explore single-estate leaves crafted with care.</p>
@@ -450,6 +459,24 @@ export default function Orders() {
                   <p>Panvel - 410206,</p>
                   <p>Maharashtra, India</p>
                   <p>myleaflytea@gmail.com</p>
+                </div>
+                <div className="invoice-party-col">
+                  <h4>BILLED TO / DELIVERED TO:</h4>
+                  <strong>{selectedInvoiceOrder.shippingAddress?.fullName || selectedInvoiceOrder.customerName || "Valued Customer"}</strong>
+                  {selectedInvoiceOrder.shippingAddress?.addressLine1 && (
+                    <p>
+                      {selectedInvoiceOrder.shippingAddress.addressLine1}
+                      {selectedInvoiceOrder.shippingAddress.addressLine2 ? `, ${selectedInvoiceOrder.shippingAddress.addressLine2}` : ""}
+                    </p>
+                  )}
+                  {selectedInvoiceOrder.shippingAddress?.city && (
+                    <p>
+                      {selectedInvoiceOrder.shippingAddress.city}
+                      {selectedInvoiceOrder.shippingAddress.postalCode ? ` - ${selectedInvoiceOrder.shippingAddress.postalCode}` : ""}
+                    </p>
+                  )}
+                  {selectedInvoiceOrder.customerEmail && <p>{selectedInvoiceOrder.customerEmail}</p>}
+                  {selectedInvoiceOrder.customerPhone && <p>{selectedInvoiceOrder.customerPhone}</p>}
                 </div>
               </div>
 
