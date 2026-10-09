@@ -185,7 +185,8 @@ export default async function handler(
 
       console.info(`[Leafly Orders API] Order #${id} successfully stored in Firestore via server.`);
 
-      if (id && customerName) {
+      if (id && customerName && !dispatchedConfirmationOrders.has(id)) {
+        dispatchedConfirmationOrders.add(id);
         const orderData: OrderEmailData = {
           id,
           customerName,
@@ -204,7 +205,11 @@ export default async function handler(
         };
         sendAdminOrderNotification(orderData).catch((e) => console.warn("[Orders API] Admin alert notice:", e));
         if (email) {
-          sendOrderConfirmation(orderData).catch((e) => console.warn("[Orders API] Customer receipt notice:", e));
+          sendOrderConfirmation(orderData).then((r) => {
+            if (r.delivered || r.success) {
+              updateServerOrder(id, { confirmationEmailSentAt: new Date().toISOString() }).catch(() => {});
+            }
+          }).catch((e) => console.warn("[Orders API] Customer receipt notice:", e));
         }
       }
 

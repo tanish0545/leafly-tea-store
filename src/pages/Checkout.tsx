@@ -579,7 +579,8 @@ export default function Checkout() {
       id: orderId,
       userId: effectiveUserId,
       customerId: effectiveUserId,
-      isGuest: !isRealRegisteredUser && effectiveUserId === "guest",
+      customerUid: effectiveUserId,
+      isGuest: !isRealRegisteredUser,
       guestProvisioned: !isRealRegisteredUser,
       accountCreated: isNewAccountCreated,
       accountSetupPending: isNewAccountCreated,
@@ -794,7 +795,8 @@ export default function Checkout() {
       id: orderId,
       userId: effectiveUserId,
       customerId: effectiveUserId,
-      isGuest: !isRealRegisteredUser && effectiveUserId === "guest",
+      customerUid: effectiveUserId,
+      isGuest: !isRealRegisteredUser,
       guestProvisioned: !isRealRegisteredUser,
       accountCreated: isNewAccountCreated,
       accountSetupPending: isNewAccountCreated,
@@ -865,6 +867,7 @@ export default function Checkout() {
 
     let orderPersisted = false;
     let persistenceError: any = null;
+    let apiFallbackError: string | null = null;
 
     try {
       const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
@@ -892,9 +895,11 @@ export default function Checkout() {
           orderPersisted = true;
           console.info(`[Checkout] COD order #${order.id} recorded via backend API fallback.`);
         } else {
+          apiFallbackError = apiRes?.error || null;
           console.error("[Checkout Failure] Stage: order_persistence_api_fallback", apiRes?.error);
         }
       } catch (apiErr: any) {
+        apiFallbackError = apiErr instanceof Error ? apiErr.message : String(apiErr);
         console.error("[Checkout Failure] Stage: order_persistence_api_exception", {
           message: apiErr?.message,
           status: apiErr?.status,
@@ -907,17 +912,25 @@ export default function Checkout() {
         orderId: order.id,
         errorCode: persistenceError?.code,
         errorMessage: persistenceError?.message,
+        apiFallbackError,
       });
       setIsProcessing(false);
       setIsBursting(false);
 
-      const isPermissionDenied =
-        persistenceError?.code === "permission-denied" ||
-        persistenceError?.message?.includes("insufficient permissions");
-
-      const userMsg = isPermissionDenied
-        ? "Unable to authorize order placement. Please check your connection or sign in and try again."
-        : "Failed to place order. Please check your connection and try again.";
+      let userMsg = "Failed to place order. Please check your internet connection and try again.";
+      if (apiFallbackError) {
+        if (apiFallbackError.toLowerCase().includes("stock") || apiFallbackError.toLowerCase().includes("unavailable")) {
+          userMsg = apiFallbackError;
+        } else if (apiFallbackError.toLowerCase().includes("network") || apiFallbackError.toLowerCase().includes("fetch")) {
+          userMsg = "Network error while saving your order. Please check your internet connection and try again.";
+        } else if (isRealRegisteredUser && (apiFallbackError.toLowerCase().includes("permission") || apiFallbackError.toLowerCase().includes("unauthorized"))) {
+          userMsg = "Session expired. Please sign in again to place your order.";
+        } else {
+          userMsg = "Unable to complete order placement at this time. Please try again or contact support.";
+        }
+      } else if (persistenceError?.code === "permission-denied" && isRealRegisteredUser) {
+        userMsg = "Your session has expired. Please sign in again to place your order.";
+      }
 
       setErrors({ submit: userMsg });
       return;

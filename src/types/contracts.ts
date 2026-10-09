@@ -179,6 +179,7 @@ export interface Order {
   id: string;
   userId?: string;
   customerId?: string;
+  customerUid?: string;
   isGuest?: boolean;
   guestProvisioned?: boolean;
   accountCreated?: boolean;

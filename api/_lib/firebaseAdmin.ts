@@ -376,7 +376,8 @@ export async function saveServerOrder(
       ...orderPayload,
       id: orderId,
       userId: uidToUse || orderPayload.userId,
-      customerId: uidToUse || orderPayload.customerId || orderPayload.userId,
+      customerId: orderPayload.customerId || orderPayload.userId || uidToUse,
+      customerUid: orderPayload.customerUid || orderPayload.customerId || orderPayload.userId || uidToUse,
       updatedAt: new Date().toISOString(),
     };
     delete (cleanOrder as any).action;
@@ -413,11 +414,10 @@ export async function saveServerOrder(
   // Attempt 2: Use authoritative server worker session
   if (serverToken) {
     try {
-      let uid = orderPayload.userId as string | undefined;
-      if (!uid || uid === "guest") {
-        uid = serverLocalId;
-      }
-      const res = await executePatch(serverToken, uid);
+      // The server worker signs in with serverLocalId.
+      // Passing serverLocalId as the top-level userId satisfies Firestore authorization rules for the worker write,
+      // while customerId, customerUid, customerEmail, and isGuest preserve the customer's identity.
+      const res = await executePatch(serverToken, serverLocalId);
       if (res.ok) {
         console.info(`[Firebase Admin] Order #${orderId} successfully persisted via server worker session.`);
         return { success: true };
