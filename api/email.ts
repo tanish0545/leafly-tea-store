@@ -9,7 +9,7 @@ import { getAdminFirestore } from "./_lib/firebaseAdmin.js";
 import type {
   ContactEmailData,
   GiftingEmailData,
-} from "../src/lib/emailTemplates.js";
+} from "./_lib/emailTemplates.js";
 
 // Rate limiting caches to prevent rapid spam or duplicate network requests
 const recentContactSubmissions = new Map<string, number>();

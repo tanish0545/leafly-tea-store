@@ -12,9 +12,12 @@
  */
 
 import fs from "node:fs";
-import { initializeApp, getApps, cert, applicationDefault, type App } from "firebase-admin/app";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
-import { getAuth, type Auth } from "firebase-admin/auth";
+import { createRequire } from "node:module";
+import type { App } from "firebase-admin/app";
+import type { Firestore } from "firebase-admin/firestore";
+import type { Auth } from "firebase-admin/auth";
+
+const nodeRequire = createRequire(import.meta.url);
 
 export function formatPrivateKey(key: string): string {
   if (!key) return "";
@@ -72,6 +75,19 @@ export function hasAdminCredentials(): boolean {
  * 4. Managed Application Default Credentials (Google Cloud Run / Cloud Functions / GCP)
  */
 export function initAdminApp(): App | null {
+  if (!hasAdminCredentials()) {
+    return null;
+  }
+
+  let adminAppPkg: any;
+  try {
+    adminAppPkg = nodeRequire("firebase-admin/app");
+  } catch (loadErr) {
+    console.warn("[Firebase Admin Notice] Could not load firebase-admin/app module:", loadErr instanceof Error ? loadErr.message : String(loadErr));
+    return null;
+  }
+
+  const { initializeApp, getApps, cert, applicationDefault } = adminAppPkg;
   const existingApps = getApps();
   if (existingApps.length > 0) {
     return existingApps[0];
@@ -184,6 +200,7 @@ export function getAdminFirestore(): Firestore | null {
   const app = initAdminApp();
   if (!app) return null;
   try {
+    const { getFirestore } = nodeRequire("firebase-admin/firestore");
     return getFirestore(app);
   } catch (e) {
     console.warn("[Firebase Admin Notice] Could not obtain Firestore instance:", e instanceof Error ? e.message : String(e));
@@ -195,6 +212,7 @@ export function getAdminAuth(): Auth | null {
   const app = initAdminApp();
   if (!app) return null;
   try {
+    const { getAuth } = nodeRequire("firebase-admin/auth");
     return getAuth(app);
   } catch (e) {
     console.warn("[Firebase Admin Notice] Could not obtain Auth instance:", e instanceof Error ? e.message : String(e));
@@ -202,47 +220,153 @@ export function getAdminAuth(): Auth | null {
   }
 }
 
+export function fromFirestoreRestValue(val: any): unknown {
+  if (!val || typeof val !== "object") return val;
+  if ("nullValue" in val) return null;
+  if ("booleanValue" in val) return val.booleanValue;
+  if ("integerValue" in val) return Number(val.integerValue);
+  if ("doubleValue" in val) return Number(val.doubleValue);
+  if ("stringValue" in val) return val.stringValue;
+  if ("timestampValue" in val) return val.timestampValue;
+  if ("arrayValue" in val) {
+    const list = val.arrayValue?.values || [];
+    return list.map(fromFirestoreRestValue);
+  }
+  if ("mapValue" in val) {
+    const fields = val.mapValue?.fields || {};
+    const res: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      res[k] = fromFirestoreRestValue(v);
+    }
+    return res;
+  }
+  return val;
+}
+
+export function fromFirestoreRestFields(fields: Record<string, any>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields || {})) {
+    result[k] = fromFirestoreRestValue(v);
+  }
+  return result;
+}
+
 export async function updateServerOrder(
   orderId: string,
   updates: Record<string, unknown>
 ): Promise<{ success: boolean; error?: string }> {
+  // Strategy 1: Admin SDK
   try {
     const db = getAdminFirestore();
-    if (!db) {
-      const msg = "Firebase Admin credentials not configured on server (set FIREBASE_ADMIN_CLIENT_EMAIL and FIREBASE_ADMIN_PRIVATE_KEY).";
-      console.warn(`[Firebase Admin Notice] Could not update order #${orderId}: ${msg}`);
-      return { success: false, error: msg };
+    if (db) {
+      const cleanUpdates = {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+      await db.collection("orders").doc(orderId).set(cleanUpdates, { merge: true });
+      console.info(`[Firebase Admin] Successfully updated order #${orderId} via Admin SDK.`);
+      return { success: true };
     }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(`[Firebase Admin Notice] Could not update order #${orderId} directly via Admin SDK: ${msg}`);
+  }
+
+  // Strategy 2: Server Session REST Fallback
+  try {
+    const session = await getServerSessionToken();
+    const token = session?.idToken;
+    if (!token) {
+      return { success: false, error: "Authentication token unavailable for server order update." };
+    }
+
+    const projectId =
+      process.env.FIREBASE_ADMIN_PROJECT_ID ||
+      process.env.FIREBASE_PROJECT_ID ||
+      process.env.VITE_FIREBASE_PROJECT_ID ||
+      "leafly-database";
+
     const cleanUpdates = {
       ...updates,
       updatedAt: new Date().toISOString(),
     };
-    await db.collection("orders").doc(orderId).set(cleanUpdates, { merge: true });
-    console.info(`[Firebase Admin] Successfully updated order #${orderId} in Firestore.`);
-    return { success: true };
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.warn(`[Firebase Admin Notice] Could not update order #${orderId} directly via Admin SDK: ${msg}`);
+    const fields = toFirestoreRestFields(cleanUpdates);
+    const updateMask = Object.keys(cleanUpdates)
+      .map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`)
+      .join("&");
+    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/orders/${encodeURIComponent(orderId)}?${updateMask}`;
+
+    const res = await fetch(docUrl, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ fields }),
+    });
+
+    if (res.ok) {
+      console.info(`[Firebase Admin] Successfully updated order #${orderId} via server REST session.`);
+      return { success: true };
+    }
+    const errData = await res.json().catch(() => ({}));
+    const msg = (errData as any)?.error?.message || `HTTP ${res.status}`;
     return { success: false, error: msg };
+  } catch (restErr: any) {
+    return { success: false, error: restErr?.message || String(restErr) };
   }
 }
 
 export async function getServerOrder(
   orderId: string
 ): Promise<Record<string, unknown> | null> {
+  // Strategy 1: Admin SDK
   try {
     const db = getAdminFirestore();
-    if (!db) return null;
-    const snap = await db.collection("orders").doc(orderId).get();
-    if (snap.exists) {
-      return { id: snap.id, ...snap.data() };
+    if (db) {
+      const snap = await db.collection("orders").doc(orderId).get();
+      if (snap.exists) {
+        return { id: snap.id, ...snap.data() };
+      }
+      return null;
     }
-    return null;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.warn(`[Firebase Admin Notice] Could not fetch order #${orderId} via Admin SDK: ${msg}`);
-    return null;
   }
+
+  // Strategy 2: Server Session REST Fallback
+  try {
+    const session = await getServerSessionToken();
+    const token = session?.idToken;
+    if (!token) return null;
+
+    const projectId =
+      process.env.FIREBASE_ADMIN_PROJECT_ID ||
+      process.env.FIREBASE_PROJECT_ID ||
+      process.env.VITE_FIREBASE_PROJECT_ID ||
+      "leafly-database";
+
+    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/orders/${encodeURIComponent(orderId)}`;
+    const res = await fetch(docUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      if (data && data.fields) {
+        const parsed = fromFirestoreRestFields(data.fields);
+        return { id: orderId, ...parsed };
+      }
+    }
+  } catch (restErr) {
+    console.warn(`[Firebase Admin Notice] REST fetch for order #${orderId} failed:`, restErr);
+  }
+
+  return null;
 }
 
 export interface ProvisionResult {

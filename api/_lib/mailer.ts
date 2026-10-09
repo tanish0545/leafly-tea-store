@@ -32,7 +32,7 @@ import {
   type ContactEmailData,
   type GiftingEmailData,
   type OrderStatusEmailData,
-} from "../../src/lib/emailTemplates.js";
+} from "./emailTemplates.js";
 
 export type EmailPayload = {
   to: string;

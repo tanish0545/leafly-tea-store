@@ -6,7 +6,7 @@ import {
   getOrderConfirmationCustomerEmail,
   getOrderAdminNotificationEmail,
   type OrderEmailData,
-} from "../src/lib/emailTemplates.js";
+} from "./_lib/emailTemplates.js";
 
 interface CashfreePaymentItem {
   cf_payment_id?: string | number;

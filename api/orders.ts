@@ -11,7 +11,7 @@ import type {
   OrderEmailData,
   OrderEmailItem,
   OrderStatusEmailData,
-} from "../src/lib/emailTemplates.js";
+} from "./_lib/emailTemplates.js";
 
 // In-memory sets to prevent duplicate sends from rapid duplicate network requests
 const dispatchedConfirmationOrders = new Set<string>();
@@ -144,7 +144,7 @@ export default async function handler(
     }
 
     // =========================================================================
-    // 0. ORDER CREATION / PERSISTENCE (Server-Side Fallback)
+    // 0. ORDER CREATION / PERSISTENCE (Server-Side Authoritative Fallback)
     // =========================================================================
     if (action === "create") {
       const id = String(body.id || body.orderId || "").trim();
@@ -160,15 +160,80 @@ export default async function handler(
         return;
       }
 
+      if (!customerName) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Customer name is required." }));
+        return;
+      }
+
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "A valid customer email is required." }));
+        return;
+      }
+
+      const items = Array.isArray(body.items) ? body.items : [];
+      if (items.length === 0) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Order must contain at least one item." }));
+        return;
+      }
+
+      // Idempotency check: check if order is already saved in Firestore
+      try {
+        const existingOrder = await getServerOrder(id);
+        if (existingOrder) {
+          console.info(`[Orders API] Order #${id} already exists in Firestore. Returning idempotent success.`);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ success: true, orderId: id, duplicate: true }));
+          return;
+        }
+      } catch (checkErr) {
+        console.warn(`[Orders API] Idempotency lookup notice for #${id}:`, checkErr);
+      }
+
+      // Authoritative pricing and total calculation
+      let computedSubtotal = 0;
+      for (const item of items) {
+        const price = Number(item.price);
+        const qty = Number(item.quantity);
+        if (isNaN(price) || price < 0 || isNaN(qty) || qty <= 0) {
+          res.statusCode = 400;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: "Invalid item pricing or quantity in order items." }));
+          return;
+        }
+        computedSubtotal += price * qty;
+      }
+
+      // Leafly delivery policy: Free delivery for subtotal >= ₹500, else ₹50
+      const computedDeliveryFee = computedSubtotal >= 500 ? 0 : 50;
+      const discount = Math.max(0, Number(body.discount) || 0);
+      const computedTotal = Math.max(0, computedSubtotal - discount + computedDeliveryFee);
+
+      const authHeader = req.headers?.authorization || (req.headers as any)?.Authorization;
       const clientToken =
-        (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")
-          ? req.headers.authorization.slice(7).trim()
+        (typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+          ? authHeader.slice(7).trim()
           : undefined) ||
         ((body as any).idToken ? String((body as any).idToken).trim() : undefined);
 
-      const orderPayload = {
+      const orderPayload: Record<string, unknown> = {
         ...body,
         id,
+        orderId: id,
+        customerName,
+        customerEmail: email,
+        email,
+        subtotal: computedSubtotal,
+        deliveryFee: computedDeliveryFee,
+        discount,
+        total: computedTotal,
+        items,
         updatedAt: new Date().toISOString(),
       };
       delete (orderPayload as any).action;
@@ -192,15 +257,21 @@ export default async function handler(
           customerName,
           email: email || undefined,
           phone: body.phone || body.customerPhone || undefined,
-          total: Number(body.total) || 0,
-          subtotal: typeof body.subtotal === "number" ? body.subtotal : undefined,
-          deliveryFee: typeof body.deliveryFee === "number" ? body.deliveryFee : undefined,
-          discount: typeof body.discount === "number" ? body.discount : undefined,
+          total: computedTotal,
+          subtotal: computedSubtotal,
+          deliveryFee: computedDeliveryFee,
+          discount,
           couponCode: body.couponCode ? String(body.couponCode) : undefined,
           paymentMethod: body.paymentMethod ? String(body.paymentMethod) : undefined,
           paymentStatus: body.paymentStatus ? String(body.paymentStatus) : undefined,
           shippingAddress: body.shippingAddress,
-          items: body.items,
+          items: items.map((it: any) => ({
+            name: String(it.name || "Item"),
+            variant: it.variant ? String(it.variant) : undefined,
+            weight: it.weight ? String(it.weight) : undefined,
+            quantity: Number(it.quantity) || 1,
+            price: Number(it.price) || 0,
+          })),
           createdAt: body.createdAt || new Date().toISOString(),
         };
         sendAdminOrderNotification(orderData).catch((e) => console.warn("[Orders API] Admin alert notice:", e));
@@ -215,7 +286,7 @@ export default async function handler(
 
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ success: true, orderId: id }));
+      res.end(JSON.stringify({ success: true, orderId: id, total: computedTotal }));
       return;
     }
 

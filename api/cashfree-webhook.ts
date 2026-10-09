@@ -6,7 +6,7 @@ import {
   getOrderConfirmationCustomerEmail,
   getOrderAdminNotificationEmail,
   type OrderEmailData,
-} from "../src/lib/emailTemplates.js";
+} from "./_lib/emailTemplates.js";
 
 // Idempotency cache to prevent duplicate processing of the same webhook event
 const processedWebhookEvents = new Set<string>();

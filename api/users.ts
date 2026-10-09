@@ -172,8 +172,8 @@ export default async function handler(
   // ── Admin Authorization ──────────────────────────────────────────
   // HTTP header names are lowercased by Node.js IncomingMessage
   const authHeader =
-    (req.headers["authorization"] as string | undefined) ||
-    (req.headers["Authorization"] as string | undefined);
+    (req.headers?.["authorization"] as string | undefined) ||
+    (req.headers?.["Authorization"] as string | undefined);
 
   const caller = await verifyAdminToken(authHeader);
 
