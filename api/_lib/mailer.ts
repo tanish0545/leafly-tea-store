@@ -28,6 +28,8 @@ import {
   getNewsletterAdminNotification,
   getOrderStatusCustomerEmail,
   getAccountWelcomeEmail,
+  getPasswordSetupCustomerEmail,
+  getOrderLookupVerificationEmail,
   type OrderEmailData,
   type ContactEmailData,
   type GiftingEmailData,
@@ -484,3 +486,58 @@ export async function sendWelcomeNotification(name: string, email: string): Prom
     replyTo: DEFAULT_CUSTOMER_SUPPORT_EMAIL,
   });
 }
+
+/**
+ * Dispatches customer password setup email with verified action link.
+ */
+export async function sendPasswordSetupEmail(params: {
+  email: string;
+  customerName: string;
+  setupLink: string;
+}): Promise<MailResult> {
+  const cleanEmail = params.email.trim().toLowerCase();
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return {
+      success: false,
+      delivered: false,
+      error: `Invalid or missing email: "${cleanEmail}"`,
+    };
+  }
+
+  const mail = getPasswordSetupCustomerEmail(params.customerName, cleanEmail, params.setupLink);
+  return sendEmail({
+    to: cleanEmail,
+    subject: mail.subject,
+    html: mail.html,
+    emailType: "password setup link",
+    replyTo: DEFAULT_CUSTOMER_SUPPORT_EMAIL,
+  });
+}
+
+/**
+ * Dispatches a 6-digit OTP code for secure guest order history lookup.
+ */
+export async function sendOrderLookupVerificationCode(params: {
+  email: string;
+  code: string;
+  orderId?: string;
+}): Promise<MailResult> {
+  const cleanEmail = params.email.trim().toLowerCase();
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return {
+      success: false,
+      delivered: false,
+      error: `Invalid or missing email: "${cleanEmail}"`,
+    };
+  }
+
+  const mail = getOrderLookupVerificationEmail(cleanEmail, params.code, params.orderId);
+  return sendEmail({
+    to: cleanEmail,
+    subject: mail.subject,
+    html: mail.html,
+    emailType: "order lookup verification code",
+    replyTo: DEFAULT_CUSTOMER_SUPPORT_EMAIL,
+  });
+}
+

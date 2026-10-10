@@ -309,13 +309,13 @@ export const ApiService = {
   async createOrderViaApi(
     order: Record<string, unknown>,
     idToken?: string
-  ): Promise<{ success: boolean; orderId?: string; error?: string }> {
+  ): Promise<{ success: boolean; orderId?: string; accountCreated?: boolean; duplicate?: boolean; error?: string }> {
     try {
       const headers: Record<string, string> = {};
       if (idToken) {
         headers["Authorization"] = `Bearer ${idToken}`;
       }
-      return await postApi<{ success: boolean; orderId?: string; error?: string }>(
+      return await postApi<{ success: boolean; orderId?: string; accountCreated?: boolean; duplicate?: boolean; error?: string }>(
         "/api/orders?action=create",
         {
           action: "create",
@@ -436,7 +436,135 @@ export const ApiService = {
       customerName: customerData?.name,
     });
   },
+
+  /**
+   * Resends verified password setup email for an established customer account
+   */
+  async resendPasswordSetup(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    try {
+      return await postApi<{ success: boolean; message?: string; error?: string }>(
+        "/api/orders?action=resend-setup",
+        { action: "resend-setup", email: email.trim().toLowerCase() }
+      );
+    } catch (err) {
+      console.warn("[ApiService] resendPasswordSetup error:", err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Unable to dispatch setup link.",
+      };
+    }
+  },
+
+  /**
+   * Dispatches a 6-digit OTP verification code to customer's email for secure order history access
+   */
+  async sendOrderLookupCode(
+    email: string,
+    orderId?: string
+  ): Promise<{ success: boolean; message?: string; delivered?: boolean; error?: string }> {
+    try {
+      return await postApi<{ success: boolean; message?: string; delivered?: boolean; error?: string }>(
+        "/api/orders?action=lookup-send-code",
+        { action: "lookup-send-code", email: email.trim().toLowerCase(), orderId }
+      );
+    } catch (err) {
+      console.warn("[ApiService] sendOrderLookupCode error:", err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Unable to send verification code.",
+      };
+    }
+  },
+
+  /**
+   * Verifies the 6-digit OTP code and securely retrieves order history for the verified customer
+   */
+  async verifyOrderLookupCode(
+    email: string,
+    code: string
+  ): Promise<{ success: boolean; verified?: boolean; email?: string; orders?: any[]; error?: string }> {
+    try {
+      return await postApi<{
+        success: boolean;
+        verified?: boolean;
+        email?: string;
+        orders?: any[];
+        error?: string;
+      }>("/api/orders?action=lookup-verify-code", {
+        action: "lookup-verify-code",
+        email: email.trim().toLowerCase(),
+        code: code.trim(),
+      });
+    } catch (err) {
+      console.warn("[ApiService] verifyOrderLookupCode error:", err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Invalid or expired verification code.",
+      };
+    }
+  },
+
+  /**
+   * Synchronizes and revalidates latest status for guest orders from authoritative database
+   */
+  async syncGuestOrders(
+    orders: { id: string; email: string }[]
+  ): Promise<{
+    success: boolean;
+    syncedCount?: number;
+    updatedStatuses?: Array<{
+      id: string;
+      status: string;
+      orderStatus: string;
+      updatedAt?: string;
+      paymentStatus?: string;
+      trackingNumber?: string | null;
+      carrier?: string | null;
+      deliveryMethod?: string;
+      deliveryDate?: string | null;
+      estimatedDelivery?: string | null;
+      inventoryRestored?: boolean;
+    }>;
+    error?: string;
+  }> {
+    try {
+      return await postApi("/api/orders?action=sync-status", {
+        action: "sync-status",
+        orders,
+      });
+    } catch (err) {
+      console.warn("[ApiService] syncGuestOrders error:", err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to sync order statuses.",
+      };
+    }
+  },
+
+  /**
+   * Securely retrieves full verified order and tax invoice from the server
+   * Enforces matching customer email verification
+   */
+  async getGuestInvoice(
+    orderId: string,
+    email: string
+  ): Promise<{ success: boolean; order?: any; error?: string }> {
+    try {
+      return await postApi("/api/orders?action=get-invoice", {
+        action: "get-invoice",
+        orderId: orderId.trim(),
+        email: email.trim().toLowerCase(),
+      });
+    } catch (err) {
+      console.warn("[ApiService] getGuestInvoice error:", err);
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to retrieve invoice for this order.",
+      };
+    }
+  },
 };
+
 
 /**
  * AdminService — Server-side user management operations.

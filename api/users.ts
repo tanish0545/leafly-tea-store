@@ -1,5 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { getAdminFirestore, getAdminAuth } from "./_lib/firebaseAdmin.js";
+import {
+  getAdminFirestore,
+  getAdminAuth,
+  sanitizeLogMessage,
+  getFirebaseApiKey,
+} from "./_lib/firebaseAdmin.js";
 
 /** ------------------------------------------------------------------
  *  Leafly — Admin User Management API
@@ -63,10 +68,7 @@ async function verifyAdminToken(
   }
 
   // ── Strategy 2: Identity Toolkit REST (local dev / no service account) ──
-  const apiKey =
-    process.env.VITE_FIREBASE_API_KEY ||
-    process.env.FIREBASE_API_KEY ||
-    "AIzaSyBP0byX7fmi8SoXATR1tiXozTUsXLzYKWw";
+  const apiKey = getFirebaseApiKey();
 
   try {
     const lookupRes = await fetch(
@@ -415,7 +417,8 @@ export default async function handler(
       })
     );
   } catch (err) {
-    console.error("[Users API] Unhandled error:", err);
+    const safeMsg = sanitizeLogMessage(err instanceof Error ? err.message : String(err));
+    console.error(`[Users API] Unhandled error: ${safeMsg}`);
     res.statusCode = 500;
     res.setHeader("Content-Type", "application/json");
     res.end(

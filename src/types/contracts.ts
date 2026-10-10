@@ -205,6 +205,9 @@ export interface Order {
   paymentStatus?: string;
   paymentId?: string | null;
   shippingAddress: ShippingAddress;
+  trackingNumber?: string;
+  carrier?: string;
+  estimatedDelivery?: string;
 }
 
 export interface ShipmentStatus {

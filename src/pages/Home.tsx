@@ -5,6 +5,7 @@ import { generateOrganizationSchema, generateWebSiteSchema } from "../lib/seoDat
 import Hero from "../sections/Hero";
 import BrandValues from "../sections/BrandValues";
 import FeaturedTeaCollections from "../sections/FeaturedTeaCollections";
+import GreenTeaBenefits from "../sections/GreenTeaBenefits";
 import Gifting from "../sections/Gifting";
 import TeaRitual from "../sections/TeaRitual";
 
@@ -27,6 +28,8 @@ export default function Home() {
         <Hero />
 
         <BrandValues />
+
+        <GreenTeaBenefits />
 
         <FeaturedTeaCollections />
 

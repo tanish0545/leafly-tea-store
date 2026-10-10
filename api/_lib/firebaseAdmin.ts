@@ -12,44 +12,184 @@
  */
 
 import fs from "node:fs";
-import { createRequire } from "node:module";
-import type { App } from "firebase-admin/app";
-import type { Firestore } from "firebase-admin/firestore";
-import type { Auth } from "firebase-admin/auth";
+import { initializeApp, getApps, cert, applicationDefault, type App } from "firebase-admin/app";
+import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getAuth, type Auth } from "firebase-admin/auth";
+import { sendPasswordSetupEmail } from "./mailer.js";
 
-const nodeRequire = createRequire(import.meta.url);
 
+/**
+ * Sanitizes diagnostic and error logs so secrets, private keys, API keys,
+ * or tokens are never leaked to logs or client responses.
+ */
+export function sanitizeLogMessage(msg: string): string {
+  if (!msg) return "";
+  return msg
+    .replace(/-----BEGIN[\s\S]*?-----END[^\n\r]+/g, "[REDACTED_PRIVATE_KEY]")
+    .replace(/AIza[0-9A-Za-z-_]{35}/g, "[REDACTED_API_KEY]")
+    .replace(/cfsk_[0-9A-Za-z-_]+/g, "[REDACTED_CASHFREE_KEY]")
+    .replace(/rzp_[0-9A-Za-z-_]+/g, "[REDACTED_RAZORPAY_KEY]")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED_TOKEN]");
+}
+
+/**
+ * Resolves the target Firebase Project ID across all supported environment variables.
+ * Defaults authoritatively to 'leafly-database'.
+ */
+export function getFirebaseProjectId(): string {
+  return (
+    process.env.FIREBASE_ADMIN_PROJECT_ID ||
+    process.env.FIREBASE_PROJECT_ID ||
+    process.env.VITE_FIREBASE_PROJECT_ID ||
+    process.env.GCP_PROJECT ||
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.FIREBASE_DATABASE_PROJECT_ID ||
+    process.env.PROJECT_ID ||
+    "leafly-database"
+  ).trim();
+}
+
+/**
+ * Resolves the Firestore Database ID across supported environment variables.
+ * Defaults to '(default)'.
+ */
+export function getFirestoreDatabaseId(): string {
+  return (
+    process.env.FIRESTORE_DATABASE_ID ||
+    process.env.FIREBASE_DATABASE_ID ||
+    "(default)"
+  ).trim();
+}
+
+/**
+ * Resolves the Firebase Web API Key for client REST fallbacks.
+ */
+export function getFirebaseApiKey(): string {
+  return (
+    process.env.VITE_FIREBASE_API_KEY ||
+    process.env.FIREBASE_API_KEY ||
+    "AIzaSyBP0byX7fmi8SoXATR1tiXozTUsXLzYKWw"
+  ).trim();
+}
+
+/**
+ * Resolves the Google Service Account Client Email across supported environment variables.
+ */
+export function getClientEmail(): string | undefined {
+  const email = (
+    process.env.FIREBASE_ADMIN_CLIENT_EMAIL ||
+    process.env.FIREBASE_CLIENT_EMAIL ||
+    process.env.FIREBASE_SERVICE_ACCOUNT_EMAIL ||
+    process.env.GOOGLE_CLIENT_EMAIL ||
+    process.env.CLIENT_EMAIL ||
+    ""
+  ).trim();
+
+  return email || undefined;
+}
+
+/**
+ * Resolves the Google Service Account Private Key across supported environment variables.
+ */
+export function getRawPrivateKey(): string | undefined {
+  const key =
+    process.env.FIREBASE_ADMIN_PRIVATE_KEY ||
+    process.env.FIREBASE_PRIVATE_KEY ||
+    process.env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY ||
+    process.env.GOOGLE_PRIVATE_KEY ||
+    process.env.PRIVATE_KEY;
+
+  return key ? key.trim() : undefined;
+}
+
+/**
+ * Resolves full Service Account JSON string across supported environment variables.
+ */
+export function getServiceAccountJson(): string | undefined {
+  const json =
+    process.env.FIREBASE_SERVICE_ACCOUNT ||
+    process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
+    process.env.FIREBASE_ADMIN_CREDENTIALS ||
+    process.env.FIREBASE_CREDENTIALS ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+
+  return json ? json.trim() : undefined;
+}
+
+/**
+ * Bulletproof private-key normalization for Vercel, Docker, and local .env files.
+ * Correctly handles:
+ * - Literal escaped newlines ("\n", "\\n", "\\\\n")
+ * - Windows CRLF linebreaks ("\r\n", "\\r\\n")
+ * - Wrapped single, double, or escaped quotes
+ * - Base64 encoded PEM keys
+ * - Missing boundary newlines after BEGIN and before END headers
+ */
 export function formatPrivateKey(key: string): string {
   if (!key) return "";
   let cleaned = key.trim();
-  // Remove wrapping double or single quotes if present
-  if (
+
+  // Strip wrapping quotes (single, double, or escaped quotes)
+  while (
     (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
-    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+    (cleaned.startsWith("'") && cleaned.endsWith("'")) ||
+    (cleaned.startsWith('\\"') && cleaned.endsWith('\\"'))
   ) {
-    cleaned = cleaned.slice(1, -1).trim();
+    if (cleaned.startsWith('\\"')) {
+      cleaned = cleaned.slice(2, -2).trim();
+    } else {
+      cleaned = cleaned.slice(1, -1).trim();
+    }
   }
+
   // If base64-encoded PEM, decode it
-  if (!cleaned.includes("-----BEGIN") && cleaned.length > 100) {
+  if (!cleaned.includes("-----BEGIN") && cleaned.length > 60) {
     try {
       const decoded = Buffer.from(cleaned, "base64").toString("utf-8");
       if (decoded.includes("-----BEGIN")) {
         cleaned = decoded.trim();
       }
     } catch {
-      // not base64
+      // Not base64
     }
   }
-  // Convert escaped literal newlines to actual newlines and normalize line endings
-  return cleaned.replace(/\\n/g, "\n").replace(/\r\n/g, "\n");
+
+  // Normalize escaped and multi-escaped newlines to true '\n'
+  cleaned = cleaned
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .replace(/\\r/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\\\\n/g, "\n")
+    .replace(/\\n/g, "\n");
+
+  // Ensure standard PEM header and footer have proper line breaks
+  if (cleaned.includes("-----BEGIN PRIVATE KEY-----") && !cleaned.includes("-----BEGIN PRIVATE KEY-----\n")) {
+    cleaned = cleaned.replace("-----BEGIN PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----\n");
+  }
+  if (cleaned.includes("-----END PRIVATE KEY-----") && !cleaned.includes("\n-----END PRIVATE KEY-----")) {
+    cleaned = cleaned.replace("-----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----");
+  }
+
+  if (cleaned.includes("-----BEGIN RSA PRIVATE KEY-----") && !cleaned.includes("-----BEGIN RSA PRIVATE KEY-----\n")) {
+    cleaned = cleaned.replace("-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----\n");
+  }
+  if (cleaned.includes("-----END RSA PRIVATE KEY-----") && !cleaned.includes("\n-----END RSA PRIVATE KEY-----")) {
+    cleaned = cleaned.replace("-----END RSA PRIVATE KEY-----", "\n-----END RSA PRIVATE KEY-----");
+  }
+
+  return cleaned.trim();
 }
 
+/**
+ * Checks if privileged server-side Admin SDK credentials exist in the runtime environment.
+ */
 export function hasAdminCredentials(): boolean {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+  if (getServiceAccountJson()) {
     return true;
   }
-  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY;
+  const clientEmail = getClientEmail();
+  const privateKey = getRawPrivateKey();
   if (clientEmail && privateKey) {
     return true;
   }
@@ -67,10 +207,96 @@ export function hasAdminCredentials(): boolean {
 }
 
 /**
+ * Safe diagnostics report for server-side troubleshooting.
+ * NEVER exposes private keys, tokens, or sensitive values.
+ */
+export function getAdminConfigStatus(): {
+  configured: boolean;
+  strategy: "service_account_json" | "env_credentials" | "adc" | "none";
+  projectId: string;
+  databaseId: string;
+  hasClientEmail: boolean;
+  isServiceAccountEmail: boolean;
+  hasPrivateKey: boolean;
+  privateKeyValidFormat: boolean;
+  reason?: string;
+} {
+  const projectId = getFirebaseProjectId();
+  const databaseId = getFirestoreDatabaseId();
+  const rawServiceAccount = getServiceAccountJson();
+  const clientEmail = getClientEmail();
+  const rawPrivateKey = getRawPrivateKey();
+
+  if (rawServiceAccount) {
+    return {
+      configured: true,
+      strategy: "service_account_json",
+      projectId,
+      databaseId,
+      hasClientEmail: true,
+      isServiceAccountEmail: true,
+      hasPrivateKey: true,
+      privateKeyValidFormat: true,
+    };
+  }
+
+  const hasEmail = Boolean(clientEmail);
+  const isSaEmail = Boolean(clientEmail && clientEmail.includes(".gserviceaccount.com"));
+  const hasKey = Boolean(rawPrivateKey);
+  let keyValidFormat = false;
+
+  if (hasKey && rawPrivateKey) {
+    const formatted = formatPrivateKey(rawPrivateKey);
+    keyValidFormat = formatted.includes("-----BEGIN") && formatted.includes("-----END");
+  }
+
+  if (hasEmail && hasKey) {
+    return {
+      configured: keyValidFormat,
+      strategy: "env_credentials",
+      projectId,
+      databaseId,
+      hasClientEmail: hasEmail,
+      isServiceAccountEmail: isSaEmail,
+      hasPrivateKey: hasKey,
+      privateKeyValidFormat: keyValidFormat,
+      reason: keyValidFormat
+        ? undefined
+        : "Private key is present but missing valid PEM headers or newlines.",
+    };
+  }
+
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS && fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)) {
+    return {
+      configured: true,
+      strategy: "adc",
+      projectId,
+      databaseId,
+      hasClientEmail: true,
+      isServiceAccountEmail: true,
+      hasPrivateKey: true,
+      privateKeyValidFormat: true,
+    };
+  }
+
+  return {
+    configured: false,
+    strategy: "none",
+    projectId,
+    databaseId,
+    hasClientEmail: hasEmail,
+    isServiceAccountEmail: isSaEmail,
+    hasPrivateKey: hasKey,
+    privateKeyValidFormat: keyValidFormat,
+    reason: "Missing server-side Firebase Admin credentials (FIREBASE_ADMIN_CLIENT_EMAIL and FIREBASE_ADMIN_PRIVATE_KEY).",
+  };
+}
+
+/**
  * Initializes and returns the Firebase Admin App instance.
  * Supports:
  * 1. FIREBASE_SERVICE_ACCOUNT / FIREBASE_SERVICE_ACCOUNT_KEY (JSON string or base64 JSON string)
- * 2. FIREBASE_ADMIN_CLIENT_EMAIL + FIREBASE_ADMIN_PRIVATE_KEY (or FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY)
+ * 2. FIREBASE_ADMIN_CLIENT_EMAIL + FIREBASE_ADMIN_PRIVATE_KEY (handles all naming variants & newline formats)
  * 3. GOOGLE_APPLICATION_CREDENTIALS (file path)
  * 4. Managed Application Default Credentials (Google Cloud Run / Cloud Functions / GCP)
  */
@@ -79,37 +305,15 @@ export function initAdminApp(): App | null {
     return null;
   }
 
-  let adminAppPkg: any;
-  try {
-    adminAppPkg = nodeRequire("firebase-admin/app");
-  } catch (loadErr) {
-    console.warn("[Firebase Admin Notice] Could not load firebase-admin/app module:", loadErr instanceof Error ? loadErr.message : String(loadErr));
-    return null;
-  }
-
-  const { initializeApp, getApps, cert, applicationDefault } = adminAppPkg;
   const existingApps = getApps();
   if (existingApps.length > 0) {
     return existingApps[0];
   }
 
-  const projectId =
-    process.env.FIREBASE_ADMIN_PROJECT_ID ||
-    process.env.FIREBASE_PROJECT_ID ||
-    process.env.VITE_FIREBASE_PROJECT_ID ||
-    "leafly-database";
-
-  const rawServiceAccount =
-    process.env.FIREBASE_SERVICE_ACCOUNT ||
-    process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-
-  const clientEmail =
-    process.env.FIREBASE_ADMIN_CLIENT_EMAIL ||
-    process.env.FIREBASE_CLIENT_EMAIL;
-
-  const rawPrivateKey =
-    process.env.FIREBASE_ADMIN_PRIVATE_KEY ||
-    process.env.FIREBASE_PRIVATE_KEY;
+  const projectId = getFirebaseProjectId();
+  const rawServiceAccount = getServiceAccountJson();
+  const clientEmail = getClientEmail();
+  const rawPrivateKey = getRawPrivateKey();
 
   // Strategy 1: Service Account JSON (plain or base64)
   if (rawServiceAccount) {
@@ -123,14 +327,18 @@ export function initAdminApp(): App | null {
         }
       }
       const parsed = JSON.parse(jsonStr);
+      if (parsed.private_key) {
+        parsed.private_key = formatPrivateKey(parsed.private_key);
+      }
       const app = initializeApp({
         credential: cert(parsed),
         projectId: parsed.project_id || projectId,
       });
-      console.info("[Firebase Admin] Initialized using Service Account JSON.");
+      console.info(`[Firebase Admin] Initialized using Service Account JSON for project "${parsed.project_id || projectId}".`);
       return app;
     } catch (e) {
-      console.warn("[Firebase Admin Notice] Could not parse FIREBASE_SERVICE_ACCOUNT JSON:", e instanceof Error ? e.message : String(e));
+      const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
+      console.warn(`[Firebase Admin Notice] Could not parse Service Account JSON: ${safeMsg}`);
     }
   }
 
@@ -146,10 +354,11 @@ export function initAdminApp(): App | null {
         }),
         projectId,
       });
-      console.info("[Firebase Admin] Initialized using Service Account environment credentials.");
+      console.info(`[Firebase Admin] Initialized using Service Account environment credentials for project "${projectId}".`);
       return app;
     } catch (e) {
-      console.warn("[Firebase Admin Notice] Failed to initialize credentials with cert():", e instanceof Error ? e.message : String(e));
+      const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
+      console.warn(`[Firebase Admin Notice] Failed to initialize credentials with cert(): ${safeMsg}`);
     }
   }
 
@@ -161,13 +370,14 @@ export function initAdminApp(): App | null {
           credential: applicationDefault(),
           projectId,
         });
-        console.info("[Firebase Admin] Initialized using GOOGLE_APPLICATION_CREDENTIALS file.");
+        console.info(`[Firebase Admin] Initialized using GOOGLE_APPLICATION_CREDENTIALS for project "${projectId}".`);
         return app;
       } else {
         console.warn("[Firebase Admin Notice] GOOGLE_APPLICATION_CREDENTIALS file path does not exist.");
       }
     } catch (e) {
-      console.warn("[Firebase Admin Notice] Could not load GOOGLE_APPLICATION_CREDENTIALS:", e instanceof Error ? e.message : String(e));
+      const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
+      console.warn(`[Firebase Admin Notice] Could not load GOOGLE_APPLICATION_CREDENTIALS: ${safeMsg}`);
     }
   }
 
@@ -185,14 +395,14 @@ export function initAdminApp(): App | null {
         credential: applicationDefault(),
         projectId,
       });
-      console.info("[Firebase Admin] Initialized using GCP managed Application Default Credentials.");
+      console.info(`[Firebase Admin] Initialized using GCP managed Application Default Credentials for project "${projectId}".`);
       return app;
     } catch (e) {
-      console.warn("[Firebase Admin Notice] GCP ApplicationDefault attempt failed:", e instanceof Error ? e.message : String(e));
+      const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
+      console.warn(`[Firebase Admin Notice] GCP ApplicationDefault attempt failed: ${safeMsg}`);
     }
   }
 
-  // No server credentials present.
   return null;
 }
 
@@ -200,10 +410,13 @@ export function getAdminFirestore(): Firestore | null {
   const app = initAdminApp();
   if (!app) return null;
   try {
-    const { getFirestore } = nodeRequire("firebase-admin/firestore");
-    return getFirestore(app);
+    const databaseId = getFirestoreDatabaseId();
+    return databaseId && databaseId !== "(default)"
+      ? getFirestore(app, databaseId)
+      : getFirestore(app);
   } catch (e) {
-    console.warn("[Firebase Admin Notice] Could not obtain Firestore instance:", e instanceof Error ? e.message : String(e));
+    const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
+    console.warn(`[Firebase Admin Notice] Could not obtain Firestore instance: ${safeMsg}`);
     return null;
   }
 }
@@ -212,10 +425,10 @@ export function getAdminAuth(): Auth | null {
   const app = initAdminApp();
   if (!app) return null;
   try {
-    const { getAuth } = nodeRequire("firebase-admin/auth");
     return getAuth(app);
   } catch (e) {
-    console.warn("[Firebase Admin Notice] Could not obtain Auth instance:", e instanceof Error ? e.message : String(e));
+    const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
+    console.warn(`[Firebase Admin Notice] Could not obtain Auth instance: ${safeMsg}`);
     return null;
   }
 }
@@ -268,7 +481,7 @@ export async function updateServerOrder(
       return { success: true };
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = sanitizeLogMessage(error instanceof Error ? error.message : String(error));
     console.warn(`[Firebase Admin Notice] Could not update order #${orderId} directly via Admin SDK: ${msg}`);
   }
 
@@ -280,11 +493,8 @@ export async function updateServerOrder(
       return { success: false, error: "Authentication token unavailable for server order update." };
     }
 
-    const projectId =
-      process.env.FIREBASE_ADMIN_PROJECT_ID ||
-      process.env.FIREBASE_PROJECT_ID ||
-      process.env.VITE_FIREBASE_PROJECT_ID ||
-      "leafly-database";
+    const projectId = getFirebaseProjectId();
+    const databaseId = getFirestoreDatabaseId();
 
     const cleanUpdates = {
       ...updates,
@@ -294,7 +504,7 @@ export async function updateServerOrder(
     const updateMask = Object.keys(cleanUpdates)
       .map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`)
       .join("&");
-    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/orders/${encodeURIComponent(orderId)}?${updateMask}`;
+    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/orders/${encodeURIComponent(orderId)}?${updateMask}`;
 
     const res = await fetch(docUrl, {
       method: "PATCH",
@@ -310,10 +520,11 @@ export async function updateServerOrder(
       return { success: true };
     }
     const errData = await res.json().catch(() => ({}));
-    const msg = (errData as any)?.error?.message || `HTTP ${res.status}`;
+    const msg = sanitizeLogMessage((errData as any)?.error?.message || `HTTP ${res.status}`);
     return { success: false, error: msg };
   } catch (restErr: any) {
-    return { success: false, error: restErr?.message || String(restErr) };
+    const safeMsg = sanitizeLogMessage(restErr?.message || String(restErr));
+    return { success: false, error: safeMsg };
   }
 }
 
@@ -331,7 +542,7 @@ export async function getServerOrder(
       return null;
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = sanitizeLogMessage(error instanceof Error ? error.message : String(error));
     console.warn(`[Firebase Admin Notice] Could not fetch order #${orderId} via Admin SDK: ${msg}`);
   }
 
@@ -341,13 +552,10 @@ export async function getServerOrder(
     const token = session?.idToken;
     if (!token) return null;
 
-    const projectId =
-      process.env.FIREBASE_ADMIN_PROJECT_ID ||
-      process.env.FIREBASE_PROJECT_ID ||
-      process.env.VITE_FIREBASE_PROJECT_ID ||
-      "leafly-database";
+    const projectId = getFirebaseProjectId();
+    const databaseId = getFirestoreDatabaseId();
 
-    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/orders/${encodeURIComponent(orderId)}`;
+    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/orders/${encodeURIComponent(orderId)}`;
     const res = await fetch(docUrl, {
       method: "GET",
       headers: {
@@ -363,7 +571,8 @@ export async function getServerOrder(
       }
     }
   } catch (restErr) {
-    console.warn(`[Firebase Admin Notice] REST fetch for order #${orderId} failed:`, restErr);
+    const safeMsg = sanitizeLogMessage(restErr instanceof Error ? restErr.message : String(restErr));
+    console.warn(`[Firebase Admin Notice] REST fetch for order #${orderId} failed: ${safeMsg}`);
   }
 
   return null;
@@ -420,10 +629,14 @@ export async function getServerSessionToken(): Promise<{ idToken: string; localI
     return { idToken: cachedServerSession.idToken, localId: cachedServerSession.localId };
   }
 
-  const apiKey =
-    process.env.VITE_FIREBASE_API_KEY ||
-    process.env.FIREBASE_API_KEY ||
-    "AIzaSyBP0byX7fmi8SoXATR1tiXozTUsXLzYKWw";
+  // Only attempt server worker authentication if explicit server credentials are provided
+  const serverEmail = process.env.FIREBASE_SERVER_EMAIL;
+  const serverPassword = process.env.FIREBASE_SERVER_PASSWORD;
+  if (!serverEmail || !serverPassword) {
+    return null;
+  }
+
+  const apiKey = getFirebaseApiKey();
 
   try {
     const loginRes = await fetch(
@@ -432,8 +645,8 @@ export async function getServerSessionToken(): Promise<{ idToken: string; localI
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: "admin@leaflytea.com",
-          password: "test-password-123456",
+          email: serverEmail,
+          password: serverPassword,
           returnSecureToken: true,
         }),
       }
@@ -449,7 +662,8 @@ export async function getServerSessionToken(): Promise<{ idToken: string; localI
       return { idToken: loginData.idToken, localId: loginData.localId };
     }
   } catch (err) {
-    console.warn("[Firebase Admin Notice] Failed to acquire server session token:", err);
+    const safeMsg = sanitizeLogMessage(err instanceof Error ? err.message : String(err));
+    console.warn(`[Firebase Admin Notice] Failed to acquire server worker session token: ${safeMsg}`);
   }
   return null;
 }
@@ -457,7 +671,7 @@ export async function getServerSessionToken(): Promise<{ idToken: string; localI
 export async function saveServerOrder(
   orderPayload: Record<string, unknown>,
   clientToken?: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; method?: string }> {
   const orderId = String(orderPayload.id || orderPayload.orderId || "").trim();
   if (!orderId) {
     return { success: false, error: "Order ID is missing." };
@@ -467,9 +681,10 @@ export async function saveServerOrder(
   const adminDb = getAdminFirestore();
   if (adminDb) {
     try {
-      const cleanUpdates = {
+      const cleanUpdates: Record<string, unknown> = {
         ...orderPayload,
         id: orderId,
+        orderId,
         updatedAt: new Date().toISOString(),
       };
       delete (cleanUpdates as any).action;
@@ -478,30 +693,47 @@ export async function saveServerOrder(
 
       await adminDb.collection("orders").doc(orderId).set(cleanUpdates, { merge: true });
       console.info(`[Firebase Admin] Order #${orderId} stored via Admin SDK.`);
-      return { success: true };
+      return { success: true, method: "admin_sdk" };
     } catch (adminErr: any) {
-      console.warn(`[Firebase Admin Notice] Admin SDK write failed, attempting REST fallback:`, adminErr);
+      const safeMsg = sanitizeLogMessage(adminErr instanceof Error ? adminErr.message : String(adminErr));
+      console.warn(`[Firebase Admin Notice] Admin SDK write failed (${safeMsg}), attempting REST fallback...`);
     }
   }
 
   // 2. Server REST fallback
-  const projectId =
-    process.env.FIREBASE_ADMIN_PROJECT_ID ||
-    process.env.FIREBASE_PROJECT_ID ||
-    process.env.VITE_FIREBASE_PROJECT_ID ||
-    "leafly-database";
+  const projectId = getFirebaseProjectId();
+  const databaseId = getFirestoreDatabaseId();
 
   const session = await getServerSessionToken();
   const serverToken = session?.idToken;
   const serverLocalId = session?.localId;
 
-  const executePatch = async (token: string, uidToUse: string | undefined) => {
+  const executePatch = async (token?: string, uidToUse?: string) => {
+    const isGuest = Boolean(orderPayload.isGuest ?? (orderPayload.userId === "guest" || !orderPayload.userId));
+    const effectiveUserId = uidToUse || (isGuest ? "guest" : (orderPayload.userId as string) || "guest");
+
     const cleanOrder: Record<string, unknown> = {
       ...orderPayload,
       id: orderId,
-      userId: uidToUse || orderPayload.userId,
-      customerId: orderPayload.customerId || orderPayload.userId || uidToUse,
-      customerUid: orderPayload.customerUid || orderPayload.customerId || orderPayload.userId || uidToUse,
+      orderId,
+      customerEmail: String(orderPayload.customerEmail || orderPayload.email || "").trim().toLowerCase(),
+      email: String(orderPayload.email || orderPayload.customerEmail || "").trim().toLowerCase(),
+      customerName: String(orderPayload.customerName || (orderPayload.shippingAddress as any)?.fullName || "").trim(),
+      customerPhone: String(orderPayload.customerPhone || orderPayload.phone || (orderPayload.shippingAddress as any)?.phone || "").trim(),
+      phone: String(orderPayload.phone || orderPayload.customerPhone || (orderPayload.shippingAddress as any)?.phone || "").trim(),
+      isGuest,
+      userId: effectiveUserId,
+      customerId: (orderPayload.customerId as string) || effectiveUserId,
+      customerUid: (orderPayload.customerUid as string) || (orderPayload.customerId as string) || effectiveUserId,
+      total: Number(orderPayload.total) || 0,
+      subtotal: Number(orderPayload.subtotal) || 0,
+      deliveryFee: Number(orderPayload.deliveryFee) || 0,
+      discount: Number(orderPayload.discount) || 0,
+      paymentMethod: String(orderPayload.paymentMethod || "COD"),
+      paymentStatus: String(orderPayload.paymentStatus || "Pending"),
+      orderStatus: String(orderPayload.orderStatus || orderPayload.status || "Confirmed"),
+      status: String(orderPayload.status || orderPayload.orderStatus || "Confirmed"),
+      items: Array.isArray(orderPayload.items) ? orderPayload.items : [],
       updatedAt: new Date().toISOString(),
     };
     delete (cleanOrder as any).action;
@@ -509,14 +741,18 @@ export async function saveServerOrder(
     delete (cleanOrder as any).idToken;
 
     const fields = toFirestoreRestFields(cleanOrder);
-    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/orders/${encodeURIComponent(orderId)}`;
+    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/orders/${encodeURIComponent(orderId)}`;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
 
     return await fetch(docUrl, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers,
       body: JSON.stringify({ fields }),
     });
   };
@@ -527,44 +763,80 @@ export async function saveServerOrder(
       const res = await executePatch(clientToken, orderPayload.userId as string | undefined);
       if (res.ok) {
         console.info(`[Firebase Admin] Order #${orderId} successfully persisted via client REST token.`);
-        return { success: true };
+        return { success: true, method: "client_token_rest" };
       }
-      console.warn(`[Firebase Admin Notice] Client token REST write returned HTTP ${res.status}, attempting server session fallback.`);
+      console.warn(`[Firebase Admin Notice] Client token REST write returned HTTP ${res.status}`);
     } catch (clientErr) {
-      console.warn("[Firebase Admin Notice] Client token REST write exception:", clientErr);
+      const safeMsg = sanitizeLogMessage(clientErr instanceof Error ? clientErr.message : String(clientErr));
+      console.warn(`[Firebase Admin Notice] Client token REST write exception: ${safeMsg}`);
     }
   }
 
-  // Attempt 2: Use authoritative server worker session
+  // Attempt 2: Use authoritative server worker session if configured
   if (serverToken) {
     try {
-      // The server worker signs in with serverLocalId.
-      // Passing serverLocalId as the top-level userId satisfies Firestore authorization rules for the worker write,
-      // while customerId, customerUid, customerEmail, and isGuest preserve the customer's identity.
       const res = await executePatch(serverToken, serverLocalId);
       if (res.ok) {
         console.info(`[Firebase Admin] Order #${orderId} successfully persisted via server worker session.`);
-        return { success: true };
+        return { success: true, method: "server_worker_rest" };
       }
       const errData = await res.json().catch(() => ({}));
-      const msg = (errData as any)?.error?.message || `HTTP ${res.status}`;
-      console.error(`[Firebase Admin] Server session REST write failed (${res.status}):`, errData);
+      const msg = sanitizeLogMessage((errData as any)?.error?.message || `HTTP ${res.status}`);
+      console.error(`[Firebase Admin] Server session REST write failed (${res.status}): ${msg}`);
       return { success: false, error: msg };
     } catch (serverErr: any) {
-      console.error("[Firebase Admin] Network error during server session REST write:", serverErr);
-      return { success: false, error: serverErr?.message || String(serverErr) };
+      const safeMsg = sanitizeLogMessage(serverErr?.message || String(serverErr));
+      console.error(`[Firebase Admin] Network error during server session REST write: ${safeMsg}`);
+      return { success: false, error: safeMsg };
     }
   }
 
+  // Attempt 3: If order is a guest order, try unauthenticated REST write satisfying firestore.rules
+  const isGuest = orderPayload.isGuest === true || orderPayload.userId === "guest" || !orderPayload.userId;
+  if (isGuest) {
+    try {
+      const res = await executePatch(undefined, "guest");
+      if (res.ok) {
+        console.info(`[Firebase Admin] Guest order #${orderId} persisted via unauthenticated REST write.`);
+        return { success: true, method: "guest_rest_fallback" };
+      }
+      const errData = await res.json().catch(() => ({}));
+      const msg = sanitizeLogMessage((errData as any)?.error?.message || `HTTP ${res.status}`);
+      console.warn(`[Firebase Admin] Unauthenticated guest REST write returned ${res.status}: ${msg}`);
+    } catch (guestErr) {
+      const safeMsg = sanitizeLogMessage(guestErr instanceof Error ? guestErr.message : String(guestErr));
+      console.warn(`[Firebase Admin] Guest REST write exception: ${safeMsg}`);
+    }
+  }
+
+  const configReport = getAdminConfigStatus();
   return {
     success: false,
-    error: "Authorization token unavailable to persist order on database.",
+    error: configReport.configured
+      ? "Database write could not be completed. Please check Firestore security rules or server network connectivity."
+      : "Database write could not be completed. Server Firebase Admin credentials (FIREBASE_ADMIN_CLIENT_EMAIL and FIREBASE_ADMIN_PRIVATE_KEY) are not configured in Vercel environment variables.",
   };
 }
 
 /**
+ * Converts a raw Firebase Auth action link into a branded Leafly /reset-password URL.
+ * Preserves the exact verified oobCode.
+ */
+export function buildBrandedResetLink(rawLink: string, baseUrl: string): string {
+  try {
+    const urlObj = new URL(rawLink);
+    const oobCode = urlObj.searchParams.get("oobCode");
+    if (oobCode) {
+      const cleanBase = baseUrl.replace(/\/+$/, "");
+      return `${cleanBase}/reset-password?oobCode=${encodeURIComponent(oobCode)}`;
+    }
+  } catch {}
+  return rawLink;
+}
+
+/**
  * Automatically establishes a customer account from the real checkout email.
- * - If the customer does NOT have an account, creates one and triggers password setup.
+ * - If the customer does NOT have an account, creates one and dispatches password setup email.
  * - If the customer ALREADY has an account, associates order without resetting password.
  * - Never uses or generates fake emails or predictable passwords.
  */
@@ -592,11 +864,54 @@ export async function provisionCustomerAccount(
 
   // 1. Authoritative check via Firebase Admin Auth (privileged server environment)
   if (adminAuth) {
+    const host = process.env.PUBLIC_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || "https://leaflytea.in";
+    const baseUrl = (host.startsWith("http") ? host : `https://${host}`).replace(/\/+$/, "");
+
     try {
       const existing = await adminAuth.getUserByEmail(email);
       uid = existing.uid;
       isNewAccount = false;
-      console.info(`[Account Provision] Existing account found for ${email} (UID: ${uid}). No password reset triggered.`);
+      console.info(`[Account Provision] Existing account found for ${email} (UID: ${uid}).`);
+
+      // Check if this existing account was auto-provisioned but has never completed password setup
+      let needsPasswordSetup = false;
+      if (!existing.providerData || existing.providerData.length === 0) {
+        needsPasswordSetup = true;
+      }
+      if (!needsPasswordSetup && adminDb) {
+        try {
+          const uDoc = await adminDb.collection("users").doc(uid).get();
+          if (uDoc.exists && uDoc.data()?.accountSetupPending === true) {
+            needsPasswordSetup = true;
+          }
+        } catch {}
+      }
+
+      if (needsPasswordSetup) {
+        try {
+          let rawLink: string | null = null;
+          try {
+            rawLink = await adminAuth.generatePasswordResetLink(email, {
+              url: `${baseUrl}/reset-password`,
+              handleCodeInApp: true,
+            });
+          } catch {
+            rawLink = await adminAuth.generatePasswordResetLink(email);
+          }
+
+          if (rawLink) {
+            passwordSetupLink = buildBrandedResetLink(rawLink, baseUrl);
+            await sendPasswordSetupEmail({
+              email,
+              customerName: existing.displayName || customerName,
+              setupLink: passwordSetupLink,
+            });
+            console.info(`[Account Provision] Dispatched password setup email to existing unconfigured account ${email}`);
+          }
+        } catch (linkErr) {
+          console.warn("[Account Provision] Could not generate or send reset link for existing user:", linkErr);
+        }
+      }
     } catch (err: any) {
       if (
         err?.code === "auth/user-not-found" ||
@@ -615,14 +930,28 @@ export async function provisionCustomerAccount(
 
           // Generate secure password setup link
           try {
-            const host = process.env.PUBLIC_URL || process.env.VERCEL_URL || "https://leaflytea.in";
-            const baseUrl = host.startsWith("http") ? host : `https://${host}`;
-            passwordSetupLink = await adminAuth.generatePasswordResetLink(email, {
-              url: `${baseUrl}/reset-password`,
-              handleCodeInApp: true,
-            });
+            let rawLink: string | null = null;
+            try {
+              rawLink = await adminAuth.generatePasswordResetLink(email, {
+                url: `${baseUrl}/reset-password`,
+                handleCodeInApp: true,
+              });
+            } catch {
+              rawLink = await adminAuth.generatePasswordResetLink(email);
+            }
+
+            // Dispatch customer password setup email via Nodemailer
+            if (rawLink) {
+              passwordSetupLink = buildBrandedResetLink(rawLink, baseUrl);
+              await sendPasswordSetupEmail({
+                email,
+                customerName,
+                setupLink: passwordSetupLink,
+              });
+              console.info(`[Account Provision] Dispatched password setup email to ${email}`);
+            }
           } catch (linkErr) {
-            console.warn("[Account Provision] Could not generate reset link:", linkErr);
+            console.warn("[Account Provision] Could not generate or send reset link:", linkErr);
           }
         } catch (createErr: any) {
           console.error("[Account Provision] Error creating user via Admin Auth:", createErr);
@@ -635,10 +964,7 @@ export async function provisionCustomerAccount(
 
   // 2. Identity Toolkit Fallback (when Admin SDK credentials not loaded on server)
   if (!uid) {
-    const apiKey =
-      process.env.VITE_FIREBASE_API_KEY ||
-      process.env.FIREBASE_API_KEY ||
-      "AIzaSyBP0byX7fmi8SoXATR1tiXozTUsXLzYKWw";
+    const apiKey = getFirebaseApiKey();
 
     if (apiKey) {
       try {
@@ -718,14 +1044,11 @@ export async function provisionCustomerAccount(
       }
     } else if (idToken) {
       try {
-        const projectId =
-          process.env.FIREBASE_ADMIN_PROJECT_ID ||
-          process.env.FIREBASE_PROJECT_ID ||
-          process.env.VITE_FIREBASE_PROJECT_ID ||
-          "leafly-database";
+        const projectId = getFirebaseProjectId();
+        const databaseId = getFirestoreDatabaseId();
         const fields = toFirestoreRestFields(userDocData);
         await fetch(
-          `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${encodeURIComponent(uid)}`,
+          `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/users/${encodeURIComponent(uid)}`,
           {
             method: "PATCH",
             headers: {
@@ -743,7 +1066,7 @@ export async function provisionCustomerAccount(
   }
 
   return {
-    success: Boolean(uid),
+    success: true, // Non-blocking: Account provisioning success should not fail checkout
     uid,
     isNewAccount,
     sessionSecret,

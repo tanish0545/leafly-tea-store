@@ -14,7 +14,6 @@ import { COUNTRIES_LIST, INDIAN_STATES_AND_CITIES } from "../data/indianLocation
 import { auth, db } from "../lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import { NotificationService } from "../lib/notifications";
 import { ApiService } from "../lib/apiClient";
 import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
 import { useCoupons } from "../context/CouponContext";
@@ -735,6 +734,10 @@ export default function Checkout() {
     }
     try {
       sessionStorage.setItem("leafly_last_order", JSON.stringify(order));
+      const existingRaw = localStorage.getItem("leafly_recent_guest_orders");
+      const existing: Order[] = existingRaw ? JSON.parse(existingRaw) : [];
+      const updated = [order, ...existing.filter((o) => o.id !== order.id)].slice(0, 10);
+      localStorage.setItem("leafly_recent_guest_orders", JSON.stringify(updated));
     } catch {
       // ignore
     }
@@ -749,47 +752,8 @@ export default function Checkout() {
     orderSubtotal: number,
     orderDeliveryFee: number
   ) => {
-    let effectiveUserId = isRealRegisteredUser ? (auth.currentUser?.uid || currentUser?.uid || "guest") : "guest";
+    const effectiveUserId = isRealRegisteredUser ? (auth.currentUser?.uid || currentUser?.uid || "guest") : "guest";
     const cleanCustomerEmail = (resolvedAuthEmail || email.trim()).toLowerCase();
-    let isNewAccountCreated = false;
-
-    let provisionedIdToken: string | undefined = undefined;
-
-    // Automatically provision customer account for guest checkouts
-    if (!isRealRegisteredUser) {
-      try {
-        const provRes = await ApiService.provisionAccount({
-          email: cleanCustomerEmail,
-          customerName: shippingAddress.fullName.trim(),
-          orderId,
-        });
-        if (provRes && provRes.uid) {
-          effectiveUserId = provRes.uid;
-          isNewAccountCreated = Boolean(provRes.isNewAccount);
-          provisionedIdToken = provRes.idToken || undefined;
-          sessionStorage.setItem(
-            "leafly_account_provisioned",
-            JSON.stringify({
-              email: cleanCustomerEmail,
-              uid: provRes.uid,
-              isNewAccount: provRes.isNewAccount,
-              passwordSetupLink: provRes.passwordSetupLink || null,
-            })
-          );
-
-          if (provRes.isNewAccount && provRes.sessionSecret) {
-            try {
-              await signInWithEmailAndPassword(auth, cleanCustomerEmail, provRes.sessionSecret);
-              console.info(`[Checkout] Client SDK authenticated as provisioned user: ${cleanCustomerEmail}`);
-            } catch (signErr) {
-              console.warn("[Checkout] Client auto-login notice (proceeding with server fallback):", signErr);
-            }
-          }
-        }
-      } catch (provErr) {
-        console.warn("[Checkout] Pre-provisioning COD order notice:", provErr);
-      }
-    }
 
     const order: Order = {
       id: orderId,
@@ -798,8 +762,8 @@ export default function Checkout() {
       customerUid: effectiveUserId,
       isGuest: !isRealRegisteredUser,
       guestProvisioned: !isRealRegisteredUser,
-      accountCreated: isNewAccountCreated,
-      accountSetupPending: isNewAccountCreated,
+      accountCreated: false,
+      accountSetupPending: false,
       customerName: shippingAddress.fullName.trim(),
       customerEmail: cleanCustomerEmail,
       email: cleanCustomerEmail,
@@ -868,42 +832,55 @@ export default function Checkout() {
     let orderPersisted = false;
     let persistenceError: any = null;
     let apiFallbackError: string | null = null;
+    const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // AUTHORITATIVE ORDER PERSISTENCE: Via /api/orders?action=create
+    // Handles server-side validation, guest account provisioning, idempotent retries,
+    // and asynchronous transactional emails securely.
+    // ─────────────────────────────────────────────────────────────────────────────
     try {
-      const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
-      await setDoc(doc(db, "orders", order.id), cleanOrder);
-      orderPersisted = true;
-      console.info(`[Checkout] COD order #${order.id} recorded in Firestore via client SDK.`);
-    } catch (saveError: any) {
-      persistenceError = saveError;
-      console.error("[Checkout Failure] Stage: order_persistence_client", {
-        stage: "setDoc(orders)",
-        errorCode: saveError?.code,
-        errorMessage: saveError?.message,
-        orderId: order.id,
-        isGuest: order.isGuest,
-      }, saveError);
+      const token = isRealRegisteredUser && auth.currentUser
+        ? await auth.currentUser.getIdToken().catch(() => undefined)
+        : undefined;
 
-      // Attempt server API fallback with authorization
-      try {
-        const cleanOrder = cleanFirestoreObject(order as unknown as Record<string, unknown>);
-        const token = auth.currentUser
-          ? await auth.currentUser.getIdToken().catch(() => undefined)
-          : provisionedIdToken;
-        const apiRes = await ApiService.createOrderViaApi(cleanOrder, token);
-        if (apiRes && apiRes.success) {
-          orderPersisted = true;
-          console.info(`[Checkout] COD order #${order.id} recorded via backend API fallback.`);
-        } else {
-          apiFallbackError = apiRes?.error || null;
-          console.error("[Checkout Failure] Stage: order_persistence_api_fallback", apiRes?.error);
+      const apiRes = await ApiService.createOrderViaApi(cleanOrder, token);
+      if (apiRes && apiRes.success) {
+        orderPersisted = true;
+        if (apiRes.accountCreated) {
+          order.accountCreated = true;
+          order.accountSetupPending = true;
+          try {
+            sessionStorage.setItem(
+              "leafly_account_provisioned",
+              JSON.stringify({
+                email: cleanCustomerEmail,
+                isNewAccount: true,
+              })
+            );
+          } catch {
+            // ignore session storage error
+          }
         }
-      } catch (apiErr: any) {
-        apiFallbackError = apiErr instanceof Error ? apiErr.message : String(apiErr);
-        console.error("[Checkout Failure] Stage: order_persistence_api_exception", {
-          message: apiErr?.message,
-          status: apiErr?.status,
-        }, apiErr);
+        console.info(`[Checkout] COD order #${order.id} persisted successfully via server API.`);
+      } else {
+        apiFallbackError = apiRes?.error || "Order creation could not be completed";
+        console.warn("[Checkout Failure] Server API response notice:", apiRes?.error);
+      }
+    } catch (apiErr: any) {
+      apiFallbackError = apiErr instanceof Error ? apiErr.message : String(apiErr);
+      console.error("[Checkout Failure] Stage: order_persistence_api_exception", apiErr);
+    }
+
+    // Emergency fallback for authenticated registered users only if the API endpoint had an issue
+    if (!orderPersisted && isRealRegisteredUser && auth.currentUser) {
+      try {
+        await setDoc(doc(db, "orders", order.id), cleanOrder);
+        orderPersisted = true;
+        console.info(`[Checkout] COD order #${order.id} recorded via client authenticated fallback.`);
+      } catch (saveError: any) {
+        persistenceError = saveError;
+        console.error("[Checkout Failure] Stage: order_persistence_client_fallback", saveError);
       }
     }
 
@@ -926,7 +903,7 @@ export default function Checkout() {
         } else if (isRealRegisteredUser && (apiFallbackError.toLowerCase().includes("permission") || apiFallbackError.toLowerCase().includes("unauthorized"))) {
           userMsg = "Session expired. Please sign in again to place your order.";
         } else {
-          userMsg = "Unable to complete order placement at this time. Please try again or contact support.";
+          userMsg = apiFallbackError;
         }
       } else if (persistenceError?.code === "permission-denied" && isRealRegisteredUser) {
         userMsg = "Your session has expired. Please sign in again to place your order.";
@@ -937,21 +914,20 @@ export default function Checkout() {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // ORDER PERSISTED: All subsequent tasks are isolated and must never abort order
+    // ORDER PERSISTED: Execute post-order tasks without blocking confirmation
     // ─────────────────────────────────────────────────────────────────────────────
 
-    // 1. Coupon usage (non-critical)
+    // 1. Coupon usage (background non-blocking)
     if (appliedCoupon) {
-      try {
-        await markCouponUsed(appliedCoupon.code);
-      } catch (couponErr) {
+      markCouponUsed(appliedCoupon.code).catch((couponErr) => {
         console.warn("[Checkout] Non-critical: Could not mark coupon as used:", couponErr);
-      }
+      });
     }
 
-    // 2. Inventory decrement (non-critical)
-    for (const item of order.items) {
-      if (item.productId) {
+    // 2. Inventory decrement (background non-blocking)
+    Promise.allSettled(
+      order.items.map(async (item) => {
+        if (!item.productId) return;
         const idStr = String(item.productId);
         try {
           let docRef = doc(db, "products", idStr);
@@ -983,61 +959,23 @@ export default function Checkout() {
         } catch (stockError) {
           console.warn(`[Checkout] Non-critical: Failed to update stock for item ${item.productId}:`, stockError);
         }
-      }
-    }
+      })
+    ).catch(() => {});
 
     // 3. Local order context update (non-critical)
     try {
-      await addOrder(order);
+      addOrder(order);
     } catch (ctxErr) {
       console.warn("[Checkout] Non-critical: Error adding order to local context:", ctxErr);
     }
 
-    // 4. Notifications (Fire and Forget — non-critical)
-    try {
-      NotificationService.sendOrderConfirmationEmail({
-        id: order.id,
-        customerName: order.shippingAddress.fullName,
-        email: order.customerEmail,
-        phone: order.customerPhone || "",
-        total: order.total,
-        subtotal: order.subtotal,
-        deliveryFee: order.deliveryFee,
-        discount: order.discount,
-        couponCode: order.couponCode || undefined,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        shippingAddress: order.shippingAddress,
-        items: order.items.map((i) => ({
-          name: i.name,
-          variant: i.variant,
-          weight: i.weight,
-          quantity: i.quantity,
-          price: i.price,
-        })),
-        createdAt: order.createdAt,
-        accountCreated: order.accountCreated,
-        passwordSetupLink: (JSON.parse(sessionStorage.getItem("leafly_account_provisioned") || "{}"))?.passwordSetupLink || undefined,
-      });
-    } catch (emailErr) {
-      console.warn("[Checkout] Non-critical: Failed to trigger email notification:", emailErr);
-    }
-
-    try {
-      NotificationService.sendOrderConfirmationSMS({
-        id: order.id,
-        customerName: order.shippingAddress.fullName,
-        email: order.customerEmail,
-        phone: order.customerPhone || "",
-        total: order.total,
-      });
-    } catch (smsErr) {
-      console.warn("[Checkout] Non-critical: Failed to trigger SMS notification:", smsErr);
-    }
-
-    // 5. Session storage cache (non-critical)
+    // 4. Session & local storage cache (essential for guest confirmation screen, invoice, and guest order history)
     try {
       sessionStorage.setItem("leafly_last_order", JSON.stringify(order));
+      const existingRaw = localStorage.getItem("leafly_recent_guest_orders");
+      const existing: Order[] = existingRaw ? JSON.parse(existingRaw) : [];
+      const updated = [order, ...existing.filter((o) => o.id !== order.id)].slice(0, 10);
+      localStorage.setItem("leafly_recent_guest_orders", JSON.stringify(updated));
     } catch {
       // ignore
     }

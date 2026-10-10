@@ -3,9 +3,23 @@ import {
   sendAdminOrderNotification,
   sendOrderConfirmation,
   sendOrderStatusUpdate,
+  sendPasswordSetupEmail,
+  sendOrderLookupVerificationCode,
   type MailResult,
 } from "./_lib/mailer.js";
-import { updateServerOrder, getServerOrder, getAdminFirestore, provisionCustomerAccount, saveServerOrder } from "./_lib/firebaseAdmin.js";
+import {
+  updateServerOrder,
+  getServerOrder,
+  getAdminFirestore,
+  getAdminAuth,
+  provisionCustomerAccount,
+  saveServerOrder,
+  buildBrandedResetLink,
+  fromFirestoreRestFields,
+  getAdminConfigStatus,
+  getFirebaseProjectId,
+  getFirestoreDatabaseId,
+} from "./_lib/firebaseAdmin.js";
 import type { Order } from "../src/types/contracts.js";
 import type {
   OrderEmailData,
@@ -16,6 +30,11 @@ import type {
 // In-memory sets to prevent duplicate sends from rapid duplicate network requests
 const dispatchedConfirmationOrders = new Set<string>();
 const dispatchedStatusEvents = new Set<string>();
+
+// Rate-limiting and OTP caches for password setup and guest order lookup
+const resendRateLimitMap = new Map<string, number>();
+const otpRateLimitMap = new Map<string, number>();
+const memoryOtpStore = new Map<string, { code: string; expiresAt: number; attempts: number }>();
 
 interface OrderActionRequestBody {
   action?: string;
@@ -41,6 +60,9 @@ interface OrderActionRequestBody {
   createdAt?: string;
   accountCreated?: boolean;
   passwordSetupLink?: string;
+  code?: string;
+  actionCode?: string;
+  orders?: { id: string; email: string }[];
 }
 
 export default async function handler(
@@ -112,6 +134,29 @@ export default async function handler(
       action = "create";
     } else if (action === "provision" || action === "provision-account" || action === "create-account") {
       action = "provision";
+    } else if (action === "resend-setup" || action === "resend-password-setup" || action === "resend_setup") {
+      action = "resend-setup";
+    } else if (action === "lookup-send-code" || action === "send-code" || action === "lookup_send_code") {
+      action = "lookup-send-code";
+    } else if (action === "lookup-verify-code" || action === "verify-code" || action === "lookup_verify_code") {
+      action = "lookup-verify-code";
+    } else if (action === "sync-status" || action === "sync-guest-orders" || action === "sync_status") {
+      action = "sync-status";
+    } else if (action === "get-invoice" || action === "invoice" || action === "tax-invoice") {
+      action = "get-invoice";
+    } else if (action === "config-status" || action === "status-check" || action === "health") {
+      action = "config-status";
+    }
+
+    // =========================================================================
+    // 00. SECURE SERVER FIREBASE & SMTP CONFIGURATION DIAGNOSTICS
+    // =========================================================================
+    if (action === "config-status") {
+      const status = getAdminConfigStatus();
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify(status));
+      return;
     }
 
     // =========================================================================
@@ -131,16 +176,482 @@ export default async function handler(
         return;
       }
 
-      const provisionResult = await provisionCustomerAccount(
+      try {
+        const provisionResult = await provisionCustomerAccount(
+          email,
+          customerName,
+          orderId || undefined
+        );
+
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(provisionResult));
+      } catch (provErr) {
+        console.warn("[Orders API] Provisioning notice:", provErr);
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ success: true, uid: null, isNewAccount: false }));
+      }
+      return;
+    }
+
+    // =========================================================================
+    // 0b. RESEND VERIFIED PASSWORD SETUP EMAIL
+    // =========================================================================
+    if (action === "resend-setup") {
+      const email = String(body.email || body.customerEmail || "").trim().toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Please enter a valid email address." }));
+        return;
+      }
+
+      const lastSent = resendRateLimitMap.get(email) || 0;
+      const now = Date.now();
+      if (now - lastSent < 60000) {
+        const remainingSec = Math.ceil((60000 - (now - lastSent)) / 1000);
+        res.statusCode = 429;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: `Please wait ${remainingSec} seconds before requesting another setup link.`,
+          })
+        );
+        return;
+      }
+
+      const adminAuth = getAdminAuth();
+      if (!adminAuth) {
+        res.statusCode = 503;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: "Password setup service is currently unavailable. Please try again shortly or contact support.",
+          })
+        );
+        return;
+      }
+
+      try {
+        const host = process.env.PUBLIC_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || "https://leaflytea.in";
+        const baseUrl = (host.startsWith("http") ? host : `https://${host}`).replace(/\/+$/, "");
+
+        let customerName = "Valued Patron";
+        let rawLink: string | null = null;
+
+        try {
+          const userRecord = await adminAuth.getUserByEmail(email);
+          customerName = userRecord.displayName || customerName;
+          try {
+            rawLink = await adminAuth.generatePasswordResetLink(email, {
+              url: `${baseUrl}/reset-password`,
+              handleCodeInApp: true,
+            });
+          } catch {
+            rawLink = await adminAuth.generatePasswordResetLink(email);
+          }
+        } catch (lookupErr: any) {
+          if (lookupErr?.code === "auth/user-not-found" || lookupErr?.message?.includes("user-not-found")) {
+            // Check if an order was placed with this email and auto-provision the customer account
+            const adminDb = getAdminFirestore();
+            if (adminDb) {
+              try {
+                const snap = await adminDb.collection("orders").where("customerEmail", "==", email).limit(1).get();
+                if (!snap.empty) {
+                  customerName = String(snap.docs[0].data().customerName || snap.docs[0].data().shippingAddress?.fullName || customerName);
+                }
+              } catch {}
+            }
+            const provRes = await provisionCustomerAccount(email, customerName);
+            if (provRes.passwordSetupLink) {
+              resendRateLimitMap.set(email, now);
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json");
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  message: `A verified password setup link has been dispatched to ${email}.`,
+                })
+              );
+              return;
+            }
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                error: "No account exists for this email address. Please place an order or sign up first.",
+              })
+            );
+            return;
+          }
+          throw lookupErr;
+        }
+
+        if (!rawLink) {
+          throw new Error("Unable to generate verified password setup link.");
+        }
+
+        const setupLink = buildBrandedResetLink(rawLink, baseUrl);
+        const mailRes = await sendPasswordSetupEmail({ email, customerName, setupLink });
+        resendRateLimitMap.set(email, now);
+
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: mailRes.delivered || mailRes.success,
+            message: `A verified password setup link has been dispatched to ${email}.`,
+          })
+        );
+        return;
+      } catch (err: any) {
+        console.error("[Orders API] Error in resend-setup:", err);
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Failed to generate password setup link." }));
+        return;
+      }
+    }
+
+    // =========================================================================
+    // 0c. DISPATCH GUEST ORDER LOOKUP 6-DIGIT VERIFICATION CODE (OTP)
+    // =========================================================================
+    if (action === "lookup-send-code") {
+      const email = String(body.email || body.customerEmail || "").trim().toLowerCase();
+      const orderId = String(body.orderId || body.id || "").trim();
+
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Please enter a valid email address." }));
+        return;
+      }
+
+      const lastSent = otpRateLimitMap.get(email) || 0;
+      const now = Date.now();
+      if (now - lastSent < 60000) {
+        const remainingSec = Math.ceil((60000 - (now - lastSent)) / 1000);
+        res.statusCode = 429;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: `Please wait ${remainingSec} seconds before requesting a new verification code.`,
+          })
+        );
+        return;
+      }
+
+      // Generate 6-digit OTP
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = now + 10 * 60 * 1000; // 10 minutes
+
+      memoryOtpStore.set(email, { code, expiresAt, attempts: 0 });
+
+      const adminDb = getAdminFirestore();
+      if (adminDb) {
+        try {
+          await adminDb.collection("verification_codes").doc(email).set({
+            code,
+            expiresAt,
+            attempts: 0,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (dbErr) {
+          console.warn("[Orders API] Could not write verification code to Firestore:", dbErr);
+        }
+      }
+
+      const mailRes = await sendOrderLookupVerificationCode({
         email,
-        customerName,
-        orderId || undefined
-      );
+        code,
+        orderId: orderId || undefined,
+      });
+
+      otpRateLimitMap.set(email, now);
 
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(provisionResult));
+      res.end(
+        JSON.stringify({
+          success: mailRes.delivered || mailRes.success,
+          message: "A 6-digit verification code has been dispatched to your email address.",
+          delivered: mailRes.delivered,
+        })
+      );
       return;
+    }
+
+    // =========================================================================
+    // 0d. VERIFY OTP AND RETRIEVE GUEST ORDERS
+    // =========================================================================
+    if (action === "lookup-verify-code") {
+      const email = String(body.email || body.customerEmail || "").trim().toLowerCase();
+      const code = String(body.code || body.actionCode || "").trim();
+
+      if (!email || !code || code.length !== 6) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Email and 6-digit verification code are required." }));
+        return;
+      }
+
+      const now = Date.now();
+      let storedOtp = memoryOtpStore.get(email);
+
+      const adminDb = getAdminFirestore();
+      if (!storedOtp && adminDb) {
+        try {
+          const docSnap = await adminDb.collection("verification_codes").doc(email).get();
+          if (docSnap.exists) {
+            const data = docSnap.data();
+            if (data) {
+              storedOtp = {
+                code: String(data.code || ""),
+                expiresAt: Number(data.expiresAt) || 0,
+                attempts: Number(data.attempts) || 0,
+              };
+            }
+          }
+        } catch (dbErr) {
+          console.warn("[Orders API] Could not read verification code from Firestore:", dbErr);
+        }
+      }
+
+      if (!storedOtp || storedOtp.expiresAt < now) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: "Verification code has expired or is invalid. Please request a new code.",
+          })
+        );
+        return;
+      }
+
+      if (storedOtp.attempts >= 5) {
+        memoryOtpStore.delete(email);
+        if (adminDb) {
+          adminDb.collection("verification_codes").doc(email).delete().catch(() => {});
+        }
+        res.statusCode = 429;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: "Too many failed attempts. Please request a new verification code.",
+          })
+        );
+        return;
+      }
+
+      if (storedOtp.code !== code) {
+        storedOtp.attempts += 1;
+        memoryOtpStore.set(email, storedOtp);
+        if (adminDb) {
+          adminDb.collection("verification_codes").doc(email).update({ attempts: storedOtp.attempts }).catch(() => {});
+        }
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: "Incorrect verification code. Please check your email and try again.",
+          })
+        );
+        return;
+      }
+
+      // Code is valid! Consume it.
+      memoryOtpStore.delete(email);
+      if (adminDb) {
+        adminDb.collection("verification_codes").doc(email).delete().catch(() => {});
+      }
+
+      // Retrieve orders for this email
+      const matchedOrders: any[] = [];
+      if (adminDb) {
+        try {
+          const q1 = await adminDb.collection("orders").where("customerEmail", "==", email).get();
+          q1.forEach((doc) => matchedOrders.push({ id: doc.id, ...doc.data() }));
+
+          const q2 = await adminDb.collection("orders").where("email", "==", email).get();
+          q2.forEach((doc) => {
+            if (!matchedOrders.some((o) => o.id === doc.id)) {
+              matchedOrders.push({ id: doc.id, ...doc.data() });
+            }
+          });
+        } catch (fetchErr) {
+          console.error("[Orders API] Error retrieving orders via Admin SDK:", fetchErr);
+        }
+      }
+
+      // Sort newest first
+      matchedOrders.sort((a, b) => {
+        const tA = new Date(a.createdAt || 0).getTime();
+        const tB = new Date(b.createdAt || 0).getTime();
+        return tB - tA;
+      });
+
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(
+        JSON.stringify({
+          success: true,
+          verified: true,
+          email,
+          orders: matchedOrders,
+        })
+      );
+      return;
+    }
+
+    // =========================================================================
+    // 0e. SYNCHRONIZE & REVALIDATE GUEST ORDER STATUSES
+    // =========================================================================
+    if (action === "sync-status") {
+      let ordersToCheck: { id: string; email: string }[] = [];
+      if (Array.isArray(body.orders)) {
+        ordersToCheck = body.orders;
+      } else if (body.id || body.orderId) {
+        const singleId = String(body.id || body.orderId || "").trim();
+        const singleEmail = String(body.email || body.customerEmail || "").trim().toLowerCase();
+        if (singleId && singleEmail) {
+          ordersToCheck.push({ id: singleId, email: singleEmail });
+        }
+      }
+
+      if (ordersToCheck.length === 0) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "No orders provided for synchronization." }));
+        return;
+      }
+
+      // Limit to 15 items per batch to prevent serverless execution abuse
+      const trimmedList = ordersToCheck.slice(0, 15);
+      const updatedStatuses: Array<{
+        id: string;
+        status: string;
+        orderStatus: string;
+        updatedAt?: string;
+        paymentStatus?: string;
+        trackingNumber?: string | null;
+        carrier?: string | null;
+        deliveryMethod?: string;
+        deliveryDate?: string | null;
+        estimatedDelivery?: string | null;
+        inventoryRestored?: boolean;
+      }> = [];
+
+      for (const item of trimmedList) {
+        const orderId = String(item.id || "").trim();
+        const reqEmail = String(item.email || "").trim().toLowerCase();
+        if (!orderId || !reqEmail) continue;
+
+        try {
+          const existingOrder = await getServerOrder(orderId);
+          if (!existingOrder) continue;
+
+          const orderEmail = String(
+            existingOrder.customerEmail || existingOrder.email || ""
+          ).trim().toLowerCase();
+
+          // Authoritative security check: Order must belong to the matching customer email
+          if (orderEmail !== reqEmail) continue;
+
+          const freshStatus = String(
+            existingOrder.orderStatus || existingOrder.status || "Processing"
+          );
+
+          updatedStatuses.push({
+            id: orderId,
+            status: freshStatus,
+            orderStatus: freshStatus,
+            updatedAt: existingOrder.updatedAt ? String(existingOrder.updatedAt) : undefined,
+            paymentStatus: existingOrder.paymentStatus ? String(existingOrder.paymentStatus) : undefined,
+            trackingNumber: existingOrder.trackingNumber ? String(existingOrder.trackingNumber) : null,
+            carrier: existingOrder.carrier ? String(existingOrder.carrier) : null,
+            deliveryMethod: existingOrder.deliveryMethod ? String(existingOrder.deliveryMethod) : undefined,
+            deliveryDate: existingOrder.deliveryDate ? String(existingOrder.deliveryDate) : null,
+            estimatedDelivery: existingOrder.estimatedDelivery ? String(existingOrder.estimatedDelivery) : null,
+            inventoryRestored: Boolean(existingOrder.inventoryRestored),
+          });
+        } catch (fetchErr) {
+          console.warn(`[Orders API] Status sync notice for #${orderId}:`, fetchErr);
+        }
+      }
+
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(
+        JSON.stringify({
+          success: true,
+          syncedCount: updatedStatuses.length,
+          updatedStatuses,
+        })
+      );
+      return;
+    }
+
+    // =========================================================================
+    // 0f. AUTHORITATIVE & SECURE TAX INVOICE RETRIEVAL
+    // Enforces customer email ownership verification to prevent unauthorized access
+    // =========================================================================
+    if (action === "get-invoice") {
+      const orderId = String(body.orderId || body.id || "").trim();
+      const reqEmail = String(body.email || body.customerEmail || "").trim().toLowerCase();
+
+      if (!orderId || !reqEmail) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: "Order ID and verified customer email are required to retrieve invoice.",
+          })
+        );
+        return;
+      }
+
+      try {
+        const existingOrder = await getServerOrder(orderId);
+        if (!existingOrder) {
+          res.statusCode = 404;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ error: `Order #${orderId} was not found.` }));
+          return;
+        }
+
+        const orderEmail = String(
+          existingOrder.customerEmail || existingOrder.email || ""
+        ).trim().toLowerCase();
+
+        // Authoritative security check: Order must belong to the matching customer email
+        if (orderEmail !== reqEmail) {
+          res.statusCode = 403;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              error: "Access denied. Order does not match the provided customer email.",
+            })
+          );
+          return;
+        }
+
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: true,
+            order: existingOrder,
+          })
+        );
+        return;
+      } catch (err: unknown) {
+        console.error(`[Orders API] Error fetching invoice for #${orderId}:`, err);
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Failed to retrieve invoice. Please try again." }));
+        return;
+      }
     }
 
     // =========================================================================
@@ -189,7 +700,7 @@ export default async function handler(
           console.info(`[Orders API] Order #${id} already exists in Firestore. Returning idempotent success.`);
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ success: true, orderId: id, duplicate: true }));
+          res.end(JSON.stringify({ success: true, orderId: id, duplicate: true, total: existingOrder.total }));
           return;
         }
       } catch (checkErr) {
@@ -215,6 +726,21 @@ export default async function handler(
       const discount = Math.max(0, Number(body.discount) || 0);
       const computedTotal = Math.max(0, computedSubtotal - discount + computedDeliveryFee);
 
+      // Decoupled account provisioning for guest orders
+      let isNewAccountCreated = Boolean(body.accountCreated);
+      let setupLink = body.passwordSetupLink;
+      if (email && (body.accountCreated || (body as any).isGuest !== false)) {
+        try {
+          const provRes = await provisionCustomerAccount(email, customerName, id);
+          if (provRes && provRes.isNewAccount) {
+            isNewAccountCreated = true;
+            setupLink = provRes.passwordSetupLink || setupLink;
+          }
+        } catch (provErr) {
+          console.warn("[Orders API] Guest provisioning notice (non-blocking):", provErr);
+        }
+      }
+
       const authHeader = req.headers?.authorization || (req.headers as any)?.Authorization;
       const clientToken =
         (typeof authHeader === "string" && authHeader.startsWith("Bearer ")
@@ -234,6 +760,8 @@ export default async function handler(
         discount,
         total: computedTotal,
         items,
+        accountCreated: isNewAccountCreated,
+        accountSetupPending: isNewAccountCreated,
         updatedAt: new Date().toISOString(),
       };
       delete (orderPayload as any).action;
@@ -250,6 +778,7 @@ export default async function handler(
 
       console.info(`[Leafly Orders API] Order #${id} successfully stored in Firestore via server.`);
 
+      // Asynchronous / Non-blocking email dispatch
       if (id && customerName && !dispatchedConfirmationOrders.has(id)) {
         dispatchedConfirmationOrders.add(id);
         const orderData: OrderEmailData = {
@@ -273,22 +802,55 @@ export default async function handler(
             price: Number(it.price) || 0,
           })),
           createdAt: body.createdAt || new Date().toISOString(),
+          accountCreated: isNewAccountCreated,
+          passwordSetupLink: setupLink,
         };
-        sendAdminOrderNotification(orderData).catch((e) => console.warn("[Orders API] Admin alert notice:", e));
+
+        let customerEmailDelivered = false;
+        let adminEmailDelivered = false;
+
+        const emailTasks: Promise<any>[] = [
+          sendAdminOrderNotification(orderData)
+            .then((r) => {
+              adminEmailDelivered = Boolean(r?.delivered || r?.success);
+              console.info(`[Orders API] Admin order alert delivery result for #${id}: ${adminEmailDelivered ? "delivered" : "pending"}`);
+            })
+            .catch((e) => console.warn("[Orders API] Admin alert notice:", e)),
+        ];
+
         if (email) {
-          sendOrderConfirmation(orderData).then((r) => {
-            if (r.delivered || r.success) {
-              updateServerOrder(id, { confirmationEmailSentAt: new Date().toISOString() }).catch(() => {});
-            }
-          }).catch((e) => console.warn("[Orders API] Customer receipt notice:", e));
+          emailTasks.push(
+            sendOrderConfirmation(orderData)
+              .then(async (r) => {
+                customerEmailDelivered = Boolean(r?.delivered || r?.success);
+                console.info(`[Orders API] Customer receipt delivery result for #${id} to <${email}>: ${customerEmailDelivered ? "delivered" : "failed"}`);
+                if (customerEmailDelivered) {
+                  await updateServerOrder(id, {
+                    confirmationEmailSentAt: new Date().toISOString(),
+                    confirmationEmailDelivered: true,
+                  }).catch(() => {});
+                }
+              })
+              .catch((e) => console.warn("[Orders API] Customer receipt notice:", e))
+          );
         }
+
+        // Await all email tasks before ending serverless response to prevent Vercel execution freezing
+        await Promise.allSettled(emailTasks);
       }
 
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ success: true, orderId: id, total: computedTotal }));
+      res.end(JSON.stringify({
+        success: true,
+        orderId: id,
+        total: computedTotal,
+        accountCreated: isNewAccountCreated,
+        method: saveResult.method,
+      }));
       return;
     }
+
 
     // =========================================================================
     // 1. ORDER PLACEMENT NOTIFICATION (Customer Confirmation + Admin Alert)

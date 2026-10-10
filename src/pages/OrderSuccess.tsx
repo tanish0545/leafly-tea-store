@@ -10,7 +10,7 @@ import { ApiService } from "../lib/apiClient";
 import DeliveryAnimation from "../components/DeliveryAnimation";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
-import logo from "../assets/leafly-logo.png";
+import TaxInvoiceModal from "../components/TaxInvoiceModal";
 import "./OrderSuccess.css";
 import "./Orders.css";
 
@@ -537,158 +537,13 @@ export default function OrderSuccess() {
 
       {/* AUTHORITATIVE INVOICE MODAL FOR GUESTS & LOGGED-IN CUSTOMERS */}
       {showInvoice && order && (
-        <div 
-          className="invoice-modal-overlay" 
-          onClick={() => setShowInvoice(false)}
-          ref={(el) => {
-            if (el) el.scrollTop = 0;
-          }}
-        >
-          <div className="invoice-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="invoice-modal-actions no-print">
-              <button
-                type="button"
-                className="invoice-print-btn"
-                onClick={() => window.print()}
-              >
-                🖨️ Print / Save as PDF
-              </button>
-              <button
-                type="button"
-                className="invoice-close-btn"
-                onClick={() => setShowInvoice(false)}
-              >
-                ✕ Close
-              </button>
-            </div>
-
-            {/* PRINTABLE INVOICE SHEET */}
-            <div className="invoice-sheet" id="printable-invoice">
-              <header className="invoice-header">
-                <div className="invoice-brand-col">
-                  <div className="invoice-logo-row">
-                    <img src={logo} alt="Leafly" className="invoice-logo-img" />
-                    <div>
-                      <h2 className="invoice-brand-name">LEAFLY</h2>
-                      <p className="invoice-brand-sub">TEA SANCTUARY & BOTANICALS</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="invoice-meta-top">
-                  <h3>TAX INVOICE / RECEIPT</h3>
-                  <p><strong>Invoice #:</strong> INV-{order.id}</p>
-                  <p><strong>Order Date:</strong> {new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
-                  <p>
-                    <strong>Order Status:</strong>{" "}
-                    <span className="invoice-status-pill">
-                      {order.orderStatus || order.status || "Confirmed"}
-                    </span>
-                  </p>
-                </div>
-              </header>
-
-              <div className="invoice-parties-grid">
-                <div className="invoice-party-col">
-                  <h4>SOLD BY:</h4>
-                  <strong>Leafly</strong>
-                  <p>Near Balaji Symphony,</p>
-                  <p>Panvel - 410206,</p>
-                  <p>Maharashtra, India</p>
-                  <p>myleaflytea@gmail.com</p>
-                </div>
-                <div className="invoice-party-col">
-                  <h4>BILLED TO / DELIVERED TO:</h4>
-                  <strong>{order.shippingAddress?.fullName || order.customerName || "Valued Customer"}</strong>
-                  {order.shippingAddress?.addressLine1 && (
-                    <p>
-                      {order.shippingAddress.addressLine1}
-                      {order.shippingAddress.addressLine2 ? `, ${order.shippingAddress.addressLine2}` : ""}
-                    </p>
-                  )}
-                  {order.shippingAddress?.city && (
-                    <p>
-                      {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.postalCode}
-                    </p>
-                  )}
-                  {order.customerEmail && <p>{order.customerEmail}</p>}
-                  {order.customerPhone && <p>{order.customerPhone}</p>}
-                </div>
-              </div>
-
-              {order.deliveryInstructions ? (
-                <div className="invoice-instructions-callout">
-                  <strong>Delivery Instructions:</strong> {order.deliveryInstructions}
-                </div>
-              ) : null}
-
-              {/* ITEMS TABLE */}
-              <table className="invoice-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: "32px" }}>#</th>
-                    <th>Item Description</th>
-                    <th>Weight / Variant</th>
-                    <th style={{ textAlign: "center", width: "45px" }}>Qty</th>
-                    <th style={{ textAlign: "right", width: "90px" }}>Unit Price</th>
-                    <th style={{ textAlign: "right", width: "95px" }}>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.items.map((item, idx) => (
-                    <tr key={idx}>
-                      <td>{idx + 1}</td>
-                      <td>
-                        <strong className="invoice-item-name">{item.name}</strong>
-                        {item.category && <small className="invoice-item-cat">{item.category} Selection</small>}
-                      </td>
-                      <td>{item.variant || item.weight || "100g"}</td>
-                      <td style={{ textAlign: "center" }}>{item.quantity}</td>
-                      <td style={{ textAlign: "right" }}>{currencyFormatter.format(item.price)}</td>
-                      <td style={{ textAlign: "right" }}>{currencyFormatter.format(item.price * item.quantity)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* FINANCIAL SUMMARY TABLE */}
-              <div className="invoice-totals-section">
-                <div className="invoice-payment-info">
-                  <h4>PAYMENT & DISPATCH SUMMARY</h4>
-                  <p><strong>Payment Method:</strong> {order.paymentMethod ? (order.paymentMethod === "cod" ? "PAY ON DELIVERY" : order.paymentMethod.toUpperCase()) : "PAY ON DELIVERY"}</p>
-                  <p><strong>Payment Status:</strong> {order.paymentStatus || "Confirmed"}</p>
-                  <p><strong>Delivery Method:</strong> {order.deliveryMethod || "Standard Delivery"}</p>
-                </div>
-
-                <div className="invoice-totals-box">
-                  <div className="invoice-totals-row">
-                    <span>Subtotal:</span>
-                    <span>{currencyFormatter.format(order.subtotal || order.total)}</span>
-                  </div>
-                  {order.discount ? (
-                    <div className="invoice-totals-row invoice-discount-row">
-                      <span>Discount {order.couponCode ? `(${order.couponCode})` : ""}:</span>
-                      <span>- {currencyFormatter.format(order.discount)}</span>
-                    </div>
-                  ) : null}
-                  <div className="invoice-totals-row">
-                    <span>Delivery Fee:</span>
-                    <span>{order.deliveryFee ? currencyFormatter.format(order.deliveryFee) : "FREE"}</span>
-                  </div>
-                  <div className="invoice-totals-row invoice-grand-total">
-                    <span>Final Amount:</span>
-                    <span>{currencyFormatter.format(order.total)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <footer className="invoice-footer">
-                <p>Thank you for steepening your ritual with Leafly. Steep pure, savor quietness.</p>
-                <small>This is an authentic computer-generated tax invoice and requires no physical signature.</small>
-              </footer>
-            </div>
-          </div>
-        </div>
+        <TaxInvoiceModal
+          order={order}
+          isOpen={showInvoice}
+          onClose={() => setShowInvoice(false)}
+        />
       )}
+
 
       <Footer />
     </main>

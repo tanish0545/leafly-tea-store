@@ -252,6 +252,16 @@
   transition: transform 0.4s ease;
 }
 
+.gifting-hamper-image-wrap img.royal-flush-card-img {
+  object-fit: cover;
+  object-position: center 42%;
+}
+
+.gifting-hamper-image-wrap img.morning-tranquility-card-img {
+  object-fit: cover;
+  object-position: center 48%;
+}
+
 .gifting-hamper-card:hover .gifting-hamper-image-wrap img {
   transform: scale(1.04);
 }

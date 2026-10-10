@@ -994,3 +994,99 @@ export function getAccountWelcomeEmail(userName: string, userEmail: string): { s
     html: baseEmailWrapper("Welcome to Leafly", content),
   };
 }
+
+export function getPasswordSetupCustomerEmail(
+  userName: string,
+  userEmail: string,
+  setupLink: string
+): { subject: string; html: string } {
+  const subject = "Set Your Leafly Account Password ✦ Single-Origin Tea Sanctuary";
+  const content = `
+    <h2 style="margin: 0 0 16px; font-family: Georgia, serif; font-size: 22px; color: ${LEAFLY_GREEN}; font-weight: normal; line-height: 1.3;">
+      Greetings, ${userName || "Valued Patron"}!
+    </h2>
+    <p style="font-size: 15px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 0 0 16px;">
+      Following your recent checkout at Leafly, a private customer account has been reserved for your email address (<strong>${userEmail}</strong>).
+    </p>
+    <p style="font-size: 14px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 0 0 20px;">
+      To securely complete your account setup, track all your tea orders in one place, download official GST tax invoices, and access member benefits, please choose your password using the secure button below:
+    </p>
+
+    <!-- Account Details Box -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${LEAFLY_CREAM}; border: 1px solid ${LEAFLY_BORDER}; border-radius: 6px; margin: 16px 0 24px;">
+      <tr>
+        <td style="padding: 12px 18px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">Account Email:</td>
+        <td style="padding: 12px 18px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 14px; font-weight: 600; color: ${LEAFLY_GREEN};">${userEmail}</td>
+      </tr>
+      <tr>
+        <td style="padding: 12px 18px; font-size: 13px; color: ${LEAFLY_MUTED};">Account Status:</td>
+        <td style="padding: 12px 18px; font-size: 13px; font-weight: 600; color: ${LEAFLY_GOLD};">Password Setup Pending</td>
+      </tr>
+    </table>
+
+    <div align="center" style="margin: 28px 0 24px;">
+      <a href="${setupLink}" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #ffffff; font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 14px 32px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD}; box-shadow: 0 2px 8px rgba(11, 43, 30, 0.2);">
+        Set Your Password Securely →
+      </a>
+    </div>
+
+    <p style="font-size: 12.5px; line-height: 1.6; color: ${LEAFLY_MUTED}; margin: 20px 0 0;">
+      If the button above does not work, copy and paste this verified link into your browser:<br />
+      <a href="${setupLink}" style="color: ${LEAFLY_GOLD}; word-break: break-all; font-size: 12px;">${setupLink}</a>
+    </p>
+    <p style="font-size: 12px; line-height: 1.5; color: ${LEAFLY_MUTED}; margin: 12px 0 0;">
+      This link is securely bound to your email and expires in 24 hours. If you did not place an order or request this, you can safely ignore this email.
+    </p>
+  `;
+
+  return {
+    subject,
+    html: baseEmailWrapper("Set Your Password", content),
+  };
+}
+
+export function getOrderLookupVerificationEmail(
+  userEmail: string,
+  code: string,
+  orderId?: string
+): { subject: string; html: string } {
+  const subject = `Your Leafly Order Access Code: ${code} 🍃`;
+  const content = `
+    <h2 style="margin: 0 0 16px; font-family: Georgia, serif; font-size: 22px; color: ${LEAFLY_GREEN}; font-weight: normal; line-height: 1.3;">
+      Order History Access Code
+    </h2>
+    <p style="font-size: 15px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 0 0 16px;">
+      We received a request to access past Leafly orders and official tax invoices for <strong>${userEmail}</strong>${orderId ? ` (Order #${orderId})` : ""}.
+    </p>
+
+    <!-- 6-digit Code Display Box -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${LEAFLY_CREAM}; border: 2px dashed ${LEAFLY_GOLD}; border-radius: 8px; margin: 20px 0;">
+      <tr>
+        <td align="center" style="padding: 24px 16px;">
+          <div style="font-size: 11px; font-weight: 700; letter-spacing: 2px; color: ${LEAFLY_MUTED}; text-transform: uppercase; margin-bottom: 8px;">
+            ONE-TIME VERIFICATION CODE
+          </div>
+          <div style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: ${LEAFLY_GREEN}; font-family: 'Courier New', Courier, monospace;">
+            ${code}
+          </div>
+          <div style="font-size: 12px; color: ${LEAFLY_MUTED}; margin-top: 8px;">
+            Valid for 10 minutes · Single-use code
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <p style="font-size: 13.5px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 16px 0;">
+      Enter this code on the Leafly Order History or Sanctuary page to securely retrieve and view your orders.
+    </p>
+    <p style="font-size: 12px; line-height: 1.5; color: ${LEAFLY_MUTED}; margin: 16px 0 0;">
+      If you did not request this access code, please ignore this email. Your order history and records remain private and secure.
+    </p>
+  `;
+
+  return {
+    subject,
+    html: baseEmailWrapper("Order Access Code", content),
+  };
+}
+

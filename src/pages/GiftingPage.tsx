@@ -278,6 +278,30 @@ export default function GiftingPage() {
                   String(cItem.product.id) === String(hamper.id)
               );
               const currentQty = cartItem?.quantity || 0;
+              const isRoyalFlush =
+                hamper.name?.toLowerCase().includes("royal flush") ||
+                String(hamper.id) === "201";
+              const isMorningTranquility =
+                hamper.name?.toLowerCase().includes("morning tranquility") ||
+                String(hamper.id) === "202";
+
+              const cardImage = isRoyalFlush
+                ? "/royal-flush-heritage-box.png"
+                : isMorningTranquility
+                ? "/morning-tranquility-ensemble.png"
+                : hamper.image;
+
+              const cardImgClass = isRoyalFlush
+                ? "royal-flush-card-img"
+                : isMorningTranquility
+                ? "morning-tranquility-card-img"
+                : undefined;
+
+              const cardImgStyle = isRoyalFlush
+                ? { objectFit: "cover" as const, objectPosition: "center 42%" }
+                : isMorningTranquility
+                ? { objectFit: "cover" as const, objectPosition: "center 48%" }
+                : undefined;
 
               return (
                 <article key={hamper.id} className="gifting-hamper-card">
@@ -287,12 +311,14 @@ export default function GiftingPage() {
                     style={{ cursor: "pointer" }}
                   >
                     <img
-                      src={hamper.image}
+                      src={cardImage}
                       alt={hamper.name}
                       loading={index < 2 ? "eager" : "lazy"}
                       decoding="async"
                       width={600}
                       height={600}
+                      className={cardImgClass}
+                      style={cardImgStyle}
                       {...(index === 0 ? { fetchPriority: "high" as const } : { fetchPriority: "low" as const })}
                     />
                     {hamper.badge && (
