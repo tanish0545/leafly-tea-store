@@ -33,11 +33,32 @@ export function sanitizeLogMessage(msg: string): string {
 }
 
 /**
+ * Strips surrounding double, single, or escaped quotes from string values,
+ * which commonly occur when variables are copy-pasted into Vercel or Docker envs.
+ */
+export function stripWrappingQuotes(val: string): string {
+  if (!val) return "";
+  let cleaned = val.trim();
+  while (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'")) ||
+    (cleaned.startsWith('\\"') && cleaned.endsWith('\\"'))
+  ) {
+    if (cleaned.startsWith('\\"')) {
+      cleaned = cleaned.slice(2, -2).trim();
+    } else {
+      cleaned = cleaned.slice(1, -1).trim();
+    }
+  }
+  return cleaned;
+}
+
+/**
  * Resolves the target Firebase Project ID across all supported environment variables.
  * Defaults authoritatively to 'leafly-database'.
  */
 export function getFirebaseProjectId(): string {
-  return (
+  return stripWrappingQuotes(
     process.env.FIREBASE_ADMIN_PROJECT_ID ||
     process.env.FIREBASE_PROJECT_ID ||
     process.env.VITE_FIREBASE_PROJECT_ID ||
@@ -46,7 +67,7 @@ export function getFirebaseProjectId(): string {
     process.env.FIREBASE_DATABASE_PROJECT_ID ||
     process.env.PROJECT_ID ||
     "leafly-database"
-  ).trim();
+  );
 }
 
 /**
@@ -54,36 +75,36 @@ export function getFirebaseProjectId(): string {
  * Defaults to '(default)'.
  */
 export function getFirestoreDatabaseId(): string {
-  return (
+  return stripWrappingQuotes(
     process.env.FIRESTORE_DATABASE_ID ||
     process.env.FIREBASE_DATABASE_ID ||
     "(default)"
-  ).trim();
+  );
 }
 
 /**
  * Resolves the Firebase Web API Key for client REST fallbacks.
  */
 export function getFirebaseApiKey(): string {
-  return (
+  return stripWrappingQuotes(
     process.env.VITE_FIREBASE_API_KEY ||
     process.env.FIREBASE_API_KEY ||
     "AIzaSyBP0byX7fmi8SoXATR1tiXozTUsXLzYKWw"
-  ).trim();
+  );
 }
 
 /**
  * Resolves the Google Service Account Client Email across supported environment variables.
  */
 export function getClientEmail(): string | undefined {
-  const email = (
+  const email = stripWrappingQuotes(
     process.env.FIREBASE_ADMIN_CLIENT_EMAIL ||
     process.env.FIREBASE_CLIENT_EMAIL ||
     process.env.FIREBASE_SERVICE_ACCOUNT_EMAIL ||
     process.env.GOOGLE_CLIENT_EMAIL ||
     process.env.CLIENT_EMAIL ||
     ""
-  ).trim();
+  );
 
   return email || undefined;
 }
@@ -99,7 +120,9 @@ export function getRawPrivateKey(): string | undefined {
     process.env.GOOGLE_PRIVATE_KEY ||
     process.env.PRIVATE_KEY;
 
-  return key ? key.trim() : undefined;
+  if (!key) return undefined;
+  const stripped = stripWrappingQuotes(key);
+  return stripped || undefined;
 }
 
 /**
@@ -113,7 +136,9 @@ export function getServiceAccountJson(): string | undefined {
     process.env.FIREBASE_CREDENTIALS ||
     process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
 
-  return json ? json.trim() : undefined;
+  if (!json) return undefined;
+  const stripped = stripWrappingQuotes(json);
+  return stripped || undefined;
 }
 
 /**
@@ -124,30 +149,18 @@ export function getServiceAccountJson(): string | undefined {
  * - Wrapped single, double, or escaped quotes
  * - Base64 encoded PEM keys
  * - Missing boundary newlines after BEGIN and before END headers
+ * - Accidental whitespace padding on individual base64 lines
  */
 export function formatPrivateKey(key: string): string {
   if (!key) return "";
-  let cleaned = key.trim();
-
-  // Strip wrapping quotes (single, double, or escaped quotes)
-  while (
-    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
-    (cleaned.startsWith("'") && cleaned.endsWith("'")) ||
-    (cleaned.startsWith('\\"') && cleaned.endsWith('\\"'))
-  ) {
-    if (cleaned.startsWith('\\"')) {
-      cleaned = cleaned.slice(2, -2).trim();
-    } else {
-      cleaned = cleaned.slice(1, -1).trim();
-    }
-  }
+  let cleaned = stripWrappingQuotes(key);
 
   // If base64-encoded PEM, decode it
   if (!cleaned.includes("-----BEGIN") && cleaned.length > 60) {
     try {
       const decoded = Buffer.from(cleaned, "base64").toString("utf-8");
       if (decoded.includes("-----BEGIN")) {
-        cleaned = decoded.trim();
+        cleaned = stripWrappingQuotes(decoded);
       }
     } catch {
       // Not base64
@@ -163,22 +176,14 @@ export function formatPrivateKey(key: string): string {
     .replace(/\\\\n/g, "\n")
     .replace(/\\n/g, "\n");
 
-  // Ensure standard PEM header and footer have proper line breaks
-  if (cleaned.includes("-----BEGIN PRIVATE KEY-----") && !cleaned.includes("-----BEGIN PRIVATE KEY-----\n")) {
-    cleaned = cleaned.replace("-----BEGIN PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----\n");
-  }
-  if (cleaned.includes("-----END PRIVATE KEY-----") && !cleaned.includes("\n-----END PRIVATE KEY-----")) {
-    cleaned = cleaned.replace("-----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----");
-  }
+  // Ensure standard PEM header and footer have clean line breaks
+  cleaned = cleaned
+    .replace(/-----BEGIN (?:RSA )?PRIVATE KEY-----\s*/g, (match) => match.trim() + "\n")
+    .replace(/\s*-----END (?:RSA )?PRIVATE KEY-----/g, (match) => "\n" + match.trim());
 
-  if (cleaned.includes("-----BEGIN RSA PRIVATE KEY-----") && !cleaned.includes("-----BEGIN RSA PRIVATE KEY-----\n")) {
-    cleaned = cleaned.replace("-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----\n");
-  }
-  if (cleaned.includes("-----END RSA PRIVATE KEY-----") && !cleaned.includes("\n-----END RSA PRIVATE KEY-----")) {
-    cleaned = cleaned.replace("-----END RSA PRIVATE KEY-----", "\n-----END RSA PRIVATE KEY-----");
-  }
-
-  return cleaned.trim();
+  // Clean each line, stripping any accidental surrounding whitespace, and remove blank lines
+  const lines = cleaned.split("\n").map((line) => line.trim()).filter(Boolean);
+  return lines.join("\n");
 }
 
 /**
@@ -206,6 +211,12 @@ export function hasAdminCredentials(): boolean {
   return false;
 }
 
+let lastAdminInitError: string | null = null;
+
+export function getLastAdminInitError(): string | null {
+  return lastAdminInitError;
+}
+
 /**
  * Safe diagnostics report for server-side troubleshooting.
  * NEVER exposes private keys, tokens, or sensitive values.
@@ -220,6 +231,7 @@ export function getAdminConfigStatus(): {
   hasPrivateKey: boolean;
   privateKeyValidFormat: boolean;
   reason?: string;
+  lastError?: string;
 } {
   const projectId = getFirebaseProjectId();
   const databaseId = getFirestoreDatabaseId();
@@ -237,6 +249,7 @@ export function getAdminConfigStatus(): {
       isServiceAccountEmail: true,
       hasPrivateKey: true,
       privateKeyValidFormat: true,
+      lastError: lastAdminInitError || undefined,
     };
   }
 
@@ -263,6 +276,7 @@ export function getAdminConfigStatus(): {
       reason: keyValidFormat
         ? undefined
         : "Private key is present but missing valid PEM headers or newlines.",
+      lastError: lastAdminInitError || undefined,
     };
   }
 
@@ -276,8 +290,13 @@ export function getAdminConfigStatus(): {
       isServiceAccountEmail: true,
       hasPrivateKey: true,
       privateKeyValidFormat: true,
+      lastError: lastAdminInitError || undefined,
     };
   }
+
+  const missing: string[] = [];
+  if (!hasEmail) missing.push("FIREBASE_ADMIN_CLIENT_EMAIL");
+  if (!hasKey) missing.push("FIREBASE_ADMIN_PRIVATE_KEY");
 
   return {
     configured: false,
@@ -288,7 +307,8 @@ export function getAdminConfigStatus(): {
     isServiceAccountEmail: isSaEmail,
     hasPrivateKey: hasKey,
     privateKeyValidFormat: keyValidFormat,
-    reason: "Missing server-side Firebase Admin credentials (FIREBASE_ADMIN_CLIENT_EMAIL and FIREBASE_ADMIN_PRIVATE_KEY).",
+    reason: `Missing server-side Firebase Admin credentials (${missing.join(", ")}).`,
+    lastError: lastAdminInitError || undefined,
   };
 }
 
@@ -301,13 +321,13 @@ export function getAdminConfigStatus(): {
  * 4. Managed Application Default Credentials (Google Cloud Run / Cloud Functions / GCP)
  */
 export function initAdminApp(): App | null {
-  if (!hasAdminCredentials()) {
-    return null;
-  }
-
   const existingApps = getApps();
   if (existingApps.length > 0) {
     return existingApps[0];
+  }
+
+  if (!hasAdminCredentials()) {
+    return null;
   }
 
   const projectId = getFirebaseProjectId();
@@ -335,10 +355,14 @@ export function initAdminApp(): App | null {
         projectId: parsed.project_id || projectId,
       });
       console.info(`[Firebase Admin] Initialized using Service Account JSON for project "${parsed.project_id || projectId}".`);
+      lastAdminInitError = null;
       return app;
     } catch (e) {
       const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
-      console.warn(`[Firebase Admin Notice] Could not parse Service Account JSON: ${safeMsg}`);
+      lastAdminInitError = `JSON initialization error: ${safeMsg}`;
+      console.error(`[Firebase Admin Error] Could not parse or initialize Service Account JSON: ${safeMsg}`);
+      const appsAfter = getApps();
+      if (appsAfter.length > 0) return appsAfter[0];
     }
   }
 
@@ -349,16 +373,20 @@ export function initAdminApp(): App | null {
       const app = initializeApp({
         credential: cert({
           projectId,
-          clientEmail: clientEmail.trim(),
+          clientEmail,
           privateKey,
         }),
         projectId,
       });
       console.info(`[Firebase Admin] Initialized using Service Account environment credentials for project "${projectId}".`);
+      lastAdminInitError = null;
       return app;
     } catch (e) {
       const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
-      console.warn(`[Firebase Admin Notice] Failed to initialize credentials with cert(): ${safeMsg}`);
+      lastAdminInitError = `Cert credentials error: ${safeMsg}`;
+      console.error(`[Firebase Admin Error] Failed to initialize credentials with cert(): ${safeMsg}`);
+      const appsAfter = getApps();
+      if (appsAfter.length > 0) return appsAfter[0];
     }
   }
 
@@ -371,13 +399,17 @@ export function initAdminApp(): App | null {
           projectId,
         });
         console.info(`[Firebase Admin] Initialized using GOOGLE_APPLICATION_CREDENTIALS for project "${projectId}".`);
+        lastAdminInitError = null;
         return app;
       } else {
         console.warn("[Firebase Admin Notice] GOOGLE_APPLICATION_CREDENTIALS file path does not exist.");
       }
     } catch (e) {
       const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
-      console.warn(`[Firebase Admin Notice] Could not load GOOGLE_APPLICATION_CREDENTIALS: ${safeMsg}`);
+      lastAdminInitError = `ADC file error: ${safeMsg}`;
+      console.error(`[Firebase Admin Error] Could not load GOOGLE_APPLICATION_CREDENTIALS: ${safeMsg}`);
+      const appsAfter = getApps();
+      if (appsAfter.length > 0) return appsAfter[0];
     }
   }
 
@@ -396,10 +428,14 @@ export function initAdminApp(): App | null {
         projectId,
       });
       console.info(`[Firebase Admin] Initialized using GCP managed Application Default Credentials for project "${projectId}".`);
+      lastAdminInitError = null;
       return app;
     } catch (e) {
       const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
-      console.warn(`[Firebase Admin Notice] GCP ApplicationDefault attempt failed: ${safeMsg}`);
+      lastAdminInitError = `GCP ADC error: ${safeMsg}`;
+      console.error(`[Firebase Admin Error] GCP ApplicationDefault attempt failed: ${safeMsg}`);
+      const appsAfter = getApps();
+      if (appsAfter.length > 0) return appsAfter[0];
     }
   }
 
@@ -416,7 +452,8 @@ export function getAdminFirestore(): Firestore | null {
       : getFirestore(app);
   } catch (e) {
     const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
-    console.warn(`[Firebase Admin Notice] Could not obtain Firestore instance: ${safeMsg}`);
+    lastAdminInitError = `Firestore instance error: ${safeMsg}`;
+    console.error(`[Firebase Admin Error] Could not obtain Firestore instance: ${safeMsg}`);
     return null;
   }
 }
@@ -428,7 +465,8 @@ export function getAdminAuth(): Auth | null {
     return getAuth(app);
   } catch (e) {
     const safeMsg = sanitizeLogMessage(e instanceof Error ? e.message : String(e));
-    console.warn(`[Firebase Admin Notice] Could not obtain Auth instance: ${safeMsg}`);
+    lastAdminInitError = `Auth instance error: ${safeMsg}`;
+    console.error(`[Firebase Admin Error] Could not obtain Auth instance: ${safeMsg}`);
     return null;
   }
 }
@@ -678,6 +716,7 @@ export async function saveServerOrder(
   }
 
   // 1. Authoritative Admin SDK write (preferred when credentials present)
+  let adminWriteError: string | null = null;
   const adminDb = getAdminFirestore();
   if (adminDb) {
     try {
@@ -696,8 +735,17 @@ export async function saveServerOrder(
       return { success: true, method: "admin_sdk" };
     } catch (adminErr: any) {
       const safeMsg = sanitizeLogMessage(adminErr instanceof Error ? adminErr.message : String(adminErr));
-      console.warn(`[Firebase Admin Notice] Admin SDK write failed (${safeMsg}), attempting REST fallback...`);
+      adminWriteError = safeMsg;
+      console.error(`[Firebase Admin Error] Admin SDK write failed for order #${orderId}: ${safeMsg}`);
+      console.warn(`[Firebase Admin Notice] Attempting fallback order persistence mechanisms for #${orderId}...`);
     }
+  } else {
+    const configReport = getAdminConfigStatus();
+    console.warn(
+      `[Firebase Admin Notice] Admin SDK Firestore unavailable for order #${orderId}. Reason: ${
+        configReport.reason || configReport.lastError || "Uninitialized"
+      }`
+    );
   }
 
   // 2. Server REST fallback
@@ -810,11 +858,24 @@ export async function saveServerOrder(
   }
 
   const configReport = getAdminConfigStatus();
+
+  // Safe, structured server-side diagnostic logging (Credentials and private keys are NEVER logged)
+  console.error(
+    `[Firebase Admin Checkout Error] Failed to persist order #${orderId}. ` +
+    `ConfigStatus: configured=${configReport.configured}, strategy=${configReport.strategy}, ` +
+    `hasEmail=${configReport.hasClientEmail}, hasKey=${configReport.hasPrivateKey}, ` +
+    `keyFormatValid=${configReport.privateKeyValidFormat}. ` +
+    (configReport.reason ? `Reason: "${configReport.reason}". ` : "") +
+    (configReport.lastError ? `LastInitError: "${configReport.lastError}". ` : "") +
+    (adminWriteError ? `AdminWriteError: "${adminWriteError}". ` : "") +
+    (!configReport.configured
+      ? "Note: If environment variables were recently added/updated in Vercel, a new Production deployment is required to inject them into the serverless runtime."
+      : "")
+  );
+
   return {
     success: false,
-    error: configReport.configured
-      ? "Database write could not be completed. Please check Firestore security rules or server network connectivity."
-      : "Database write could not be completed. Server Firebase Admin credentials (FIREBASE_ADMIN_CLIENT_EMAIL and FIREBASE_ADMIN_PRIVATE_KEY) are not configured in Vercel environment variables.",
+    error: "Database write could not be completed. Please try again or contact support.",
   };
 }
 
