@@ -12,6 +12,7 @@
  */
 
 import fs from "node:fs";
+import { createPrivateKey } from "node:crypto";
 import { initializeApp, getApps, cert, applicationDefault, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getAuth, type Auth } from "firebase-admin/auth";
@@ -58,7 +59,7 @@ export function stripWrappingQuotes(val: string): string {
  * Defaults authoritatively to 'leafly-database'.
  */
 export function getFirebaseProjectId(): string {
-  return stripWrappingQuotes(
+  const explicit = stripWrappingQuotes(
     process.env.FIREBASE_ADMIN_PROJECT_ID ||
     process.env.FIREBASE_PROJECT_ID ||
     process.env.VITE_FIREBASE_PROJECT_ID ||
@@ -66,8 +67,38 @@ export function getFirebaseProjectId(): string {
     process.env.GOOGLE_CLOUD_PROJECT ||
     process.env.FIREBASE_DATABASE_PROJECT_ID ||
     process.env.PROJECT_ID ||
-    "leafly-database"
+    ""
   );
+  if (explicit) return explicit;
+
+  // Derive from client email if available (e.g. firebase-adminsdk-xxx@leafly-database.iam.gserviceaccount.com)
+  const clientEmail = getClientEmail();
+  if (clientEmail && clientEmail.includes("@") && clientEmail.includes(".iam.gserviceaccount.com")) {
+    const domainPart = clientEmail.split("@")[1];
+    const derived = domainPart.replace(".iam.gserviceaccount.com", "").trim();
+    if (derived) return derived;
+  }
+
+  return "leafly-database";
+}
+
+/**
+ * Verifies consistency between the resolved Firebase project ID and the service-account client email.
+ */
+export function checkProjectConsistency(): { consistent: boolean; warning?: string } {
+  const projectId = getFirebaseProjectId();
+  const clientEmail = getClientEmail();
+  if (clientEmail && clientEmail.includes("@") && clientEmail.includes(".iam.gserviceaccount.com")) {
+    const domainPart = clientEmail.split("@")[1];
+    const emailProject = domainPart.replace(".iam.gserviceaccount.com", "").trim();
+    if (emailProject && projectId && emailProject.toLowerCase() !== projectId.toLowerCase()) {
+      return {
+        consistent: false,
+        warning: `Project ID mismatch: resolved projectId "${projectId}" differs from client email service account project "${emailProject}".`,
+      };
+    }
+  }
+  return { consistent: true };
 }
 
 /**
@@ -142,18 +173,50 @@ export function getServiceAccountJson(): string | undefined {
 }
 
 /**
+ * Safely validates whether a string is a valid, parseable private key in PEM format.
+ * Uses Node's native crypto module without ever logging, printing, or exposing key data.
+ */
+export function validatePrivateKeyPem(key?: string): { valid: boolean; error?: string } {
+  if (!key || typeof key !== "string" || key.trim().length === 0) {
+    return { valid: false, error: "Private key is missing or empty." };
+  }
+  try {
+    createPrivateKey(key);
+    return { valid: true };
+  } catch (err) {
+    const safeMsg = sanitizeLogMessage(err instanceof Error ? err.message : String(err));
+    return { valid: false, error: safeMsg };
+  }
+}
+
+/**
  * Bulletproof private-key normalization for Vercel, Docker, and local .env files.
  * Correctly handles:
- * - Literal escaped newlines ("\n", "\\n", "\\\\n")
+ * - Literal escaped newlines ("\n", "\\n", "\\\n", "\\\\n")
  * - Windows CRLF linebreaks ("\r\n", "\\r\\n")
  * - Wrapped single, double, or escaped quotes
+ * - Accidental pasting of full Service Account JSON into the private key env var
  * - Base64 encoded PEM keys
  * - Missing boundary newlines after BEGIN and before END headers
- * - Accidental whitespace padding on individual base64 lines
+ * - Accidental whitespace padding and trailing backslashes on individual lines
+ * - Reconstructing PEM boundaries for raw base64 key bodies
+ * - Automatic PKCS#8 vs PKCS#1 header swap verification with Node crypto
  */
 export function formatPrivateKey(key: string): string {
   if (!key) return "";
   let cleaned = stripWrappingQuotes(key);
+
+  // If entire Service Account JSON was pasted into the private key env var
+  if (cleaned.startsWith("{") && cleaned.includes("private_key")) {
+    try {
+      const obj = JSON.parse(cleaned);
+      if (obj.private_key) {
+        cleaned = stripWrappingQuotes(String(obj.private_key));
+      }
+    } catch {
+      // Not JSON or parse failed; continue
+    }
+  }
 
   // If base64-encoded PEM, decode it
   if (!cleaned.includes("-----BEGIN") && cleaned.length > 60) {
@@ -167,23 +230,65 @@ export function formatPrivateKey(key: string): string {
     }
   }
 
-  // Normalize escaped and multi-escaped newlines to true '\n'
+  // Handle literal escaped newlines with any number of backslashes (e.g. \n, \\n, \\\n, \\\\n)
   cleaned = cleaned
-    .replace(/\\r\\n/g, "\n")
+    .replace(/\\+r\\+n/g, "\n")
     .replace(/\r\n/g, "\n")
-    .replace(/\\r/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/\\\\n/g, "\n")
-    .replace(/\\n/g, "\n");
+    .replace(/\\+n/g, "\n")
+    .replace(/\\+r/g, "\n")
+    .replace(/\r/g, "\n");
 
-  // Ensure standard PEM header and footer have clean line breaks
-  cleaned = cleaned
-    .replace(/-----BEGIN (?:RSA )?PRIVATE KEY-----\s*/g, (match) => match.trim() + "\n")
-    .replace(/\s*-----END (?:RSA )?PRIVATE KEY-----/g, (match) => "\n" + match.trim());
+  // Strip wrapping quotes again in case unescaping exposed them
+  cleaned = stripWrappingQuotes(cleaned);
 
-  // Clean each line, stripping any accidental surrounding whitespace, and remove blank lines
-  const lines = cleaned.split("\n").map((line) => line.trim()).filter(Boolean);
-  return lines.join("\n");
+  // If the key has no PEM headers at all (raw base64 body), reconstruct PKCS#8 PEM
+  if (!cleaned.includes("-----BEGIN")) {
+    const rawBody = cleaned.replace(/[\s\\]+/g, "");
+    cleaned = `-----BEGIN PRIVATE KEY-----\n${rawBody}\n-----END PRIVATE KEY-----`;
+  } else {
+    // Ensure standard PEM header and footer have clean line breaks
+    cleaned = cleaned
+      .replace(/-----BEGIN (?:RSA )?PRIVATE KEY-----\s*/g, (match) => match.trim() + "\n")
+      .replace(/\s*-----END (?:RSA )?PRIVATE KEY-----/g, (match) => "\n" + match.trim());
+  }
+
+  // Clean each line, stripping any accidental surrounding whitespace and trailing backslashes, and remove blank lines
+  const lines = cleaned
+    .split("\n")
+    .map((line) => line.trim().replace(/\\+$/, "").trim())
+    .filter(Boolean);
+
+  let normalized = lines.join("\n");
+
+  // Verify whether native createPrivateKey accepts it; if not and it's RSA PKCS#1 vs PKCS#8, try switching header
+  try {
+    createPrivateKey(normalized);
+    return normalized;
+  } catch {
+    if (normalized.includes("BEGIN PRIVATE KEY")) {
+      const alt = normalized
+        .replace("BEGIN PRIVATE KEY", "BEGIN RSA PRIVATE KEY")
+        .replace("END PRIVATE KEY", "END RSA PRIVATE KEY");
+      try {
+        createPrivateKey(alt);
+        return alt;
+      } catch {
+        // Fall through
+      }
+    } else if (normalized.includes("BEGIN RSA PRIVATE KEY")) {
+      const alt = normalized
+        .replace("BEGIN RSA PRIVATE KEY", "BEGIN PRIVATE KEY")
+        .replace("END RSA PRIVATE KEY", "END PRIVATE KEY");
+      try {
+        createPrivateKey(alt);
+        return alt;
+      } catch {
+        // Fall through
+      }
+    }
+  }
+
+  return normalized;
 }
 
 /**
@@ -230,6 +335,7 @@ export function getAdminConfigStatus(): {
   isServiceAccountEmail: boolean;
   hasPrivateKey: boolean;
   privateKeyValidFormat: boolean;
+  projectConsistent?: boolean;
   reason?: string;
   lastError?: string;
 } {
@@ -238,6 +344,7 @@ export function getAdminConfigStatus(): {
   const rawServiceAccount = getServiceAccountJson();
   const clientEmail = getClientEmail();
   const rawPrivateKey = getRawPrivateKey();
+  const consistency = checkProjectConsistency();
 
   if (rawServiceAccount) {
     return {
@@ -249,6 +356,7 @@ export function getAdminConfigStatus(): {
       isServiceAccountEmail: true,
       hasPrivateKey: true,
       privateKeyValidFormat: true,
+      projectConsistent: consistency.consistent,
       lastError: lastAdminInitError || undefined,
     };
   }
@@ -257,13 +365,23 @@ export function getAdminConfigStatus(): {
   const isSaEmail = Boolean(clientEmail && clientEmail.includes(".gserviceaccount.com"));
   const hasKey = Boolean(rawPrivateKey);
   let keyValidFormat = false;
+  let keyValidationError: string | undefined;
 
   if (hasKey && rawPrivateKey) {
     const formatted = formatPrivateKey(rawPrivateKey);
-    keyValidFormat = formatted.includes("-----BEGIN") && formatted.includes("-----END");
+    const validation = validatePrivateKeyPem(formatted);
+    keyValidFormat = validation.valid;
+    keyValidationError = validation.error;
   }
 
   if (hasEmail && hasKey) {
+    let reasonText: string | undefined;
+    if (!keyValidFormat) {
+      reasonText = `Private key is present but invalid (${keyValidationError || "cannot be parsed by crypto"}).`;
+    } else if (!consistency.consistent) {
+      reasonText = consistency.warning;
+    }
+
     return {
       configured: keyValidFormat,
       strategy: "env_credentials",
@@ -273,9 +391,8 @@ export function getAdminConfigStatus(): {
       isServiceAccountEmail: isSaEmail,
       hasPrivateKey: hasKey,
       privateKeyValidFormat: keyValidFormat,
-      reason: keyValidFormat
-        ? undefined
-        : "Private key is present but missing valid PEM headers or newlines.",
+      projectConsistent: consistency.consistent,
+      reason: reasonText,
       lastError: lastAdminInitError || undefined,
     };
   }
@@ -290,6 +407,7 @@ export function getAdminConfigStatus(): {
       isServiceAccountEmail: true,
       hasPrivateKey: true,
       privateKeyValidFormat: true,
+      projectConsistent: true,
       lastError: lastAdminInitError || undefined,
     };
   }
@@ -307,6 +425,7 @@ export function getAdminConfigStatus(): {
     isServiceAccountEmail: isSaEmail,
     hasPrivateKey: hasKey,
     privateKeyValidFormat: keyValidFormat,
+    projectConsistent: consistency.consistent,
     reason: `Missing server-side Firebase Admin credentials (${missing.join(", ")}).`,
     lastError: lastAdminInitError || undefined,
   };
@@ -368,8 +487,21 @@ export function initAdminApp(): App | null {
 
   // Strategy 2: Client Email + Private Key environment variables
   if (clientEmail && rawPrivateKey) {
+    const consistency = checkProjectConsistency();
+    if (!consistency.consistent && consistency.warning) {
+      console.warn(`[Firebase Admin Warning] ${consistency.warning}`);
+    }
+
+    const privateKey = formatPrivateKey(rawPrivateKey);
+    const keyValidation = validatePrivateKeyPem(privateKey);
+    if (!keyValidation.valid) {
+      const err = `Private key validation failed: ${keyValidation.error || "unparseable PEM key"}`;
+      lastAdminInitError = err;
+      console.error(`[Firebase Admin Error] ${err}`);
+      return null;
+    }
+
     try {
-      const privateKey = formatPrivateKey(rawPrivateKey);
       const app = initializeApp({
         credential: cert({
           projectId,
@@ -839,23 +971,8 @@ export async function saveServerOrder(
     }
   }
 
-  // Attempt 3: If order is a guest order, try unauthenticated REST write satisfying firestore.rules
-  const isGuest = orderPayload.isGuest === true || orderPayload.userId === "guest" || !orderPayload.userId;
-  if (isGuest) {
-    try {
-      const res = await executePatch(undefined, "guest");
-      if (res.ok) {
-        console.info(`[Firebase Admin] Guest order #${orderId} persisted via unauthenticated REST write.`);
-        return { success: true, method: "guest_rest_fallback" };
-      }
-      const errData = await res.json().catch(() => ({}));
-      const msg = sanitizeLogMessage((errData as any)?.error?.message || `HTTP ${res.status}`);
-      console.warn(`[Firebase Admin] Unauthenticated guest REST write returned ${res.status}: ${msg}`);
-    } catch (guestErr) {
-      const safeMsg = sanitizeLogMessage(guestErr instanceof Error ? guestErr.message : String(guestErr));
-      console.warn(`[Firebase Admin] Guest REST write exception: ${safeMsg}`);
-    }
-  }
+  // Note: Unauthenticated guest REST writes are strictly prohibited to maintain database integrity
+  // and honor Firestore security rules. Server order persistence requires authoritative Admin SDK privileges.
 
   const configReport = getAdminConfigStatus();
 
@@ -875,7 +992,7 @@ export async function saveServerOrder(
 
   return {
     success: false,
-    error: "Database write could not be completed. Please try again or contact support.",
+    error: "Database write could not be completed. Server Firebase Admin credentials are not properly configured.",
   };
 }
 
