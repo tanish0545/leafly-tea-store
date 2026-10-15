@@ -1,5 +1,3 @@
-import image2 from "../assets/image2.webp";
-import image3 from "../assets/image3.webp";
 import image5 from "../assets/image5.webp";
 
 export type GiftHamper = {
@@ -28,7 +26,7 @@ export const giftHampers: GiftHamper[] = [
     name: "The Royal Flush Heritage Box",
     subtitle: "Darjeeling First Flush, Nilgiri White Needle & Brass Infuser",
     price: 2499,
-    image: image3,
+    image: "/royal-flush-heritage-box.png",
     includes: ["1x Darjeeling First Flush (50g)", "1x Nilgiri White Needle (50g)", "Handmade Brass Scoop", "Artisan Keepsake Box"],
     badge: "MOST POPULAR",
     stock: 10,
@@ -40,7 +38,7 @@ export const giftHampers: GiftHamper[] = [
     name: "The Morning Tranquility Ensemble",
     subtitle: "Darjeeling Golden Tips, Pure Honey & Ceramic Cup",
     price: 1899,
-    image: image2,
+    image: "/morning-tranquility-ensemble.png",
     includes: ["1x Darjeeling Golden Reserve (100g)", "Wild Forest Blossom Honey (150g)", "Hand-thrown Terracotta Tumbler", "Tasting Journal Booklet"],
     badge: "BEST FOR MORNINGS",
     stock: 10,

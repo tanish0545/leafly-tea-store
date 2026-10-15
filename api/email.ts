@@ -4,8 +4,9 @@ import {
   sendGiftInquiry,
   sendNewsletterNotification,
   sendWelcomeNotification,
+  sendPasswordResetEmail,
 } from "./_lib/mailer.js";
-import { getAdminFirestore } from "./_lib/firebaseAdmin.js";
+import { getAdminFirestore, getAdminAuth, buildBrandedResetLink, sanitizeLogMessage } from "./_lib/firebaseAdmin.js";
 import type {
   ContactEmailData,
   GiftingEmailData,
@@ -15,6 +16,7 @@ import type {
 const recentContactSubmissions = new Map<string, number>();
 const recentGiftingSubmissions = new Map<string, number>();
 const recentNewsletterSubmissions = new Map<string, number>();
+const recentResetSubmissions = new Map<string, number>();
 
 interface EmailRequestBody {
   action?: string;
@@ -440,12 +442,129 @@ export default async function handler(
       return;
     }
 
+    // =========================================================================
+    // 5. PASSWORD RESET EMAIL (BRANDED LEAFLY SECURE ACTION FLOW)
+    // =========================================================================
+    if (action === "password-reset" || action === "reset-password") {
+      const email = String(body.email || "").trim().toLowerCase();
+
+      if (!email) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ success: false, error: "Email is required." }));
+        return;
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ success: false, error: "Please enter a valid email address." }));
+        return;
+      }
+
+      // Prevent rapid spam/abuse (rate limit to 1 per 60s per email address)
+      const now = Date.now();
+      const lastSent = recentResetSubmissions.get(email) || 0;
+      if (now - lastSent < 60000) {
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: true,
+            message: "If an account exists with this email, a password reset link has been dispatched.",
+          })
+        );
+        return;
+      }
+      recentResetSubmissions.set(email, now);
+
+      const adminAuth = getAdminAuth();
+      if (!adminAuth) {
+        res.statusCode = 503;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: "Authentication service temporarily unavailable.",
+          })
+        );
+        return;
+      }
+
+      const host =
+        process.env.PUBLIC_URL ||
+        process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+        process.env.VERCEL_URL ||
+        "https://leaflytea.in";
+      const baseUrl = (host.startsWith("http") ? host : `https://${host}`).replace(/\/+$/, "");
+
+      let rawLink: string | null = null;
+      let customerName = "Valued Patron";
+
+      try {
+        const userRec = await adminAuth.getUserByEmail(email);
+        customerName = userRec.displayName || "Valued Patron";
+
+        try {
+          rawLink = await adminAuth.generatePasswordResetLink(email, {
+            url: `${baseUrl}/reset-password`,
+            handleCodeInApp: true,
+          });
+        } catch {
+          rawLink = await adminAuth.generatePasswordResetLink(email);
+        }
+      } catch (userErr: any) {
+        // If user is not found, return generic success to prevent email enumeration
+        if (
+          userErr?.code === "auth/user-not-found" ||
+          userErr?.message?.includes("user-not-found") ||
+          userErr?.code === "auth/email-not-found"
+        ) {
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              success: true,
+              message: "If an account exists with this email, a password reset link has been dispatched.",
+            })
+          );
+          return;
+        }
+        throw userErr;
+      }
+
+      if (rawLink) {
+        const brandedLink = buildBrandedResetLink(rawLink, baseUrl);
+        const mailResult = await sendPasswordResetEmail({
+          email,
+          customerName,
+          resetLink: brandedLink,
+        });
+
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: mailResult.success,
+            delivered: mailResult.delivered,
+            message: "If an account exists with this email, a password reset link has been dispatched.",
+          })
+        );
+        return;
+      }
+
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ success: false, error: "Failed to generate password reset link." }));
+      return;
+    }
+
     // Unknown action
     res.statusCode = 400;
     res.setHeader("Content-Type", "application/json");
     res.end(
       JSON.stringify({
-        error: `Invalid or missing action: "${action}". Supported actions: newsletter, contact, gifting, welcome.`,
+        error: `Invalid or missing action: "${action}". Supported actions: newsletter, contact, gifting, welcome, password-reset.`,
       })
     );
   } catch (error) {

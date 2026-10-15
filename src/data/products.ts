@@ -12,8 +12,6 @@ import glassCupImg from "../assets/teaware-glass-cup.webp";
 import marbleTeapotImg from "../assets/teaware-marble-teapot.webp";
 import glassTeapotImg from "../assets/teaware-glass-teapot.webp";
 
-import giftImage2 from "../assets/image2.webp";
-import giftImage3 from "../assets/image3.webp";
 import giftImage5 from "../assets/image5.webp";
 
 export type TeaCategory =
@@ -512,7 +510,8 @@ export const products: Product[] = [
     origin: "Darjeeling & Nilgiri Estates",
     weight: "Gift Box",
     badge: "MOST POPULAR",
-    image: giftImage3,
+    image: "/royal-flush-heritage-box.png",
+    images: ["/royal-flush-heritage-box.png"],
     includes: [
       "1x Darjeeling First Flush (50g)",
       "1x Nilgiri White Needle (50g)",
@@ -534,7 +533,8 @@ export const products: Product[] = [
     origin: "Darjeeling Single-Estates",
     weight: "Gift Box",
     badge: "BEST FOR MORNINGS",
-    image: giftImage2,
+    image: "/morning-tranquility-ensemble.png",
+    images: ["/morning-tranquility-ensemble.png"],
     includes: [
       "1x Darjeeling Golden Reserve (100g)",
       "Wild Forest Blossom Honey (150g)",
@@ -557,6 +557,7 @@ export const products: Product[] = [
     weight: "Gift Box",
     badge: "LUXURY EDITION",
     image: giftImage5,
+    images: [giftImage5],
     includes: [
       "4x Single-Estate Harvests (50g each)",
       "Double-Walled Glass Steeper",

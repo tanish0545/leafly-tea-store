@@ -413,6 +413,17 @@ export default function Profile() {
         throw new Error("No active authenticated user session found.");
       }
 
+      // Safeguard against deleting the administrator account
+      if (
+        user.isAdmin ||
+        user.email?.toLowerCase() === "leaflydatabase@gmail.com" ||
+        currentFbUser.email?.toLowerCase() === "leaflydatabase@gmail.com"
+      ) {
+        setDeleteAccountError("Administrator accounts cannot be deleted from the customer portal.");
+        setIsDeletingAccount(false);
+        return;
+      }
+
       const isGoogle =
         currentFbUser.providerData.some((p) => p.providerId === "google.com") ||
         user.authProvider === "Google";
@@ -427,7 +438,7 @@ export default function Profile() {
           setDeleteAccountError(
             rErr?.code === "auth/wrong-password" || rErr?.code === "auth/invalid-credential"
               ? "Invalid account password. Please enter your correct password to confirm deletion."
-              : rErr?.message || "Re-authentication failed. Please try again."
+              : "Re-authentication failed. Please check your credentials and try again."
           );
           setIsDeletingAccount(false);
           return;
@@ -523,9 +534,18 @@ export default function Profile() {
         state: { message: "Your Leafly account has been permanently deleted." },
       });
     } catch (err: unknown) {
-      console.error("Account deletion error:", err);
+      console.error("Account deletion notice:", err);
       const fbErr = err as { code?: string; message?: string };
-      setDeleteAccountError(fbErr?.message || "Failed to delete account. Please try again.");
+      const code = fbErr?.code || "";
+      let userFriendlyMsg = "Unable to delete account at this time. Please try again.";
+      if (code === "auth/requires-recent-login") {
+        userFriendlyMsg = "For security reasons, please log in again before deleting your account.";
+      } else if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+        userFriendlyMsg = "Incorrect password. Please verify your password and try again.";
+      } else if (code === "auth/network-request-failed") {
+        userFriendlyMsg = "Network error. Please check your internet connection and try again.";
+      }
+      setDeleteAccountError(userFriendlyMsg);
     } finally {
       setIsDeletingAccount(false);
     }
@@ -1798,7 +1818,6 @@ export default function Profile() {
                   <p className="profile-card-kicker">AUTHENTICATION & PRIVACY</p>
                   <h2>ACCOUNT SETTINGS</h2>
                 </div>
-                <span className="profile-security-badge">FIREBASE AUTH</span>
               </div>
               <p className="profile-subtitle">
                 Manage your account authentication, data privacy, and security settings.
@@ -1809,23 +1828,23 @@ export default function Profile() {
                   <div className="profile-security-icon">🔒</div>
                   <div>
                     <h3>Authentication Provider</h3>
-                    <p>{user?.authProvider === "Google" ? "Google OAuth 2.0 — Your Google account secures this session." : "Email & Password — Secured by Firebase Authentication."}</p>
+                    <p>{user?.authProvider === "Google" ? "Google Account — Connected and verified." : "Email & Password — Protected with encrypted credentials."}</p>
                   </div>
                 </div>
 
                 <div className="profile-security-item">
                   <div className="profile-security-icon">🛡️</div>
                   <div>
-                    <h3>Account Isolation</h3>
-                    <p>Your profile, orders, and mobile number are private to your UID. Other users cannot access your data.</p>
+                    <h3>Account Security</h3>
+                    <p>Your profile, order history, and contact details are private and securely isolated to your account.</p>
                   </div>
                 </div>
 
                 <div className="profile-security-item">
                   <div className="profile-security-icon">📱</div>
                   <div>
-                    <h3>Authenticated Account</h3>
-                    <p>{user?.email || "Authenticated user"} · Firebase UID verified</p>
+                    <h3>Account Status</h3>
+                    <p>{user?.email || "Active Member"} · Verified Account</p>
                   </div>
                 </div>
 
@@ -1833,34 +1852,22 @@ export default function Profile() {
                   <div className="profile-security-icon">✦</div>
                   <div>
                     <h3>Data Privacy</h3>
-                    <p>Passwords are never stored in Firestore. Only your profile details, phone number, and orders are persisted.</p>
+                    <p>Your credentials are encrypted and never stored in plain text. Your personal details and orders remain confidential.</p>
                   </div>
                 </div>
               </div>
 
-              {/* DANGER ZONE: DELETE ACCOUNT */}
+              {/* ACCOUNT DELETION SECTION — ONLY DELETE BUTTON */}
               <div
                 style={{
-                  marginTop: "28px",
-                  padding: "22px 24px",
-                  background: "rgba(220, 53, 69, 0.04)",
-                  border: "1px solid rgba(220, 53, 69, 0.25)",
-                  borderRadius: "14px",
+                  marginTop: "32px",
+                  paddingTop: "24px",
+                  borderTop: "1px solid #e7ded0",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "space-between",
-                  flexWrap: "wrap",
-                  gap: "16px",
+                  justifyContent: "flex-end",
                 }}
               >
-                <div style={{ maxWidth: "480px" }}>
-                  <h3 style={{ margin: "0 0 4px", color: "#b02a37", fontSize: "16px", fontWeight: 700 }}>
-                    Delete Account
-                  </h3>
-                  <p style={{ margin: 0, fontSize: "13px", color: "rgba(11, 43, 30, 0.75)", lineHeight: 1.45 }}>
-                    Permanently delete your Leafly account. Your order history may be retained for business records, but your account will no longer remain active.
-                  </p>
-                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -1874,7 +1881,7 @@ export default function Profile() {
                     background: "transparent",
                     border: "1.5px solid #dc3545",
                     color: "#dc3545",
-                    padding: "10px 22px",
+                    padding: "10px 24px",
                     borderRadius: "8px",
                     fontWeight: 700,
                     fontSize: "12px",

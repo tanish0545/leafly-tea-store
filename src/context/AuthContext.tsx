@@ -502,11 +502,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isValidGmailAddress(cleanEmail) && !isValidEmailAddress(cleanEmail)) {
       throw new Error("Please enter a valid email address.");
     }
+
+    const actionCodeSettings = {
+      url: `${window.location.origin}/reset-password`,
+      handleCodeInApp: true,
+    };
+
+    // Prefer authoritative serverless mailer with clean Leafly custom template & domain
     try {
-      const actionCodeSettings = {
-        url: `${window.location.origin}/reset-password`,
-        handleCodeInApp: true,
-      };
+      const resp = await fetch("/api/email?action=password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (resp.ok && data?.success) {
+        return;
+      }
+    } catch (apiErr) {
+      console.warn("Branded password reset API notice, using direct auth fallback:", apiErr);
+    }
+
+    // Direct Firebase client fallback with custom continue URL to Leafly domain
+    try {
       await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
     } catch (actionCodeErr) {
       console.warn("ActionCodeSettings notice, using default action settings:", actionCodeErr);

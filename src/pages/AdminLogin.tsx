@@ -37,7 +37,34 @@ export default function AdminLogin() {
 
     setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      const cleanEmail = email.trim();
+      const actionCodeSettings = {
+        url: `${window.location.origin}/reset-password`,
+        handleCodeInApp: true,
+      };
+
+      // Try branded serverless mailer first
+      let sentViaServer = false;
+      try {
+        const resp = await fetch("/api/email?action=password-reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: cleanEmail }),
+        });
+        const data = await resp.json().catch(() => null);
+        if (resp.ok && data?.success) {
+          sentViaServer = true;
+        }
+      } catch {}
+
+      if (!sentViaServer) {
+        try {
+          await sendPasswordResetEmail(auth, cleanEmail, actionCodeSettings);
+        } catch {
+          await sendPasswordResetEmail(auth, cleanEmail);
+        }
+      }
+
       setMessage("Password reset email sent. Check your inbox.");
       setIsForgotPassword(false);
     } catch (err: unknown) {

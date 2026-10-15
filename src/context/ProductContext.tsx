@@ -29,6 +29,8 @@ const KNOWN_ASSET_MAP: Record<string, string> = {
   "marble-teapot": marbleTeapotImg,
   "teaware-glass-teapot": glassTeapotImg,
   "glass-teapot": glassTeapotImg,
+  "royal-flush": "/royal-flush-heritage-box.png",
+  "morning-tranquility": "/morning-tranquility-ensemble.png",
   "image3": giftImage3,
   "image2": giftImage2,
   "image5": giftImage5,
@@ -86,7 +88,9 @@ export function resolveProductImage(rawImage: unknown, fallbackImage?: string): 
     img === "/favicon.png" ||
     img === "/favicon.ico" ||
     img.startsWith("/assets/products/") ||
-    img.startsWith("/assets/tea-maker/");
+    img.startsWith("/assets/tea-maker/") ||
+    img.startsWith("/royal-flush") ||
+    img.startsWith("/morning-tranquility");
 
   if (isStaticPublicRoot) {
     return img;
@@ -292,13 +296,28 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           const stock = typeof data.stock === "number" ? data.stock : (fallbackInitial?.stock ?? 10);
           const inStock = data.inStock !== false && stock > 0;
 
-          const resolvedMainImage = resolveProductImage(data.image, fallbackInitial?.image);
+          let resolvedMainImage = resolveProductImage(data.image, fallbackInitial?.image);
+          if (idStr === "201" || data.name?.toLowerCase().includes("royal flush")) {
+            resolvedMainImage = "/royal-flush-heritage-box.png";
+          } else if (idStr === "202" || data.name?.toLowerCase().includes("morning tranquility")) {
+            resolvedMainImage = "/morning-tranquility-ensemble.png";
+          } else if (idStr === "203" || data.name?.toLowerCase().includes("grand estate")) {
+            resolvedMainImage = giftImage5;
+          }
 
           const rawImagesList =
             Array.isArray(data.images) && data.images.length > 0 ? data.images : [];
-          const resolvedImages = rawImagesList
+          let resolvedImages = rawImagesList
             .map((img: string) => resolveProductImage(img, fallbackInitial?.image))
             .filter(Boolean);
+
+          if (idStr === "201" || data.name?.toLowerCase().includes("royal flush")) {
+            resolvedImages = ["/royal-flush-heritage-box.png"];
+          } else if (idStr === "202" || data.name?.toLowerCase().includes("morning tranquility")) {
+            resolvedImages = ["/morning-tranquility-ensemble.png"];
+          } else if (idStr === "203" || data.name?.toLowerCase().includes("grand estate")) {
+            resolvedImages = [giftImage5];
+          }
 
           const finalImages =
             resolvedImages.length > 0

@@ -29,6 +29,7 @@ import {
   getOrderStatusCustomerEmail,
   getAccountWelcomeEmail,
   getPasswordSetupCustomerEmail,
+  getPasswordResetCustomerEmail,
   getOrderLookupVerificationEmail,
   type OrderEmailData,
   type ContactEmailData,
@@ -515,6 +516,33 @@ export async function sendPasswordSetupEmail(params: {
 }
 
 /**
+ * Dispatches customer password reset email with verified Leafly-branded action link.
+ */
+export async function sendPasswordResetEmail(params: {
+  email: string;
+  customerName?: string;
+  resetLink: string;
+}): Promise<MailResult> {
+  const cleanEmail = params.email.trim().toLowerCase();
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return {
+      success: false,
+      delivered: false,
+      error: `Invalid or missing email: "${cleanEmail}"`,
+    };
+  }
+
+  const mail = getPasswordResetCustomerEmail(params.customerName || "Valued Patron", cleanEmail, params.resetLink);
+  return sendEmail({
+    to: cleanEmail,
+    subject: mail.subject,
+    html: mail.html,
+    emailType: "password reset link",
+    replyTo: DEFAULT_CUSTOMER_SUPPORT_EMAIL,
+  });
+}
+
+/**
  * Dispatches a 6-digit OTP code for secure guest order history lookup.
  */
 export async function sendOrderLookupVerificationCode(params: {
@@ -540,4 +568,5 @@ export async function sendOrderLookupVerificationCode(params: {
     replyTo: DEFAULT_CUSTOMER_SUPPORT_EMAIL,
   });
 }
+
 

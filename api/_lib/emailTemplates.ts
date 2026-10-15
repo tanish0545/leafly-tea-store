@@ -1031,8 +1031,8 @@ export function getPasswordSetupCustomerEmail(
     </div>
 
     <p style="font-size: 12.5px; line-height: 1.6; color: ${LEAFLY_MUTED}; margin: 20px 0 0;">
-      If the button above does not work, copy and paste this verified link into your browser:<br />
-      <a href="${setupLink}" style="color: ${LEAFLY_GOLD}; word-break: break-all; font-size: 12px;">${setupLink}</a>
+      If the button above does not open directly in your mail app, you can use the verified portal link:<br />
+      <a href="${setupLink}" style="color: ${LEAFLY_GOLD}; font-size: 13px; font-weight: 600; text-decoration: underline;">Complete Your Password Setup on Leafly</a>
     </p>
     <p style="font-size: 12px; line-height: 1.5; color: ${LEAFLY_MUTED}; margin: 12px 0 0;">
       This link is securely bound to your email and expires in 24 hours. If you did not place an order or request this, you can safely ignore this email.
@@ -1042,6 +1042,56 @@ export function getPasswordSetupCustomerEmail(
   return {
     subject,
     html: baseEmailWrapper("Set Your Password", content),
+  };
+}
+
+export function getPasswordResetCustomerEmail(
+  userName: string,
+  userEmail: string,
+  resetLink: string
+): { subject: string; html: string } {
+  const subject = "Reset Your Leafly Password ✦ Secure Access";
+  const content = `
+    <h2 style="margin: 0 0 16px; font-family: Georgia, serif; font-size: 22px; color: ${LEAFLY_GREEN}; font-weight: normal; line-height: 1.3;">
+      Password Reset Request
+    </h2>
+    <p style="font-size: 15px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 0 0 16px;">
+      Hello ${userName || "Valued Patron"},
+    </p>
+    <p style="font-size: 14px; line-height: 1.6; color: ${LEAFLY_TEXT}; margin: 0 0 20px;">
+      We received a request to reset the password for your Leafly account (<strong>${userEmail}</strong>). To choose a new password and restore access to your tea orders and preferences, please use the secure button below:
+    </p>
+
+    <!-- Account Details Box -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${LEAFLY_CREAM}; border: 1px solid ${LEAFLY_BORDER}; border-radius: 6px; margin: 16px 0 24px;">
+      <tr>
+        <td style="padding: 12px 18px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 13px; color: ${LEAFLY_MUTED}; width: 130px;">Account Email:</td>
+        <td style="padding: 12px 18px; border-bottom: 1px solid ${LEAFLY_BORDER}; font-size: 14px; font-weight: 600; color: ${LEAFLY_GREEN};">${userEmail}</td>
+      </tr>
+      <tr>
+        <td style="padding: 12px 18px; font-size: 13px; color: ${LEAFLY_MUTED};">Security Status:</td>
+        <td style="padding: 12px 18px; font-size: 13px; font-weight: 600; color: ${LEAFLY_GOLD};">Password Reset Authorized</td>
+      </tr>
+    </table>
+
+    <div align="center" style="margin: 28px 0 24px;">
+      <a href="${resetLink}" style="display: inline-block; background-color: ${LEAFLY_GREEN}; color: #ffffff; font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 14px 32px; border-radius: 4px; text-decoration: none; border: 1px solid ${LEAFLY_GOLD}; box-shadow: 0 2px 8px rgba(11, 43, 30, 0.2);">
+        Reset Your Password Securely →
+      </a>
+    </div>
+
+    <p style="font-size: 12.5px; line-height: 1.6; color: ${LEAFLY_MUTED}; margin: 20px 0 0;">
+      If the button above does not open directly in your mail app, you can use the secure portal link:<br />
+      <a href="${resetLink}" style="color: ${LEAFLY_GOLD}; font-size: 13px; font-weight: 600; text-decoration: underline;">Reset your password on Leafly</a>
+    </p>
+    <p style="font-size: 12px; line-height: 1.5; color: ${LEAFLY_MUTED}; margin: 14px 0 0;">
+      This security link is valid for a limited time and expires automatically. If you did not request a password reset, you can safely disregard this message — your account and passwords remain fully secure.
+    </p>
+  `;
+
+  return {
+    subject,
+    html: baseEmailWrapper("Password Reset", content),
   };
 }
 

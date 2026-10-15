@@ -53,7 +53,19 @@ export default function ProductDetail() {
     (h) => getProductSlug(h) === identifier || String(h.id) === identifier
   );
 
-  const product: Product | undefined =
+  const resolveHamperImage = (h: { id?: number | string; name?: string; image?: string }) => {
+    const idStr = String(h.id || "");
+    const nameLower = (h.name || "").toLowerCase();
+    if (idStr === "201" || nameLower.includes("royal flush")) {
+      return "/royal-flush-heritage-box.png";
+    }
+    if (idStr === "202" || nameLower.includes("morning tranquility")) {
+      return "/morning-tranquility-ensemble.png";
+    }
+    return h.image || "";
+  };
+
+  const rawProduct: Product | undefined =
     (isTeawareRoute && teawareItem
       ? {
           id: teawareItem.id,
@@ -94,7 +106,8 @@ export default function ProductDetail() {
           price: Number(hamperItem.price) || 0,
           oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
           badge: hamperItem.badge || "Luxury Gift Set",
-          image: hamperItem.image,
+          image: resolveHamperImage(hamperItem),
+          images: [resolveHamperImage(hamperItem)],
           variants: {
             "100g": {
               weight: "Gift Box",
@@ -163,7 +176,8 @@ export default function ProductDetail() {
               price: Number(hamperItem.price) || 0,
               oldPrice: hamperItem.oldPrice ? Number(hamperItem.oldPrice) : undefined,
               badge: hamperItem.badge || "Luxury Gift Set",
-              image: hamperItem.image,
+              image: resolveHamperImage(hamperItem),
+              images: [resolveHamperImage(hamperItem)],
               variants: {
                 "100g": {
                   weight: "Gift Box",
@@ -181,6 +195,27 @@ export default function ProductDetail() {
               inStock: hamperItem.inStock !== false && (typeof hamperItem.stock !== "number" || hamperItem.stock > 0),
             }
           : undefined));
+
+  const product: Product | undefined = useMemo(() => {
+    if (!rawProduct) return undefined;
+    const idStr = String(rawProduct.id || "");
+    const nameLower = (rawProduct.name || "").toLowerCase();
+    if (idStr === "201" || nameLower.includes("royal flush")) {
+      return {
+        ...rawProduct,
+        image: "/royal-flush-heritage-box.png",
+        images: ["/royal-flush-heritage-box.png"],
+      };
+    }
+    if (idStr === "202" || nameLower.includes("morning tranquility")) {
+      return {
+        ...rawProduct,
+        image: "/morning-tranquility-ensemble.png",
+        images: ["/morning-tranquility-ensemble.png"],
+      };
+    }
+    return rawProduct;
+  }, [rawProduct]);
 
   /* --- customer reviews & tasting notes -------------------- */
   const [reviews, setReviews] = useState<CustomerReview[]>([]);
