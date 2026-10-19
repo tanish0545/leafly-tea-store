@@ -163,53 +163,59 @@ export default async function handler(
         );
       }
 
-      // Send confirmation emails if not sent yet
-      const customerEmail =
-        String(existingOrder?.customerEmail || paymentEntity.email || "").trim().toLowerCase();
-      const customerName =
-        String(existingOrder?.customerName || paymentEntity.notes?.customerName || "Valued Patron").trim();
-      const customerPhone =
-        String(existingOrder?.customerPhone || paymentEntity.contact || "").trim();
-      const total = Number(existingOrder?.total || (paymentEntity.amount ? paymentEntity.amount / 100 : 0));
+      // Send confirmation emails only if not sent yet
+      if (!existingOrder?.confirmationEmailSentAt) {
+        const customerEmail =
+          String(existingOrder?.customerEmail || paymentEntity.email || "").trim().toLowerCase();
+        const customerName =
+          String(existingOrder?.customerName || paymentEntity.notes?.customerName || "Valued Patron").trim();
+        const customerPhone =
+          String(existingOrder?.customerPhone || paymentEntity.contact || "").trim();
+        const total = Number(existingOrder?.total || (paymentEntity.amount ? paymentEntity.amount / 100 : 0));
 
-      const emailPayload: OrderEmailData = {
-        id: orderId,
-        customerName,
-        email: customerEmail || undefined,
-        phone: customerPhone || undefined,
-        total,
-        subtotal: typeof existingOrder?.subtotal === "number" ? existingOrder.subtotal : undefined,
-        deliveryFee: typeof existingOrder?.deliveryFee === "number" ? existingOrder.deliveryFee : undefined,
-        discount: typeof existingOrder?.discount === "number" ? existingOrder.discount : undefined,
-        couponCode: existingOrder?.couponCode ? String(existingOrder.couponCode) : undefined,
-        paymentMethod,
-        paymentStatus: "Paid",
-        shippingAddress: existingOrder?.shippingAddress as OrderEmailData["shippingAddress"],
-        items: existingOrder?.items as OrderEmailData["items"],
-        createdAt: String(existingOrder?.createdAt || new Date().toISOString()),
-      };
+        const emailPayload: OrderEmailData = {
+          id: orderId,
+          customerName,
+          email: customerEmail || undefined,
+          phone: customerPhone || undefined,
+          total,
+          subtotal: typeof existingOrder?.subtotal === "number" ? existingOrder.subtotal : undefined,
+          deliveryFee: typeof existingOrder?.deliveryFee === "number" ? existingOrder.deliveryFee : undefined,
+          discount: typeof existingOrder?.discount === "number" ? existingOrder.discount : undefined,
+          couponCode: existingOrder?.couponCode ? String(existingOrder.couponCode) : undefined,
+          paymentMethod,
+          paymentStatus: "Paid",
+          shippingAddress: existingOrder?.shippingAddress as OrderEmailData["shippingAddress"],
+          items: existingOrder?.items as OrderEmailData["items"],
+          createdAt: String(existingOrder?.createdAt || new Date().toISOString()),
+        };
 
-      const emailPromises: Promise<unknown>[] = [
-        sendAdminOrderNotification(emailPayload),
-      ];
+        const emailPromises: Promise<unknown>[] = [
+          sendAdminOrderNotification(emailPayload).catch((e) =>
+            console.warn("[Razorpay Webhook Notice] Admin alert notice:", e)
+          ),
+        ];
 
-      if (customerEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
-        emailPromises.push(
-          sendOrderConfirmation(emailPayload).then(async (result) => {
-            if (result.delivered || result.success) {
-              const now = new Date().toISOString();
-              await updateServerOrder(orderId, {
-                confirmationEmailSentAt: now,
-                paymentEmailSentAt: now,
-              });
-            }
-          })
-        );
+        if (customerEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+          emailPromises.push(
+            sendOrderConfirmation(emailPayload)
+              .then(async (result) => {
+                if (result.delivered || result.success) {
+                  const now = new Date().toISOString();
+                  await updateServerOrder(orderId, {
+                    confirmationEmailSentAt: now,
+                    paymentEmailSentAt: now,
+                  }).catch(() => {});
+                }
+              })
+              .catch((e) =>
+                console.warn("[Razorpay Webhook Notice] Customer confirmation notice:", e)
+              )
+          );
+        }
+
+        await Promise.allSettled(emailPromises);
       }
-
-      Promise.allSettled(emailPromises).catch((err) => {
-        console.warn("[Razorpay Webhook Notice] Email dispatch notice:", err);
-      });
 
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
@@ -226,6 +232,8 @@ export default async function handler(
       if (!isAlreadyPaid) {
         await updateServerOrder(orderId, {
           paymentStatus: "Failed",
+          status: "Pending Payment",
+          orderStatus: "Pending Payment",
           lastPaymentError: paymentEntity.error_description || "Payment attempt failed",
         });
       }

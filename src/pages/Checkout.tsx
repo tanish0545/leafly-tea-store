@@ -587,8 +587,8 @@ export default function Checkout() {
       email: cleanCustomerEmail,
       customerPhone: phone.trim() || (isRealRegisteredUser ? (currentUser?.phone || undefined) : undefined),
       createdAt: new Date().toISOString(),
-      status: "Processing",
-      orderStatus: "Processing",
+      status: "Pending Payment",
+      orderStatus: "Pending Payment",
       items: items.map((item) => ({
         id: item.id || `${item.product.id}-${item.variant}`,
         productId: item.product.id,
@@ -1125,7 +1125,7 @@ export default function Checkout() {
         return next;
       });
 
-      // Step A: Save initial order in Firestore with "Processing" & "Pending"
+      // Step A: Save initial order in Firestore with "Pending Payment" & "Pending"
       const initialOrder = await createInitialOnlineOrder(
         orderId,
         total,
@@ -1199,6 +1199,14 @@ export default function Checkout() {
               payment:
                 "Payment was not completed. You can retry payment whenever you're ready, or choose Pay on Delivery.",
             }));
+            // Update order payment status to Cancelled on the server (explicit unpaid state)
+            ApiService.updatePaymentStatus({
+              orderId,
+              paymentStatus: "Cancelled",
+              lastPaymentError: "Checkout modal dismissed or cancelled by customer",
+            }).catch((err) => {
+              console.warn("[Checkout] Notice updating dismissed payment state:", err);
+            });
           },
         },
         handler: async (response: any) => {
@@ -1269,6 +1277,14 @@ export default function Checkout() {
           ...prev,
           payment: `Payment failed: ${errorDesc}. You can retry or choose Pay on Delivery.`,
         }));
+        // Update order payment status to Failed on the server (explicit unpaid state)
+        ApiService.updatePaymentStatus({
+          orderId,
+          paymentStatus: "Failed",
+          lastPaymentError: errorDesc,
+        }).catch((err) => {
+          console.warn("[Checkout] Notice updating failed payment state:", err);
+        });
       });
 
       rzpInstance.open();

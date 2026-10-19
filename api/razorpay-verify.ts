@@ -218,7 +218,7 @@ export default async function handler(
     }
 
     // 5. Idempotent Order Notification Emails
-    if (!dispatchedEmailOrders.has(orderId)) {
+    if (!dispatchedEmailOrders.has(orderId) && !existingOrder?.confirmationEmailSentAt) {
       dispatchedEmailOrders.add(orderId);
 
       const customerEmail =
@@ -247,26 +247,30 @@ export default async function handler(
       };
 
       const emailPromises: Promise<unknown>[] = [
-        sendAdminOrderNotification(emailPayload),
+        sendAdminOrderNotification(emailPayload).catch((e) =>
+          console.warn("[Razorpay Verify Notice] Admin alert notice:", e)
+        ),
       ];
 
       if (customerEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
         emailPromises.push(
-          sendOrderConfirmation(emailPayload).then(async (result) => {
-            if (result.delivered || result.success) {
-              const now = new Date().toISOString();
-              await updateServerOrder(orderId, {
-                confirmationEmailSentAt: now,
-                paymentEmailSentAt: now,
-              });
-            }
-          })
+          sendOrderConfirmation(emailPayload)
+            .then(async (result) => {
+              if (result.delivered || result.success) {
+                const now = new Date().toISOString();
+                await updateServerOrder(orderId, {
+                  confirmationEmailSentAt: now,
+                  paymentEmailSentAt: now,
+                }).catch(() => {});
+              }
+            })
+            .catch((e) =>
+              console.warn("[Razorpay Verify Notice] Customer confirmation notice:", e)
+            )
         );
       }
 
-      Promise.allSettled(emailPromises).catch((err) => {
-        console.warn("[Razorpay Verify Notice] Email dispatch notice:", err);
-      });
+      await Promise.allSettled(emailPromises);
     }
 
     res.statusCode = 200;

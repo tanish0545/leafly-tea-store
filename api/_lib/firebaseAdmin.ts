@@ -574,7 +574,16 @@ export function initAdminApp(): App | null {
   return null;
 }
 
+let mockFirestoreInstance: any = null;
+
+export function setMockFirestoreForTesting(mock: any) {
+  mockFirestoreInstance = mock;
+}
+
 export function getAdminFirestore(): Firestore | null {
+  if (mockFirestoreInstance) {
+    return mockFirestoreInstance;
+  }
   const app = initAdminApp();
   if (!app) return null;
   try {

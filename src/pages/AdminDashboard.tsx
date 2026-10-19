@@ -2744,6 +2744,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                     className="toolbar-select"
                   >
                     <option value="all">All Statuses</option>
+                    <option value="pending payment">Pending Payment</option>
                     <option value="pending">Pending (Awaiting Dispatch)</option>
                     <option value="confirmed">Confirmed</option>
                     <option value="processing">Processing</option>
@@ -2867,6 +2868,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                                   value={status}
                                   onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
                                 >
+                                  <option value="Pending Payment">Pending Payment</option>
                                   <option value="Pending">Pending</option>
                                   <option value="Confirmed">Confirmed</option>
                                   <option value="Processing">Processing</option>
@@ -2970,6 +2972,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                                 value={status}
                                 onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
                               >
+                                <option value="Pending Payment">Pending Payment</option>
                                 <option value="Pending">Pending</option>
                                 <option value="Confirmed">Confirmed</option>
                                 <option value="Processing">Processing</option>
@@ -5993,6 +5996,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
                         value={selectedOrder.orderStatus || selectedOrder.status || "Pending"}
                         onChange={(e) => handleUpdateOrderStatus(selectedOrder.id, e.target.value)}
                       >
+                        <option value="Pending Payment">Pending Payment</option>
                         <option value="Pending">Pending</option>
                         <option value="Confirmed">Confirmed</option>
                         <option value="Processing">Processing</option>

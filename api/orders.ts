@@ -54,6 +54,8 @@ interface OrderActionRequestBody {
   couponCode?: string | null;
   paymentMethod?: string;
   paymentStatus?: string;
+  status?: string;
+  orderStatus?: string;
   newStatus?: string;
   previousStatus?: string;
   shippingAddress?: OrderEmailData["shippingAddress"];
@@ -170,6 +172,8 @@ export default async function handler(
       action = "get-invoice";
     } else if (action === "config-status" || action === "status-check" || action === "health") {
       action = "config-status";
+    } else if (action === "update-payment" || action === "cancel-payment" || action === "fail-payment") {
+      action = "update-payment";
     }
 
     // =========================================================================
@@ -186,6 +190,65 @@ export default async function handler(
           razorpay: razorpayStatus,
         })
       );
+      return;
+    }
+
+    // =========================================================================
+    // 00b. SECURE PAYMENT ATTEMPT STATUS UPDATE (Cancellation, Dismissal, or Failure)
+    // Never marks an order as Paid or Confirmed without server verification
+    // =========================================================================
+    if (action === "update-payment") {
+      const orderId = String(body.orderId || body.id || "").trim();
+      const paymentStatus = String(body.paymentStatus || "Cancelled").trim();
+      const lastPaymentError = String((body as any).lastPaymentError || (body as any).error || "").trim();
+
+      if (!orderId) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "orderId is required." }));
+        return;
+      }
+
+      // Security check: Never allow this unverified endpoint to mark an order as Paid or Confirmed
+      if (paymentStatus.toLowerCase() === "paid" || String(body.newStatus || "").toLowerCase() === "confirmed") {
+        res.statusCode = 403;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Cannot mark order as Paid or Confirmed without cryptographic server verification." }));
+        return;
+      }
+
+      try {
+        const existingOrder = await getServerOrder(orderId);
+        // Do not downgrade an already paid order
+        if ((existingOrder?.paymentStatus || "").toString().toLowerCase() === "paid") {
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ success: true, message: "Order is already paid." }));
+          return;
+        }
+
+        const updateData: Record<string, unknown> = {
+          paymentStatus,
+          status: "Pending Payment",
+          orderStatus: "Pending Payment",
+          updatedAt: new Date().toISOString(),
+        };
+        if (lastPaymentError) {
+          updateData.lastPaymentError = lastPaymentError;
+        }
+
+        await updateServerOrder(orderId, updateData);
+        console.info(`[Orders API] Order #${orderId} payment state updated to "${paymentStatus}".`);
+
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ success: true, orderId, paymentStatus }));
+      } catch (err: any) {
+        console.warn(`[Orders API] Payment state update notice for #${orderId}:`, err);
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Failed to update payment status." }));
+      }
       return;
     }
 
@@ -808,8 +871,29 @@ export default async function handler(
 
       console.info(`[Leafly Orders API] Order #${id} successfully stored in Firestore via server.`);
 
-      // Asynchronous / Non-blocking email dispatch
-      if (id && customerName && !dispatchedConfirmationOrders.has(id)) {
+      // =========================================================================
+      // CONDITIONAL EMAIL DISPATCH:
+      // - COD orders: Confirmed immediately upon creation -> dispatch confirmation emails.
+      // - Online payment orders: Awaiting gateway payment -> DO NOT dispatch confirmation
+      //   emails until payment is verified by /api/razorpay-verify or /api/razorpay-webhook.
+      // =========================================================================
+      const isCodOrder =
+        !body.paymentMethod ||
+        body.paymentMethod.toLowerCase().includes("cash on delivery") ||
+        body.paymentMethod.toLowerCase().includes("cod") ||
+        body.paymentMethod.toLowerCase() === "delivery";
+
+      const isAlreadyPaid =
+        String(body.paymentStatus || "").toLowerCase() === "paid" ||
+        String(body.orderStatus || body.status || "").toLowerCase() === "confirmed";
+
+      const shouldSendConfirmationEmail = isCodOrder || isAlreadyPaid;
+
+      if (!shouldSendConfirmationEmail) {
+        console.info(
+          `[Orders API] Order #${id} is an online payment awaiting gateway verification (method: "${body.paymentMethod}", paymentStatus: "${body.paymentStatus}"). Suppressing premature confirmation email until verified.`
+        );
+      } else if (id && customerName && !dispatchedConfirmationOrders.has(id)) {
         dispatchedConfirmationOrders.add(id);
         const orderData: OrderEmailData = {
           id,
@@ -940,6 +1024,34 @@ export default async function handler(
 
       // Idempotency: database check
       const existingOrder = await getServerOrder(id);
+
+      // Gate check: Suppress confirmation email for unpaid online payment orders
+      const isCodOrder =
+        !paymentMethod ||
+        paymentMethod.toLowerCase().includes("cash on delivery") ||
+        paymentMethod.toLowerCase().includes("cod") ||
+        paymentMethod.toLowerCase() === "delivery";
+
+      const isAlreadyPaid =
+        String(paymentStatus || "").toLowerCase() === "paid" ||
+        String(existingOrder?.paymentStatus || "").toLowerCase() === "paid";
+
+      if (!isCodOrder && !isAlreadyPaid) {
+        console.warn(
+          `[Leafly Mailer] Order #${id} notification skipped: online payment is not verified as paid (paymentStatus: "${paymentStatus || existingOrder?.paymentStatus}").`
+        );
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: false,
+            message: "Order confirmation email deferred until payment is verified.",
+            deferred: true,
+          })
+        );
+        return;
+      }
+
       if (existingOrder && existingOrder.confirmationEmailSentAt) {
         console.info(`[Leafly Mailer] Order #${id} already has confirmationEmailSentAt recorded in Firestore (${existingOrder.confirmationEmailSentAt}). Skipping duplicate.`);
         dispatchedConfirmationOrders.add(id);

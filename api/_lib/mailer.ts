@@ -219,7 +219,18 @@ export async function verifySmtp(): Promise<VerifySmtpResult> {
  * Core centralized email delivery function.
  * Handles TLS connection, logging, MIME generation, and structured provider status reporting.
  */
+let mockEmailDispatcherForTesting: ((payload: EmailPayload) => Promise<MailResult>) | null = null;
+
+export function setMockEmailDispatcherForTesting(
+  fn: ((payload: EmailPayload) => Promise<MailResult>) | null
+) {
+  mockEmailDispatcherForTesting = fn;
+}
+
 export async function sendEmail(payload: EmailPayload): Promise<MailResult> {
+  if (mockEmailDispatcherForTesting) {
+    return mockEmailDispatcherForTesting(payload);
+  }
   const transporter = getTransporter();
   const configured = Boolean(transporter);
 

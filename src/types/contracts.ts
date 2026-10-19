@@ -154,6 +154,7 @@ export interface PaymentResult {
 
 export type OrderStatus =
   | "Pending"
+  | "Pending Payment"
   | "Confirmed"
   | "Processing"
   | "Shipping"

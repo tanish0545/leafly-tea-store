@@ -439,6 +439,25 @@ export const ApiService = {
   },
 
   /**
+   * Updates order payment state when checkout is dismissed, cancelled, or fails (Never confirms payment)
+   */
+  async updatePaymentStatus(payload: {
+    orderId: string;
+    paymentStatus: "Pending" | "Cancelled" | "Failed";
+    lastPaymentError?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      return await postApi("/api/orders?action=update-payment", {
+        action: "update-payment",
+        ...payload,
+      });
+    } catch (err) {
+      console.warn("[ApiService] Payment status update notice:", err);
+      return { success: false, error: err instanceof Error ? err.message : "Failed to update payment status" };
+    }
+  },
+
+  /**
    * (Legacy) Initializes Cashfree Order session via serverless API
    */
   async createCashfreeOrder(payload: {
