@@ -191,6 +191,7 @@ export interface Order {
   createdAt: string;
   updatedAt?: string;
   confirmationEmailSentAt?: string;
+  paymentEmailSentAt?: string;
   orderStatus?: OrderStatus;
   status?: OrderStatus | string;
   items: OrderItem[];
@@ -204,6 +205,10 @@ export interface Order {
   paymentMethod: string;
   paymentStatus?: string;
   paymentId?: string | null;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
+  cfPaymentId?: string;
   shippingAddress: ShippingAddress;
   trackingNumber?: string;
   carrier?: string;

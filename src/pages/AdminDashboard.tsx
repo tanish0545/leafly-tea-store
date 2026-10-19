@@ -924,8 +924,8 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
       stock,
       inStock,
       badge: currentProduct.badge || "",
-      rating: currentProduct.rating ?? 4.9,
-      reviewCount: currentProduct.reviewCount ?? 120,
+      rating: currentProduct.rating,
+      reviewCount: currentProduct.reviewCount ?? 0,
       benefits: Array.isArray(currentProduct.benefits) ? currentProduct.benefits : [],
     } as Product;
 

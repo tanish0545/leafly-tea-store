@@ -15,9 +15,8 @@ import { auth, db } from "../lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { ApiService } from "../lib/apiClient";
-import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
 import { useCoupons } from "../context/CouponContext";
-import CashfreePaymentLogos from "../components/CashfreePaymentLogos";
+import PaymentMethodLogos from "../components/PaymentMethodLogos";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import "./Checkout.css";
@@ -146,12 +145,12 @@ export default function Checkout() {
   }, [isRealRegisteredUser, currentUser, firebaseUser, email, phone]);
 
   // ────────────────────────────────────────────────────────
-  // FEATURE FLAG: Set to true to re-enable Cashfree online payment.
-  // Cashfree backend files and env vars remain intact — only the UI is disabled.
+  // ONLINE PAYMENT: Razorpay Standard Checkout (Active)
   // ────────────────────────────────────────────────────────
-  const ONLINE_PAYMENT_ENABLED = false;
+  const ONLINE_PAYMENT_ENABLED = true;
 
-  const [paymentMethod, setPaymentMethod] = useState<"cashfree" | "cod">("cod");
+  const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
+  const stockDecrementedForOrderRef = useRef<string | null>(null);
   const [paymentLoadingText, setPaymentLoadingText] = useState("");
   const [saveAddress, setSaveAddress] = useState(true);
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
@@ -526,7 +525,7 @@ export default function Checkout() {
     return Object.keys(nextErrors).length === 0;
   };
 
-  // Creates initial pending order for online payments before opening Cashfree gateway
+  // Creates initial pending order for online payments before opening Razorpay gateway
   const createInitialOnlineOrder = async (
     orderId: string,
     orderTotal: number,
@@ -608,7 +607,7 @@ export default function Checkout() {
       total: orderTotal,
       deliveryMethod: orderSubtotal >= 500 ? "Free Delivery" : "Standard Delivery",
       deliveryInstructions: deliveryInstructions.trim() || undefined,
-      paymentMethod: "Cashfree Online Payment",
+      paymentMethod: "Razorpay Online Payment",
       paymentStatus: "Pending",
       shippingAddress: {
         fullName: shippingAddress.fullName.trim(),
@@ -690,39 +689,42 @@ export default function Checkout() {
       }
     }
 
-    // Decrement stock in real-time
-    for (const item of order.items) {
-      if (item.productId) {
-        const idStr = String(item.productId);
-        try {
-          let docRef = doc(db, "products", idStr);
-          let snap = await getDoc(docRef);
-          if (!snap.exists()) {
-            const twRef = doc(db, "teaware", idStr);
-            const twSnap = await getDoc(twRef);
-            if (twSnap.exists()) {
-              docRef = twRef;
-              snap = twSnap;
+    // Decrement stock in real-time (idempotent per orderId on payment retry)
+    if (stockDecrementedForOrderRef.current !== order.id) {
+      stockDecrementedForOrderRef.current = order.id;
+      for (const item of order.items) {
+        if (item.productId) {
+          const idStr = String(item.productId);
+          try {
+            let docRef = doc(db, "products", idStr);
+            let snap = await getDoc(docRef);
+            if (!snap.exists()) {
+              const twRef = doc(db, "teaware", idStr);
+              const twSnap = await getDoc(twRef);
+              if (twSnap.exists()) {
+                docRef = twRef;
+                snap = twSnap;
+              }
             }
-          }
-          if (!snap.exists()) {
-            const hRef = doc(db, "hampers", idStr);
-            const hSnap = await getDoc(hRef);
-            if (hSnap.exists()) {
-              docRef = hRef;
-              snap = hSnap;
+            if (!snap.exists()) {
+              const hRef = doc(db, "hampers", idStr);
+              const hSnap = await getDoc(hRef);
+              if (hSnap.exists()) {
+                docRef = hRef;
+                snap = hSnap;
+              }
             }
+            if (snap.exists()) {
+              const currentStock = typeof snap.data().stock === "number" ? snap.data().stock : 10;
+              const newStock = Math.max(0, currentStock - item.quantity);
+              await updateDoc(docRef, {
+                stock: newStock,
+                inStock: newStock > 0,
+              });
+            }
+          } catch (stockError) {
+            console.warn(`[Checkout] Failed to update stock for item ${item.productId}:`, stockError);
           }
-          if (snap.exists()) {
-            const currentStock = typeof snap.data().stock === "number" ? snap.data().stock : 10;
-            const newStock = Math.max(0, currentStock - item.quantity);
-            await updateDoc(docRef, {
-              stock: newStock,
-              inStock: newStock > 0,
-            });
-          }
-        } catch (stockError) {
-          console.warn(`[Checkout] Failed to update stock for item ${item.productId}:`, stockError);
         }
       }
     }
@@ -924,43 +926,46 @@ export default function Checkout() {
       });
     }
 
-    // 2. Inventory decrement (background non-blocking)
-    Promise.allSettled(
-      order.items.map(async (item) => {
-        if (!item.productId) return;
-        const idStr = String(item.productId);
-        try {
-          let docRef = doc(db, "products", idStr);
-          let snap = await getDoc(docRef);
-          if (!snap.exists()) {
-            const twRef = doc(db, "teaware", idStr);
-            const twSnap = await getDoc(twRef);
-            if (twSnap.exists()) {
-              docRef = twRef;
-              snap = twSnap;
+    // 2. Inventory decrement (background non-blocking, idempotent per orderId)
+    if (stockDecrementedForOrderRef.current !== order.id) {
+      stockDecrementedForOrderRef.current = order.id;
+      Promise.allSettled(
+        order.items.map(async (item) => {
+          if (!item.productId) return;
+          const idStr = String(item.productId);
+          try {
+            let docRef = doc(db, "products", idStr);
+            let snap = await getDoc(docRef);
+            if (!snap.exists()) {
+              const twRef = doc(db, "teaware", idStr);
+              const twSnap = await getDoc(twRef);
+              if (twSnap.exists()) {
+                docRef = twRef;
+                snap = twSnap;
+              }
             }
-          }
-          if (!snap.exists()) {
-            const hRef = doc(db, "hampers", idStr);
-            const hSnap = await getDoc(hRef);
-            if (hSnap.exists()) {
-              docRef = hRef;
-              snap = hSnap;
+            if (!snap.exists()) {
+              const hRef = doc(db, "hampers", idStr);
+              const hSnap = await getDoc(hRef);
+              if (hSnap.exists()) {
+                docRef = hRef;
+                snap = hSnap;
+              }
             }
+            if (snap.exists()) {
+              const currentStock = typeof snap.data().stock === "number" ? snap.data().stock : 10;
+              const newStock = Math.max(0, currentStock - item.quantity);
+              await updateDoc(docRef, {
+                stock: newStock,
+                inStock: newStock > 0,
+              });
+            }
+          } catch (stockError) {
+            console.warn(`[Checkout] Non-critical: Failed to update stock for item ${item.productId}:`, stockError);
           }
-          if (snap.exists()) {
-            const currentStock = typeof snap.data().stock === "number" ? snap.data().stock : 10;
-            const newStock = Math.max(0, currentStock - item.quantity);
-            await updateDoc(docRef, {
-              stock: newStock,
-              inStock: newStock > 0,
-            });
-          }
-        } catch (stockError) {
-          console.warn(`[Checkout] Non-critical: Failed to update stock for item ${item.productId}:`, stockError);
-        }
-      })
-    ).catch(() => {});
+        })
+      ).catch(() => {});
+    }
 
     // 3. Local order context update (non-critical)
     try {
@@ -1010,7 +1015,7 @@ export default function Checkout() {
     // Live inventory verification across products, teaware, and hampers before placing order
     setIsProcessing(true);
     setPaymentLoadingText(
-      paymentMethod === "cashfree"
+      paymentMethod === "razorpay"
         ? "VERIFYING HARVEST AVAILABILITY..."
         : "BREWING YOUR RITUAL..."
     );
@@ -1082,16 +1087,14 @@ export default function Checkout() {
       return;
     }
 
-    // Safety guard: online payment is currently disabled
-    if (paymentMethod === "cashfree" || !ONLINE_PAYMENT_ENABLED) {
-      if (paymentMethod === "cashfree") {
-        setErrors((prev) => ({
-          ...prev,
-          payment: "Online payment is currently unavailable. Please select Pay on Delivery.",
-        }));
-        setIsProcessing(false);
-        return;
-      }
+    // Safety guard if online payment flag is disabled
+    if (paymentMethod === "razorpay" && !ONLINE_PAYMENT_ENABLED) {
+      setErrors((prev) => ({
+        ...prev,
+        payment: "Online payment is currently unavailable. Please select Pay on Delivery.",
+      }));
+      setIsProcessing(false);
+      return;
     }
 
     const orderId = pendingOrderIdRef.current || generateOrderId();
@@ -1112,7 +1115,7 @@ export default function Checkout() {
     }
 
     // ==========================================
-    // 2. CASHFREE ONLINE PAYMENT FLOW
+    // 2. RAZORPAY ONLINE PAYMENT FLOW
     // ==========================================
     try {
       setPaymentLoadingText("INITIALIZING SECURE CHECKOUT...");
@@ -1130,9 +1133,9 @@ export default function Checkout() {
         deliveryFee
       );
 
-      // Step B: Call backend API to create Cashfree order & session
-      setPaymentLoadingText("CONNECTING TO CASHFREE GATEWAY...");
-      const cfResponse = await ApiService.createCashfreeOrder({
+      // Step B: Call backend API to create Razorpay order & receipt
+      setPaymentLoadingText("CONNECTING TO RAZORPAY GATEWAY...");
+      const rzpResponse = await ApiService.createRazorpayOrder({
         orderId,
         customerId: initialOrder.userId,
         customerName: shippingAddress.fullName.trim(),
@@ -1149,103 +1152,137 @@ export default function Checkout() {
         discount: discountAmount,
         couponCode: appliedCoupon?.code,
         total,
-        origin: window.location.origin,
       });
 
-      if (!cfResponse || !cfResponse.paymentSessionId) {
+      if (!rzpResponse || !rzpResponse.razorpayOrderId) {
         throw new Error(
-          cfResponse?.error ||
+          rzpResponse?.error ||
           "Unable to start secure payment session. Please retry or choose Pay on Delivery."
         );
       }
 
-      // Step C: Initialize Cashfree Web SDK
-      setPaymentLoadingText("OPENING SECURE PAYMENT...");
-      const cashfreeMode =
-        (import.meta.env.VITE_CASHFREE_ENV || "sandbox").toLowerCase() === "production"
-          ? "production"
-          : "sandbox";
-
-      const cashfree = await loadCashfree({
-        mode: cashfreeMode,
-      });
-
-      if (!cashfree) {
+      // Step C: Verify window.Razorpay checkout script
+      if (typeof window.Razorpay === "undefined") {
         throw new Error(
-          "Unable to load Cashfree payment interface. Please check your network connection."
+          "Razorpay payment interface could not be loaded. Please check your network connection and try again."
         );
       }
 
-      // Step D: Open Cashfree Hosted Checkout
-      // - Mobile: redirectTarget: "_self" activates native UPI Intent app switching (Google Pay, PhonePe, Paytm, etc.)
-      // - Desktop: redirectTarget: "_modal" activates the luxury in-page Cashfree modal with "Scan & Pay with any UPI app" + QR code & Cards/NetBanking
-      const isMobileDevice =
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          navigator.userAgent
-        ) || window.innerWidth < 768;
+      setPaymentLoadingText("OPENING SECURE PAYMENT...");
 
-      const redirectTarget = isMobileDevice ? "_self" : "_modal";
+      // Step D: Open Razorpay Standard Checkout
+      const keyId = rzpResponse.keyId || (import.meta.env.VITE_RAZORPAY_KEY_ID as string) || "";
+      const razorpayOptions = {
+        key: keyId,
+        amount: rzpResponse.amount,
+        currency: rzpResponse.currency || "INR",
+        name: "Leafly",
+        description: `Leafly Order #${orderId}`,
+        image: `${window.location.origin}/leafly-site-icon.png`,
+        order_id: rzpResponse.razorpayOrderId,
+        prefill: {
+          name: shippingAddress.fullName.trim(),
+          email: initialOrder.customerEmail || "",
+          contact: phone.trim(),
+        },
+        theme: {
+          color: "#0b2b1e",
+        },
+        modal: {
+          ondismiss: () => {
+            console.info("[Razorpay] Checkout modal dismissed by customer.");
+            setIsProcessing(false);
+            setIsBursting(false);
+            setPaymentLoadingText("");
+            setErrors((prev) => ({
+              ...prev,
+              payment:
+                "Payment was not completed. You can retry payment whenever you're ready, or choose Pay on Delivery.",
+            }));
+          },
+        },
+        handler: async (response: any) => {
+          try {
+            setPaymentLoadingText("VERIFYING PAYMENT STATUS WITH RAZORPAY...");
+            const verifyResult = await ApiService.verifyRazorpayPayment({
+              orderId,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+              customerEmail: initialOrder.customerEmail,
+              customerName: shippingAddress.fullName.trim(),
+            });
 
-      const checkoutResult = await cashfree.checkout({
-        paymentSessionId: cfResponse.paymentSessionId,
-        redirectTarget,
-      });
+            if (verifyResult.verified) {
+              const confirmedOrder: Order = {
+                ...initialOrder,
+                status: "Confirmed",
+                orderStatus: "Confirmed",
+                paymentStatus: "Paid",
+                paymentId: response.razorpay_payment_id,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+                paymentMethod: verifyResult.paymentMethod || "Razorpay Online Payment",
+              };
 
-      // If redirected (_self on mobile), the browser navigates to Cashfree and will return to return_url
-      if (checkoutResult?.redirect) {
-        return;
-      }
+              addOrder(confirmedOrder);
+              try {
+                sessionStorage.setItem("leafly_last_order", JSON.stringify(confirmedOrder));
+              } catch {
+                // ignore
+              }
 
-      // Step E: Modal resolved — Verify payment server-side
-      setPaymentLoadingText("VERIFYING PAYMENT STATUS WITH CASHFREE...");
-      const verifyResult = await ApiService.verifyCashfreePayment(orderId, {
-        email: initialOrder.customerEmail,
-        name: shippingAddress.fullName.trim(),
-      });
+              orderCompletedRef.current = true;
+              setIsBursting(true);
+              navigate("/order-success", { replace: true });
+            } else {
+              throw new Error(verifyResult.error || "Payment verification failed.");
+            }
+          } catch (verifyErr) {
+            console.error("[Razorpay Verification Error]:", verifyErr);
+            setIsProcessing(false);
+            setIsBursting(false);
+            setPaymentLoadingText("");
+            setErrors((prev) => ({
+              ...prev,
+              payment:
+                verifyErr instanceof Error
+                  ? verifyErr.message
+                  : "Payment verification failed. If money was debited, it will be refunded by your bank within 3-5 business days.",
+            }));
+          }
+        },
+      };
 
-      if (verifyResult.verified) {
-        // Payment verified authoritatively by server!
-        const confirmedOrder: Order = {
-          ...initialOrder,
-          status: "Confirmed",
-          orderStatus: "Confirmed",
-          paymentStatus: "Paid",
-          paymentId: verifyResult.paymentId || undefined,
-          paymentMethod: verifyResult.paymentMethod || "Cashfree Online Payment",
-        };
-
-        addOrder(confirmedOrder);
-        try {
-          sessionStorage.setItem("leafly_last_order", JSON.stringify(confirmedOrder));
-        } catch {
-          // ignore
-        }
-
-        orderCompletedRef.current = true;
-        setIsBursting(true);
-        navigate("/order-success", { replace: true });
-      } else {
-        // User dismissed the modal without paying, or payment failed
-        console.warn("[Cashfree Notice] Payment not verified or incomplete:", checkoutResult);
+      const rzpInstance = new window.Razorpay(razorpayOptions);
+      rzpInstance.on("payment.failed", (failResponse: any) => {
+        console.warn("[Razorpay] Payment failed:", failResponse?.error);
         setIsProcessing(false);
+        setIsBursting(false);
         setPaymentLoadingText("");
+        const errorDesc =
+          failResponse?.error?.description ||
+          failResponse?.error?.reason ||
+          "Payment was declined by bank or UPI app.";
         setErrors((prev) => ({
           ...prev,
-          payment:
-            verifyResult.message ||
-            "Payment was not completed. You can retry payment whenever you're ready, or choose Pay on Delivery.",
+          payment: `Payment failed: ${errorDesc}. You can retry or choose Pay on Delivery.`,
         }));
-      }
+      });
+
+      rzpInstance.open();
     } catch (paymentErr) {
-      console.error("[Cashfree Flow Error]:", paymentErr);
+      console.error("[Razorpay Flow Error]:", paymentErr);
       setIsProcessing(false);
+      setIsBursting(false);
       setPaymentLoadingText("");
       setErrors((prev) => ({
         ...prev,
         payment:
           paymentErr instanceof Error
             ? paymentErr.message
-            : "An error occurred while connecting to Cashfree. Please retry or choose Pay on Delivery.",
+            : "An error occurred while connecting to Razorpay. Please retry or choose Pay on Delivery.",
       }));
     }
   };
@@ -1585,24 +1622,23 @@ export default function Checkout() {
             </div>
 
             <div className="checkout-option-list payment-options" role="radiogroup" aria-label="Payment Method Selection">
-              {/* 1. Online Payment — TEMPORARILY DISABLED (COMING SOON) */}
+              {/* 1. Online Payment — Razorpay Standard Checkout */}
               {ONLINE_PAYMENT_ENABLED ? (
-                /* Active selectable Cashfree card — only shown when flag is true */
-                <label className={`checkout-option ${paymentMethod === "cashfree" ? "selected" : ""}`}>
+                <label className={`checkout-option ${paymentMethod === "razorpay" ? "selected" : ""}`}>
                   <input
                     type="radio"
                     name="paymentMethod"
-                    value="cashfree"
-                    checked={paymentMethod === "cashfree"}
+                    value="razorpay"
+                    checked={paymentMethod === "razorpay"}
                     onChange={() => {
-                      setPaymentMethod("cashfree");
+                      setPaymentMethod("razorpay");
                       setErrors((prev) => {
                         const next = { ...prev };
                         delete next.payment;
                         return next;
                       });
                     }}
-                    aria-label="Cashfree Online Payment (Cards, UPI, NetBanking)"
+                    aria-label="Razorpay Online Payment (UPI, Cards, NetBanking)"
                   />
                   <div className="checkout-option-content">
                     <div className="checkout-option-header-row">
@@ -1610,13 +1646,12 @@ export default function Checkout() {
                       <span className="payment-secure-badge">SECURE · INSTANT</span>
                     </div>
                     <p className="checkout-option-desc">
-                      Pay securely via UPI (Google Pay, PhonePe, Paytm, BHIM, Amazon Pay), Enter UPI ID (yourname@upi), Cards, or NetBanking.
+                      Pay securely via UPI (Google Pay, PhonePe, Paytm, BHIM, Amazon Pay), QR Code, Cards, or NetBanking.
                     </p>
-                    <CashfreePaymentLogos />
+                    <PaymentMethodLogos />
                   </div>
                 </label>
               ) : (
-                /* Disabled card — COMING SOON */
                 <div
                   className="checkout-option checkout-option-disabled"
                   aria-disabled="true"
@@ -1631,33 +1666,33 @@ export default function Checkout() {
                     <p className="checkout-unavailable-note">
                       Online payment is temporarily unavailable. Please use Pay on Delivery (Cash / UPI).
                     </p>
-                    <CashfreePaymentLogos />
+                    <PaymentMethodLogos />
                   </div>
                 </div>
               )}
 
-              {paymentMethod === "cashfree" && ONLINE_PAYMENT_ENABLED && (
+              {paymentMethod === "razorpay" && ONLINE_PAYMENT_ENABLED && (
                 <div className="checkout-online-message">
                   <div className="checkout-online-badge-row">
-                    <span>🔒 <strong>100% Encrypted & Instant Checkout</strong> powered by Cashfree Payments</span>
+                    <span>🔒 <strong>100% Encrypted & Instant Checkout</strong> powered by Razorpay</span>
                   </div>
                   <div className="checkout-flow-hints">
                     <div className="checkout-flow-hint-item">
                       <span className="checkout-hint-icon">📱</span>
                       <div>
-                        <strong>Mobile UPI Apps:</strong> Instant handoff to your installed UPI app (Google Pay, PhonePe, Paytm, BHIM, Amazon Pay).
+                        <strong>Mobile UPI Apps:</strong> Instant handoff to Google Pay, PhonePe, Paytm, BHIM, or Amazon Pay.
                       </div>
                     </div>
                     <div className="checkout-flow-hint-item">
                       <span className="checkout-hint-icon">🆔</span>
                       <div>
-                        <strong>Pay using UPI ID:</strong> Enter your VPA (e.g. <em>yourname@upi</em>) in the Cashfree payment screen to approve on any app.
+                        <strong>Pay using UPI ID / QR:</strong> Enter your VPA (e.g. <em>yourname@upi</em>) or scan the on-screen QR code.
                       </div>
                     </div>
                     <div className="checkout-flow-hint-item">
-                      <span className="checkout-hint-icon">🖥️</span>
+                      <span className="checkout-hint-icon">💳</span>
                       <div>
-                        <strong>Desktop Web:</strong> Scan & Pay QR with any mobile UPI app, or pay directly via Cards & 50+ NetBanking partners.
+                        <strong>Cards & NetBanking:</strong> All major debit/credit cards (Visa, Mastercard, RuPay) and 50+ banks.
                       </div>
                     </div>
                   </div>
@@ -1825,7 +1860,7 @@ export default function Checkout() {
               type="button"
               className={`checkout-primary-button ${isProcessing ? "brewing" : ""} ${isBursting ? "bursting" : ""}`}
               disabled={isProcessing || items.length === 0}
-              aria-label={isProcessing ? (paymentLoadingText || "Processing...") : (paymentMethod === "cashfree" ? "Proceed to secure payment" : "Place order")}
+              aria-label={isProcessing ? (paymentLoadingText || "Processing...") : (paymentMethod === "razorpay" ? "Proceed to secure payment" : "Place order")}
               onClick={handlePlaceOrder}
             >
               {isProcessing ? (
@@ -1833,7 +1868,7 @@ export default function Checkout() {
                   <span className="checkout-teapot-icon" aria-hidden="true">🫖</span>
                   {paymentLoadingText || "BREWING YOUR RITUAL..."}
                 </span>
-              ) : paymentMethod === "cashfree" ? (
+              ) : paymentMethod === "razorpay" ? (
                 "PROCEED TO SECURE PAYMENT"
               ) : (
                 "PLACE ORDER (COD)"

@@ -1,0 +1,214 @@
+.payment-logos-wrapper {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: rgba(11, 43, 30, 0.03);
+  border: 1px solid rgba(11, 43, 30, 0.08);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.payment-methods-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.payment-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #556b60;
+  min-width: 72px;
+}
+
+.payment-group-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.payment-logo-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 43, 30, 0.12);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1a2e22;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.payment-logo-pill:hover {
+  border-color: rgba(11, 43, 30, 0.25);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.07);
+}
+
+.payment-svg-icon {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.payment-pill-text {
+  line-height: 1;
+}
+
+/* PhonePe Glyph */
+.payment-phonepe-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  background: #5f259f;
+  color: #ffffff;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Paytm */
+.payment-paytm-wordmark {
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: -0.02em;
+}
+
+.payment-paytm-pay {
+  color: #002970;
+}
+
+.payment-paytm-tm {
+  color: #00b9f5;
+}
+
+/* BHIM */
+.payment-bhim-triangles {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.payment-bhim-t1 {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid #008444;
+}
+
+.payment-bhim-t2 {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid #f26522;
+}
+
+/* Amazon Pay */
+.payment-amazon-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.payment-amazon-a {
+  color: #111;
+}
+
+.payment-amazon-pay {
+  color: #f99f1b;
+  margin-left: 2px;
+}
+
+/* Visa */
+.payment-brand-visa {
+  font-size: 11px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  color: #1a1f71;
+}
+
+/* Mastercard */
+.payment-mastercard-circles {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  width: 18px;
+  height: 12px;
+}
+
+.payment-mc-circle {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  position: absolute;
+}
+
+.payment-mc-red {
+  background: #eb001b;
+  left: 0;
+}
+
+.payment-mc-yellow {
+  background: #f79e1b;
+  left: 7px;
+  opacity: 0.9;
+}
+
+/* RuPay */
+.payment-rupay-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.payment-rupay-arrow {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid #0c8242;
+}
+
+.payment-rupay-text {
+  font-size: 11px;
+  font-weight: 800;
+  color: #092c74;
+}
+
+/* Net Banking Bank Dots */
+.payment-bank-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.payment-bank-dot.sbi { background: #280071; }
+.payment-bank-dot.hdfc { background: #004c8f; }
+.payment-bank-dot.icici { background: #f58220; }
+.payment-bank-dot.axis { background: #97144d; }
+.payment-bank-dot.kotak { background: #ed1c24; }
+
+.payment-pill-more-banks {
+  background: #f8faf9;
+  color: #40554a;
+}
+
+@media (max-width: 640px) {
+  .payment-group-label {
+    min-width: 100%;
+    margin-bottom: 2px;
+  }
+}

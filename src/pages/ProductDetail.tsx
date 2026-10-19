@@ -18,11 +18,11 @@ import "./ProductDetail.css";
 interface CustomerReview {
   id: string;
   customerName: string;
-  customerEmail?: string;
   rating: number;
   feedback: string;
   createdAt: string;
   status?: string;
+  isVerified?: boolean;
 }
 
 export default function ProductDetail() {
@@ -224,6 +224,8 @@ export default function ProductDetail() {
   const [reviewHoverRating, setReviewHoverRating] = useState<number | null>(null);
   const [reviewName, setReviewName] = useState(currentUser?.name || currentUser?.displayName || "");
   const [reviewFeedback, setReviewFeedback] = useState("");
+  const [reviewHoneypot, setReviewHoneypot] = useState("");
+  const [sessionSubmittedProducts, setSessionSubmittedProducts] = useState<Record<string, boolean>>({});
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewSuccessMsg, setReviewSuccessMsg] = useState<string | null>(null);
   const [reviewErrorMsg, setReviewErrorMsg] = useState<string | null>(null);
@@ -239,30 +241,27 @@ export default function ProductDetail() {
 
     const isMatch = (r: any) => {
       if (!product) return false;
-      const targetId = String(product.id || "").trim().toLowerCase();
+      const targetId = String(product.id || "").trim();
       const targetSlug = getProductSlug(product).trim().toLowerCase();
-      const targetName = (product.name || "").trim().toLowerCase();
 
-      // Check all identifier candidates across existing documents
-      const rProdId = String(r.productId ?? r.product_id ?? "").trim().toLowerCase();
+      // Check product identifiers strictly
+      const rProdId = String(r.productId ?? r.product_id ?? "").trim();
       const rSlug = String(r.slug ?? r.productSlug ?? r.product_slug ?? "").trim().toLowerCase();
-      const rProdName = String(r.productName ?? r.product_name ?? r.title ?? "").trim().toLowerCase();
 
+      // Stable product ID matching:
+      // Primary: exact string match on stable productId (e.g. "1" for Green Tea, "2" for Black Tea)
+      // Fallback: exact match on unique product slug
       const matchesId = Boolean(targetId && rProdId === targetId);
       const matchesSlug = Boolean(
         (targetSlug && rSlug === targetSlug) ||
-        (targetSlug && rProdId === targetSlug)
-      );
-      const matchesName = Boolean(
-        (targetName && rProdName === targetName) ||
-        (targetName && rProdId === targetName)
+        (targetSlug && rProdId.toLowerCase() === targetSlug)
       );
 
       const status = typeof r.status === "string" ? r.status.trim().toLowerCase() : "";
-      // Public visitors only see approved reviews (or reviews where status is default/approved)
+      // Public visitors only see approved reviews (defaulting to approved if unset)
       const isVisible = !status || status === "approved";
 
-      return (matchesId || matchesSlug || matchesName) && isVisible;
+      return (matchesId || matchesSlug) && isVisible;
     };
 
     const mapReview = (d: any, fallbackId: string): CustomerReview => {
@@ -272,11 +271,12 @@ export default function ProductDetail() {
 
       return {
         id: d.id || fallbackId,
-        customerName: d.customerName || d.author || d.userName || d.name || "Verified Patron",
+        customerName: d.customerName || d.author || d.userName || d.name || "Leafly Patron",
         rating: safeRating,
         feedback: d.feedback || d.comment || d.review || d.text || "",
         createdAt: resolvedDate,
         status: d.status || "Approved",
+        isVerified: Boolean(d.isVerified === true || (d.orderId && typeof d.orderId === "string" && d.orderId.length > 0)),
       };
     };
 
@@ -301,15 +301,15 @@ export default function ProductDetail() {
       }
     );
     return () => unsubscribe();
-  }, [product?.id, product?.name]);
+  }, [product?.id, product?.slug, product?.name]);
+
+  const totalReviewCount = reviews.length;
 
   const avgRating = useMemo(() => {
-    if (!product || reviews.length === 0) return (product?.rating ?? 4.9).toFixed(1);
+    if (reviews.length === 0) return null;
     const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
     return (sum / reviews.length).toFixed(1);
-  }, [product?.rating, reviews]);
-
-  const totalReviewCount = reviews.length > 0 ? reviews.length : (product?.reviewCount ?? 0);
+  }, [reviews]);
 
   /* --- product not found ----------------------------------- */
 
@@ -408,25 +408,62 @@ export default function ProductDetail() {
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!product || !reviewFeedback.trim() || reviewSubmitting) return;
+    if (!product || reviewSubmitting) return;
+
+    // Spam honeypot detection
+    if (reviewHoneypot.trim()) {
+      setReviewSuccessMsg("Thank you! Your tasting review has been published.");
+      setIsWritingReview(false);
+      return;
+    }
+
+    const pIdStr = String(product.id);
+
+    // Duplicate submission prevention in current session
+    if (sessionSubmittedProducts[pIdStr]) {
+      setReviewErrorMsg("You have already shared your tasting notes for this harvest in this session. Thank you for your feedback!");
+      return;
+    }
+
+    const trimmedFeedback = reviewFeedback.trim();
+    if (trimmedFeedback.length < 5) {
+      setReviewErrorMsg("Please share at least a few words describing your tasting notes (minimum 5 characters).");
+      return;
+    }
+    if (trimmedFeedback.length > 2000) {
+      setReviewErrorMsg("Review text is too long (maximum 2,000 characters).");
+      return;
+    }
+
+    const authorName = reviewName.trim() || currentUser?.name || currentUser?.displayName || "Leafly Patron";
+    if (authorName.length < 2) {
+      setReviewErrorMsg("Please enter your name (minimum 2 characters).");
+      return;
+    }
+    if (authorName.length > 80) {
+      setReviewErrorMsg("Name is too long (maximum 80 characters).");
+      return;
+    }
+
     setReviewSubmitting(true);
     setReviewSuccessMsg(null);
     setReviewErrorMsg(null);
 
-    const authorName = reviewName.trim() || currentUser?.name || currentUser?.displayName || "Verified Patron";
     const currentUid = firebaseUser?.uid || currentUser?.uid || null;
     const newRevId = `rev-${Date.now()}`;
     const newCreatedAt = new Date().toISOString();
 
     const reviewPayload = {
       id: newRevId,
-      productId: String(product.id),
+      productId: pIdStr,
+      productSlug: getProductSlug(product),
       productName: product.name,
       rating: Number(reviewRating) || 5,
-      feedback: reviewFeedback.trim(),
+      feedback: trimmedFeedback,
       customerName: authorName,
-      userId: currentUid,
+      userId: currentUid || null,
       status: "Approved" as const,
+      isVerified: false, // Reviews submitted on product page are not marked as verified buyer without order proof
       createdAt: newCreatedAt,
     };
 
@@ -438,6 +475,8 @@ export default function ProductDetail() {
       });
       setReviewSuccessMsg("Thank you! Your tasting review has been published.");
       setReviewFeedback("");
+      setReviewName(currentUser?.name || currentUser?.displayName || "");
+      setSessionSubmittedProducts((prev) => ({ ...prev, [pIdStr]: true }));
       setIsWritingReview(false);
     } catch (err) {
       try {
@@ -447,6 +486,8 @@ export default function ProductDetail() {
         });
         setReviewSuccessMsg("Thank you! Your tasting review has been published.");
         setReviewFeedback("");
+        setReviewName(currentUser?.name || currentUser?.displayName || "");
+        setSessionSubmittedProducts((prev) => ({ ...prev, [pIdStr]: true }));
         setIsWritingReview(false);
       } catch (innerErr) {
         console.error("Firestore review submission error:", innerErr);
@@ -504,8 +545,22 @@ export default function ProductDetail() {
       ];
 
   const productSchema = isTeaware && teawareItem
-    ? generateTeawareSchema(teawareItem, canonicalPath)
-    : generateProductSchema(product, canonicalPath);
+    ? generateTeawareSchema(
+        {
+          ...teawareItem,
+          rating: totalReviewCount > 0 && avgRating ? Number(avgRating) : undefined,
+          reviewCount: totalReviewCount,
+        },
+        canonicalPath
+      )
+    : generateProductSchema(
+        {
+          ...product,
+          rating: totalReviewCount > 0 && avgRating ? Number(avgRating) : undefined,
+          reviewCount: totalReviewCount,
+        },
+        canonicalPath
+      );
 
   const breadcrumbSchema = generateBreadcrumbSchema(breadcrumbs);
 
@@ -595,17 +650,24 @@ export default function ProductDetail() {
               if (el) el.scrollIntoView({ behavior: "smooth" });
             }}
             style={{ cursor: "pointer" }}
-            aria-label={`${avgRating} out of 5 stars based on ${totalReviewCount} reviews`}
+            aria-label={totalReviewCount > 0 && avgRating ? `${avgRating} out of 5 stars based on ${totalReviewCount} reviews` : "Reviews (0)"}
           >
             <div className="pdp-stars" aria-hidden="true">
-              ★★★★★
+              {totalReviewCount > 0 && avgRating
+                ? "★".repeat(Math.max(1, Math.min(5, Math.round(Number(avgRating))))) +
+                  "☆".repeat(5 - Math.max(1, Math.min(5, Math.round(Number(avgRating)))))
+                : "☆☆☆☆☆"}
             </div>
-            <span className="pdp-rating-score">
-              {avgRating}
-            </span>
-            <span className="pdp-rating-sep">·</span>
+            {totalReviewCount > 0 && avgRating && (
+              <>
+                <span className="pdp-rating-score">
+                  {avgRating}
+                </span>
+                <span className="pdp-rating-sep">·</span>
+              </>
+            )}
             <span className="pdp-review-count">
-              {totalReviewCount} Reviews
+              Reviews ({totalReviewCount})
             </span>
           </div>
 
@@ -887,9 +949,20 @@ export default function ProductDetail() {
               <p className="pdp-reviews-eyebrow">PATRON IMPRESSIONS</p>
               <h2 className="pdp-reviews-title">Customer Reviews &amp; Tasting Notes</h2>
               <div className="pdp-reviews-score-summary">
-                <span className="pdp-reviews-stars">★★★★★</span>
-                <span className="pdp-reviews-avg">{avgRating} out of 5</span>
-                <span className="pdp-reviews-count-badge">Based on {totalReviewCount} tasting notes</span>
+                <span className="pdp-reviews-stars">
+                  {totalReviewCount > 0 && avgRating
+                    ? "★".repeat(Math.max(1, Math.min(5, Math.round(Number(avgRating))))) +
+                      "☆".repeat(5 - Math.max(1, Math.min(5, Math.round(Number(avgRating)))))
+                    : "☆☆☆☆☆"}
+                </span>
+                <span className="pdp-reviews-avg">
+                  {totalReviewCount > 0 && avgRating ? `${avgRating} out of 5` : "Reviews (0)"}
+                </span>
+                <span className="pdp-reviews-count-badge">
+                  {totalReviewCount === 0
+                    ? "0 tasting notes"
+                    : `Based on ${totalReviewCount} tasting note${totalReviewCount > 1 ? "s" : ""}`}
+                </span>
               </div>
             </div>
             <button
@@ -917,6 +990,18 @@ export default function ProductDetail() {
             <form className="pdp-review-form" onSubmit={handleSubmitReview}>
               <h3 className="pdp-review-form-title">Share Your Experience with {product.name}</h3>
 
+              {/* Honeypot spam bot check */}
+              <input
+                type="text"
+                name="website_url_hp"
+                value={reviewHoneypot}
+                onChange={(e) => setReviewHoneypot(e.target.value)}
+                style={{ display: "none" }}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+              />
+
               <div className="pdp-form-group">
                 <label className="pdp-form-label">Your Rating</label>
                 <div className="pdp-star-rating-input">
@@ -939,7 +1024,7 @@ export default function ProductDetail() {
 
               <div className="pdp-form-grid">
                 <div className="pdp-form-group">
-                  <label htmlFor="reviewName" className="pdp-form-label">Your Name</label>
+                  <label htmlFor="reviewName" className="pdp-form-label">Your Name *</label>
                   <input
                     id="reviewName"
                     type="text"
@@ -947,24 +1032,31 @@ export default function ProductDetail() {
                     value={reviewName}
                     onChange={(e) => setReviewName(e.target.value)}
                     placeholder="e.g. Maya S."
+                    minLength={2}
+                    maxLength={80}
                     required
                   />
                 </div>
                 <div className="pdp-form-group">
-                  <label htmlFor="reviewEmail" className="pdp-form-label">Email (Private)</label>
+                  <label htmlFor="reviewPatronType" className="pdp-form-label">Reviewer Status</label>
                   <input
-                    id="reviewEmail"
-                    type="email"
+                    id="reviewPatronType"
+                    type="text"
                     className="pdp-form-input"
-                    value={currentUser?.email || firebaseUser?.email || ""}
+                    value={
+                      currentUser?.name || currentUser?.displayName || currentUser?.email
+                        ? `Logged in as ${currentUser?.name || currentUser?.displayName || currentUser?.email}`
+                        : "Guest Connoisseur"
+                    }
                     disabled
-                    placeholder="Your account email"
+                    readOnly
+                    style={{ background: "#f8f9fa", color: "#557065", cursor: "default" }}
                   />
                 </div>
               </div>
 
               <div className="pdp-form-group">
-                <label htmlFor="reviewFeedback" className="pdp-form-label">Tasting Notes &amp; Feedback</label>
+                <label htmlFor="reviewFeedback" className="pdp-form-label">Tasting Notes &amp; Feedback *</label>
                 <textarea
                   id="reviewFeedback"
                   className="pdp-form-textarea"
@@ -972,6 +1064,8 @@ export default function ProductDetail() {
                   value={reviewFeedback}
                   onChange={(e) => setReviewFeedback(e.target.value)}
                   placeholder="Describe the liquor color, aroma, flavor notes, mouthfeel, or brewing method..."
+                  minLength={5}
+                  maxLength={2000}
                   required
                 />
               </div>
@@ -980,7 +1074,7 @@ export default function ProductDetail() {
                 <button
                   type="submit"
                   className="pdp-submit-review-btn"
-                  disabled={reviewSubmitting || !reviewFeedback.trim()}
+                  disabled={reviewSubmitting || reviewFeedback.trim().length < 5}
                 >
                   {reviewSubmitting ? "Submitting..." : "Publish Review ✦"}
                 </button>
@@ -1025,7 +1119,11 @@ export default function ProductDetail() {
                   <p className="pdp-review-feedback">&ldquo;{rev.feedback}&rdquo;</p>
                   <div className="pdp-review-author-row">
                     <span className="pdp-author-name">{rev.customerName}</span>
-                    <span className="pdp-verified-badge">✓ Verified Buyer</span>
+                    {rev.isVerified ? (
+                      <span className="pdp-verified-badge">✓ Verified Buyer</span>
+                    ) : (
+                      <span className="pdp-patron-badge">Patron Tasting</span>
+                    )}
                   </div>
                 </article>
               ))

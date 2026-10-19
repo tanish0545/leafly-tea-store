@@ -388,7 +388,58 @@ export const ApiService = {
   },
 
   /**
-   * Initializes Cashfree Order session via serverless API
+   * Initializes Razorpay Order session via serverless API
+   */
+  async createRazorpayOrder(payload: {
+    orderId: string;
+    customerId?: string;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    items: Array<{ productId?: string | number; name?: string; price: number; quantity: number }>;
+    subtotal: number;
+    deliveryFee: number;
+    discount?: number;
+    couponCode?: string;
+    total: number;
+  }): Promise<{
+    success: boolean;
+    orderId: string;
+    razorpayOrderId: string;
+    amount: number;
+    currency: string;
+    keyId: string;
+    error?: string;
+  }> {
+    return postApi("/api/razorpay-create-order", payload as unknown as Record<string, unknown>);
+  },
+
+  /**
+   * Authoritatively verifies payment signature and status with Razorpay via serverless API
+   */
+  async verifyRazorpayPayment(payload: {
+    orderId: string;
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    razorpaySignature: string;
+    customerEmail?: string;
+    customerName?: string;
+  }): Promise<{
+    success: boolean;
+    verified: boolean;
+    orderStatus: string;
+    paymentStatus: string;
+    paymentId?: string;
+    paymentMethod?: string;
+    alreadyProcessed?: boolean;
+    message?: string;
+    error?: string;
+  }> {
+    return postApi("/api/razorpay-verify", payload as unknown as Record<string, unknown>);
+  },
+
+  /**
+   * (Legacy) Initializes Cashfree Order session via serverless API
    */
   async createCashfreeOrder(payload: {
     orderId: string;
@@ -415,7 +466,7 @@ export const ApiService = {
   },
 
   /**
-   * Authoritatively verifies payment status with Cashfree via serverless API
+   * (Legacy) Authoritatively verifies payment status with Cashfree via serverless API
    */
   async verifyCashfreePayment(orderId: string, customerData?: { email?: string; name?: string }): Promise<{
     success: boolean;

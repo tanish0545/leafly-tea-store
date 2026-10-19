@@ -153,18 +153,31 @@ service cloud.firestore {
     }
 
     // 7. Reviews collection:
-    // Publicly readable so customers can browse verified tasting notes.
-    // Customers can submit their own reviews; Admins have full moderation/deletion rights.
+    // Publicly readable so customers and guests can browse genuine tasting notes across all devices.
+    // Customers (both logged-in and guests) can submit genuine reviews with strict field validation; Admins have full moderation/deletion rights.
     match /reviews/{reviewId} {
       allow read: if true;
       allow create: if (
-        request.resource.data.rating is number &&
+        (request.resource.data.rating is int || request.resource.data.rating is number) &&
         request.resource.data.rating >= 1 &&
         request.resource.data.rating <= 5 &&
         request.resource.data.productId is string &&
+        request.resource.data.productId.size() > 0 &&
+        request.resource.data.productId.size() <= 100 &&
         request.resource.data.feedback is string &&
-        request.resource.data.feedback.size() > 0 &&
-        request.resource.data.get('customerName', '') != ''
+        request.resource.data.feedback.size() >= 5 &&
+        request.resource.data.feedback.size() <= 2000 &&
+        request.resource.data.customerName is string &&
+        request.resource.data.customerName.size() >= 2 &&
+        request.resource.data.customerName.size() <= 80 &&
+        // Server-side user identity protection: guests cannot forge a userId; authenticated users can only use their own uid
+        (request.auth == null
+          ? (request.resource.data.get('userId', null) == null || request.resource.data.get('userId', '') == '')
+          : (request.resource.data.get('userId', null) == request.auth.uid || request.resource.data.get('userId', null) == null || request.resource.data.get('userId', '') == '')) &&
+        // Do not mark guest reviews as verified purchases without proof (orderId)
+        (request.auth == null
+          ? (request.resource.data.get('isVerified', false) == false || request.resource.data.get('orderId', '') != '')
+          : true)
       );
       allow update, delete: if isAdmin();
     }

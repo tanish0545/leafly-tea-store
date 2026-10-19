@@ -32,6 +32,18 @@ function apiDevMiddleware() {
             const mod = await server.ssrLoadModule('./api/orders.ts');
             return await mod.default(req, res);
           }
+          if (urlPath === '/api/razorpay-create-order') {
+            const mod = await server.ssrLoadModule('./api/razorpay-create-order.ts');
+            return await mod.default(req, res);
+          }
+          if (urlPath === '/api/razorpay-verify') {
+            const mod = await server.ssrLoadModule('./api/razorpay-verify.ts');
+            return await mod.default(req, res);
+          }
+          if (urlPath === '/api/razorpay-webhook') {
+            const mod = await server.ssrLoadModule('./api/razorpay-webhook.ts');
+            return await mod.default(req, res);
+          }
           if (urlPath === '/api/cashfree-create-order') {
             const mod = await server.ssrLoadModule('./api/cashfree-create-order.ts');
             return await mod.default(req, res);
@@ -83,6 +95,15 @@ export default defineConfig(({ mode }) => {
     'SMTP_USER',
     'SMTP_PASS',
     'SMTP_PASSWORD',
+    'RAZORPAY_KEY_ID',
+    'RAZORPAY_KEY_SECRET',
+    'RAZORPAY_SECRET',
+    'RAZORPAY_SECRET_KEY',
+    'RAZORPAY_API_SECRET',
+    'RAZORPAY_API_KEY',
+    'RAZORPAY_KEY',
+    'RAZORPAY_WEBHOOK_SECRET',
+    'RAZORPAY_WEBHOOK_KEY',
     'CASHFREE_CLIENT_ID',
     'CASHFREE_CLIENT_SECRET',
     'CASHFREE_ENV',
@@ -148,9 +169,6 @@ export default defineConfig(({ mode }) => {
             if (id.includes('node_modules')) {
               if (id.includes('firebase')) {
                 return 'vendor-firebase';
-              }
-              if (id.includes('@cashfreepayments')) {
-                return 'vendor-cashfree';
               }
               if (
                 id.includes('react') ||

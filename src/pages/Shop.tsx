@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "../lib/firebase";
 
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
@@ -39,6 +41,46 @@ export default function Shop() {
   const products = useMemo(() => {
     return allProducts.filter((p) => p.category !== "teaware" && p.category !== "gifting");
   }, [allProducts]);
+
+  const [productReviewStats, setProductReviewStats] = useState<Record<string, { count: number; avgRating: string; numericAvg: number }>>({});
+
+  useEffect(() => {
+    const reviewsCol = collection(db, "reviews");
+    const unsubscribe = onSnapshot(
+      reviewsCol,
+      (snapshot) => {
+        const stats: Record<string, { sum: number; count: number }> = {};
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          const status = typeof d.status === "string" ? d.status.trim().toLowerCase() : "";
+          if (status && status !== "approved") return;
+          const pId = String(d.productId ?? d.product_id ?? "").trim();
+          if (!pId) return;
+          const rating = Number(d.rating) || 5;
+          if (!stats[pId]) {
+            stats[pId] = { sum: 0, count: 0 };
+          }
+          stats[pId].sum += rating;
+          stats[pId].count += 1;
+        });
+
+        const formatted: Record<string, { count: number; avgRating: string; numericAvg: number }> = {};
+        for (const [pId, val] of Object.entries(stats)) {
+          const avg = val.sum / val.count;
+          formatted[pId] = {
+            count: val.count,
+            avgRating: avg.toFixed(1),
+            numericAvg: avg,
+          };
+        }
+        setProductReviewStats(formatted);
+      },
+      (err) => {
+        console.warn("Could not load real-time reviews for shop catalog:", err);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
   const {
     items,
@@ -279,9 +321,17 @@ export default function Shop() {
     } else if (sortBy === "name-asc") {
       result.sort((a, b) => a.name.localeCompare(b.name));
     } else if (sortBy === "popular") {
-      result.sort((a, b) => (b.reviewCount ?? 0) - (a.reviewCount ?? 0));
+      result.sort((a, b) => {
+        const countA = productReviewStats[String(a.id)]?.count ?? a.reviewCount ?? 0;
+        const countB = productReviewStats[String(b.id)]?.count ?? b.reviewCount ?? 0;
+        return countB - countA;
+      });
     } else if (sortBy === "rating") {
-      result.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+      result.sort((a, b) => {
+        const ratingA = productReviewStats[String(a.id)]?.numericAvg ?? a.rating ?? 0;
+        const ratingB = productReviewStats[String(b.id)]?.numericAvg ?? b.rating ?? 0;
+        return ratingB - ratingA;
+      });
     }
 
     return result;
@@ -294,6 +344,7 @@ export default function Shop() {
     selectedBenefits,
     maxPrice,
     sortBy,
+    productReviewStats,
   ]);
 
   // Wishlist toggle
@@ -1002,14 +1053,33 @@ export default function Shop() {
                       </p>
 
                       {/* RATING ROW */}
-                      <div
-                        className="card-rating-row"
-                        aria-label={`${(product.rating ?? 4.9).toFixed(1)} out of 5 stars`}
-                      >
-                        <span className="card-stars" aria-hidden="true">★★★★★</span>
-                        <span className="card-rating-val">{(product.rating ?? 4.9).toFixed(1)}</span>
-                        <span className="card-review-count">({product.reviewCount ?? 120})</span>
-                      </div>
+                      {(() => {
+                        const stats = productReviewStats[String(product.id)];
+                        const count = stats?.count ?? (typeof product.reviewCount === "number" ? product.reviewCount : 0);
+                        const avg = stats?.avgRating ?? (count > 0 && product.rating ? product.rating.toFixed(1) : null);
+                        if (count > 0 && avg) {
+                          return (
+                            <div
+                              className="card-rating-row"
+                              aria-label={`${avg} out of 5 stars based on ${count} reviews`}
+                            >
+                              <span className="card-stars" aria-hidden="true">
+                                {"★".repeat(Math.max(1, Math.min(5, Math.round(Number(avg)))))}
+                              </span>
+                              <span className="card-rating-val">{avg}</span>
+                              <span className="card-review-count">({count})</span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div
+                            className="card-rating-row"
+                            aria-label="Reviews (0)"
+                          >
+                            <span className="card-review-count">Reviews (0)</span>
+                          </div>
+                        );
+                      })()}
 
                       {/* PRICE ROW */}
                       <div className="card-price-row">

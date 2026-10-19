@@ -26,6 +26,7 @@ import type {
   OrderEmailItem,
   OrderStatusEmailData,
 } from "./_lib/emailTemplates.js";
+import { getSafeRazorpayDiagnostics } from "./_lib/razorpay.js";
 
 // In-memory sets to prevent duplicate sends from rapid duplicate network requests
 const dispatchedConfirmationOrders = new Set<string>();
@@ -70,7 +71,7 @@ export default async function handler(
   res: ServerResponse
 ) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
 
   if (req.method === "OPTIONS") {
@@ -79,10 +80,33 @@ export default async function handler(
     return;
   }
 
+  // Safe diagnostics support via GET for quick status inspection in browser/curl
+  const urlObj = new URL(req.url || "", "http://localhost");
+  const queryAction = (urlObj.searchParams.get("action") || urlObj.searchParams.get("type") || "").trim().toLowerCase();
+  const isDiagnosticQuery =
+    queryAction === "config-status" ||
+    queryAction === "status-check" ||
+    queryAction === "health" ||
+    queryAction === "razorpay-status";
+
+  if (req.method === "GET" && isDiagnosticQuery) {
+    const status = getAdminConfigStatus();
+    const razorpayStatus = getSafeRazorpayDiagnostics();
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({
+        ...status,
+        razorpay: razorpayStatus,
+      })
+    );
+    return;
+  }
+
   if (req.method !== "POST") {
     res.statusCode = 405;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ error: "Method not allowed. Use POST." }));
+    res.end(JSON.stringify({ error: "Method not allowed. Use POST or GET for diagnostics." }));
     return;
   }
 
@@ -149,13 +173,19 @@ export default async function handler(
     }
 
     // =========================================================================
-    // 00. SECURE SERVER FIREBASE & SMTP CONFIGURATION DIAGNOSTICS
+    // 00. SECURE SERVER FIREBASE, SMTP & RAZORPAY CONFIGURATION DIAGNOSTICS
     // =========================================================================
-    if (action === "config-status") {
+    if (action === "config-status" || action === "razorpay-status") {
       const status = getAdminConfigStatus();
+      const razorpayStatus = getSafeRazorpayDiagnostics();
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(status));
+      res.end(
+        JSON.stringify({
+          ...status,
+          razorpay: razorpayStatus,
+        })
+      );
       return;
     }
 

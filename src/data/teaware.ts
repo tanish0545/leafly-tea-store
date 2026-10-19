@@ -27,8 +27,8 @@ export type TeawareItem = {
   capacity?: string;
   price: number;
   oldPrice?: number;
-  rating: number;
-  reviewCount: number;
+  rating?: number;
+  reviewCount?: number;
   badge?: string;
   image: string;
   description: string;
@@ -50,8 +50,7 @@ export const teawareProducts: TeawareItem[] = [
     capacity: "150g Storage",
     price: 799,
     oldPrice: 949,
-    rating: 4.9,
-    reviewCount: 38,
+    reviewCount: 0,
     badge: "Popular",
     image: storageCanisterImg,
     description: "Double-lidded airtight stainless steel canister engineered to protect high-mountain tea leaves from light, oxygen, and moisture, locking in volatile aromatic oils for long-lasting freshness.",
@@ -72,8 +71,7 @@ export const teawareProducts: TeawareItem[] = [
     capacity: "Gongfu Tea Ritual Size",
     price: 1299,
     oldPrice: 1499,
-    rating: 4.8,
-    reviewCount: 24,
+    reviewCount: 0,
     badge: "Premium",
     image: bambooTeaTrayImg,
     description: "Handcrafted natural bamboo serving tray featuring an integrated water drainage slot and catch basin, designed for clean and meditative Gongfu tea rituals and everyday tabletop elegance.",
@@ -94,8 +92,7 @@ export const teawareProducts: TeawareItem[] = [
     capacity: "650ml (3-4 cups)",
     price: 1699,
     oldPrice: 1999,
-    rating: 4.9,
-    reviewCount: 84,
+    reviewCount: 0,
     badge: "Bestseller",
     image: glassInfuserTeapotImg,
     description: "High-grade borosilicate glass teapot equipped with an ultra-fine removable coil infuser in the spout, allowing whole orthodox leaves maximum room to unfurl and circulate freely.",
@@ -116,8 +113,7 @@ export const teawareProducts: TeawareItem[] = [
     capacity: "220ml Cup + Saucer",
     price: 899,
     oldPrice: 1099,
-    rating: 4.8,
-    reviewCount: 46,
+    reviewCount: 0,
     badge: "Popular",
     image: cupSaucerImg,
     description: "Artisan glazed ceramic cup and matching saucer with delicate gold rim detailing. The gently flared lip aerates hot liquor, accentuating floral, honeyed, and muscatel top notes.",
@@ -138,8 +134,7 @@ export const teawareProducts: TeawareItem[] = [
     capacity: "800ml (4-5 cups)",
     price: 1899,
     oldPrice: 2199,
-    rating: 5.0,
-    reviewCount: 62,
+    reviewCount: 0,
     badge: "Premium",
     image: bloomingTeaImg,
     description: "Spherical crystal-clear glass teapot designed especially to celebrate blooming flower teas, artisan tea spheres, and expansive white peony leaves with full 360-degree visual theatre.",
@@ -160,8 +155,7 @@ export const teawareProducts: TeawareItem[] = [
     capacity: "200ml (Set of 2)",
     price: 649,
     oldPrice: 799,
-    rating: 4.9,
-    reviewCount: 94,
+    reviewCount: 0,
     badge: "Bestseller",
     image: glassCupImg,
     description: "Suspended thermal double-wall glass structure keeps brewed tea piping hot inside while remaining comfortably cool to the touch on the exterior, with zero condensation rings.",
@@ -182,8 +176,7 @@ export const teawareProducts: TeawareItem[] = [
     capacity: "550ml",
     price: 2199,
     oldPrice: 2499,
-    rating: 4.9,
-    reviewCount: 32,
+    reviewCount: 0,
     badge: "Premium",
     image: marbleTeapotImg,
     description: "Handcrafted stoneware teapot finished in a serene natural marble-veined glaze. Superior heat retention makes it the perfect vessel for full-bodied black teas and artisanal oolongs.",
@@ -204,8 +197,7 @@ export const teawareProducts: TeawareItem[] = [
     capacity: "750ml (3-4 cups)",
     price: 1999,
     oldPrice: 2299,
-    rating: 4.9,
-    reviewCount: 78,
+    reviewCount: 0,
     badge: "Bestseller",
     image: glassTeapotImg,
     description: "A contemporary classic teapot featuring an extra-large laser-perforated stainless steel infuser basket, allowing whole single-estate leaves plenty of space for balanced extraction.",

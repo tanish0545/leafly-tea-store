@@ -6,7 +6,6 @@ import { useAuth } from "../context/AuthContext";
 import { db } from "../lib/firebase";
 import { collection, addDoc, setDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
 import type { Order } from "../types/contracts";
-import { ApiService } from "../lib/apiClient";
 import DeliveryAnimation from "../components/DeliveryAnimation";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
@@ -99,7 +98,7 @@ export default function OrderSuccess() {
     }
   }, [latestOrder]);
 
-  // Handle return from Cashfree redirect URL (when order_id query param is present)
+  // Handle return or direct navigation with order_id query param
   useEffect(() => {
     if (!urlOrderId) return;
 
@@ -110,37 +109,42 @@ export default function OrderSuccess() {
         setIsVerifying(true);
         setVerificationError(null);
 
-        // 1. Verify with backend serverless API
-        const verifyRes = await ApiService.verifyCashfreePayment(urlOrderId!);
+        // 1. Fetch authoritative order record from Firestore
+        const snap = await getDoc(doc(db, "orders", urlOrderId!));
+        if (snap.exists() && isMounted) {
+          const fetched = { id: snap.id, ...snap.data() } as Order;
+          const isPaid = (fetched.paymentStatus || "").toLowerCase() === "paid";
+          const isConfirmed = (fetched.orderStatus || fetched.status || "").toLowerCase() === "confirmed";
 
-        if (!isMounted) return;
-
-        if (verifyRes.verified) {
-          // 2. Fetch updated order record from Firestore
-          const snap = await getDoc(doc(db, "orders", urlOrderId!));
-          if (snap.exists() && isMounted) {
-            const fetched = { id: snap.id, ...snap.data() } as Order;
+          if (isPaid || isConfirmed || fetched.paymentMethod?.toLowerCase().includes("delivery")) {
             setPersistedOrder(fetched);
             sessionStorage.setItem("leafly_last_order", JSON.stringify(fetched));
-          } else if (isMounted) {
-            // Fallback order from sessionStorage or state
-            setPersistedOrder((prev) =>
-              prev ? { ...prev, status: "Confirmed", orderStatus: "Confirmed", paymentStatus: "Paid" } : null
+            clearCart();
+          } else {
+            setVerificationError(
+              "Your payment could not be verified. If money was debited from your account, it will be refunded by your bank within 3-5 business days."
             );
           }
-          clearCart();
-        } else {
-          // If payment was not verified or cancelled
-          setVerificationError(
-            verifyRes.message ||
-              "Your payment could not be verified by Cashfree. If money was debited from your account, it will be refunded by your bank within 3-5 business days."
-          );
+        } else if (isMounted) {
+          // Check if order was stored in sessionStorage
+          const stored = sessionStorage.getItem("leafly_last_order");
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored) as Order;
+              if (parsed.id === urlOrderId) {
+                setPersistedOrder(parsed);
+                clearCart();
+                return;
+              }
+            } catch {}
+          }
+          setVerificationError("Order record not found. Please check your order history or contact support.");
         }
       } catch (err) {
-        console.warn("[OrderSuccess] Payment verification notice:", err);
+        console.warn("[OrderSuccess] Order verification notice:", err);
         if (isMounted) {
           setVerificationError(
-            "An error occurred while confirming your payment with Cashfree. Please check your order history."
+            "An error occurred while confirming your order. Please check your order history or contact support."
           );
         }
       } finally {
@@ -191,10 +195,9 @@ export default function OrderSuccess() {
       currentUser?.name ||
       currentUser?.displayName ||
       "Verified Patron";
-    const productName =
-      (activeOrder?.items || []).map((i) => i.name).filter(Boolean).join(", ") ||
-      "Leafly Botanical Harvest";
-    const productId = activeOrder?.items?.[0]?.productId || "tea-harvest";
+    const firstItem = activeOrder?.items?.[0];
+    const productId = String(firstItem?.productId || firstItem?.id || "1");
+    const productName = firstItem?.name || "Natural Green Tea";
     const orderId = activeOrder?.id || `ORD-${Date.now().toString(36).toUpperCase()}`;
 
     const reviewPayload = {
@@ -234,21 +237,21 @@ export default function OrderSuccess() {
     }
   };
 
-  // Loading state while verifying payment with Cashfree
+  // Loading state while verifying payment
   if (isVerifying) {
     return (
       <main className="order-success-page order-success-verifying">
         <SEO
           title="Verifying Payment | Leafly"
-          description="Verifying your payment with Cashfree."
+          description="Verifying your payment and securing your order."
           noindex={true}
         />
         <div className="order-success-ambient-glow" aria-hidden="true" />
         <div className="order-success-card" style={{ textAlign: "center", padding: "48px 24px" }}>
           <div style={{ fontSize: "40px", marginBottom: "16px", animation: "spin 2s linear infinite" }}>🫖</div>
-          <p className="order-success-eyebrow">CASHFREE VERIFICATION</p>
+          <p className="order-success-eyebrow">PAYMENT VERIFICATION</p>
           <h1 style={{ fontSize: "24px", marginBottom: "8px" }}>CONFIRMING YOUR PAYMENT...</h1>
-          <p style={{ color: "#6a7b72" }}>Please wait while we authoritatively verify your payment with Cashfree.</p>
+          <p style={{ color: "#6a7b72" }}>Please wait while we authoritatively verify your payment and prepare your order.</p>
         </div>
         <Footer />
       </main>
