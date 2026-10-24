@@ -16,7 +16,6 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { ApiService } from "../lib/apiClient";
 import { useCoupons } from "../context/CouponContext";
-import PaymentMethodLogos from "../components/PaymentMethodLogos";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import "./Checkout.css";
@@ -1654,17 +1653,15 @@ export default function Checkout() {
                         return next;
                       });
                     }}
-                    aria-label="Razorpay Online Payment (UPI, Cards, NetBanking)"
+                    aria-label="Online Payment (UPI, Cards, Net Banking)"
                   />
                   <div className="checkout-option-content">
                     <div className="checkout-option-header-row">
-                      <strong className="checkout-option-title">ONLINE PAYMENT (UPI, Cards, NetBanking)</strong>
-                      <span className="payment-secure-badge">SECURE · INSTANT</span>
+                      <strong className="checkout-option-title">ONLINE PAYMENT (UPI, Cards, Net Banking)</strong>
                     </div>
                     <p className="checkout-option-desc">
-                      Pay securely via UPI (Google Pay, PhonePe, Paytm, BHIM, Amazon Pay), QR Code, Cards, or NetBanking.
+                      Pay securely with Razorpay.
                     </p>
-                    <PaymentMethodLogos />
                   </div>
                 </label>
               ) : (
@@ -1676,41 +1673,12 @@ export default function Checkout() {
                 >
                   <div className="checkout-option-content">
                     <div className="checkout-option-header-row">
-                      <strong className="checkout-option-title checkout-option-title-muted">ONLINE PAYMENT (UPI, Cards, NetBanking)</strong>
+                      <strong className="checkout-option-title checkout-option-title-muted">ONLINE PAYMENT (UPI, Cards, Net Banking)</strong>
                       <span className="checkout-coming-soon-badge">COMING SOON</span>
                     </div>
                     <p className="checkout-unavailable-note">
                       Online payment is temporarily unavailable. Please use Pay on Delivery (Cash / UPI).
                     </p>
-                    <PaymentMethodLogos />
-                  </div>
-                </div>
-              )}
-
-              {paymentMethod === "razorpay" && ONLINE_PAYMENT_ENABLED && (
-                <div className="checkout-online-message">
-                  <div className="checkout-online-badge-row">
-                    <span>🔒 <strong>100% Encrypted & Instant Checkout</strong> powered by Razorpay</span>
-                  </div>
-                  <div className="checkout-flow-hints">
-                    <div className="checkout-flow-hint-item">
-                      <span className="checkout-hint-icon">📱</span>
-                      <div>
-                        <strong>Mobile UPI Apps:</strong> Instant handoff to Google Pay, PhonePe, Paytm, BHIM, or Amazon Pay.
-                      </div>
-                    </div>
-                    <div className="checkout-flow-hint-item">
-                      <span className="checkout-hint-icon">🆔</span>
-                      <div>
-                        <strong>Pay using UPI ID / QR:</strong> Enter your VPA (e.g. <em>yourname@upi</em>) or scan the on-screen QR code.
-                      </div>
-                    </div>
-                    <div className="checkout-flow-hint-item">
-                      <span className="checkout-hint-icon">💳</span>
-                      <div>
-                        <strong>Cards & NetBanking:</strong> All major debit/credit cards (Visa, Mastercard, RuPay) and 50+ banks.
-                      </div>
-                    </div>
                   </div>
                 </div>
               )}
