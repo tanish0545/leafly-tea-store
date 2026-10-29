@@ -786,6 +786,26 @@ export default async function handler(
         return;
       }
 
+      // Server-side validation: Reject Cash on Delivery (COD) as it is disabled / coming soon
+      const rawPaymentMethod = String(body.paymentMethod || "").trim().toLowerCase();
+      const isCodOrderAttempt =
+        !rawPaymentMethod ||
+        rawPaymentMethod.includes("cash on delivery") ||
+        rawPaymentMethod.includes("cod") ||
+        rawPaymentMethod.includes("pay on delivery") ||
+        rawPaymentMethod === "delivery";
+
+      if (isCodOrderAttempt) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: "Cash on Delivery is currently unavailable. Please choose an online payment method.",
+          })
+        );
+        return;
+      }
+
       // Idempotency check: check if order is already saved in Firestore
       try {
         const existingOrder = await getServerOrder(id);

@@ -375,38 +375,48 @@ select.leafly-auth-select[aria-invalid="true"] {
   width: 100%;
 }
 
-.checkout-option:hover:not(.disabled) {
+.checkout-option:hover:not(.disabled):not(.checkout-option-disabled) {
   transform: translateY(-1px);
   border-color: rgba(201, 162, 75, 0.85);
   background: #fdfbf7;
   box-shadow: 0 4px 12px rgba(11, 43, 30, 0.06);
 }
 
-.checkout-option:focus-within:not(.disabled) {
+.checkout-option:focus-within:not(.disabled):not(.checkout-option-disabled) {
   outline: none;
   border-color: #0b2b1e;
   box-shadow: 0 0 0 3px rgba(201, 162, 75, 0.25);
 }
 
-.checkout-option.disabled {
-  opacity: 0.65;
+.checkout-option.disabled,
+.checkout-option-disabled {
+  opacity: 0.6;
   background: #f7f5ee;
   border-color: rgba(11, 43, 30, 0.12);
-  cursor: not-allowed;
+  cursor: not-allowed !important;
   user-select: none;
-  pointer-events: none;
 }
 
-.checkout-option.disabled:hover {
+.checkout-option.disabled:hover,
+.checkout-option-disabled:hover {
   transform: none;
   border-color: rgba(11, 43, 30, 0.12);
   background: #f7f5ee;
   box-shadow: none;
+  cursor: not-allowed !important;
 }
 
-.checkout-option.disabled input[type="radio"] {
-  cursor: not-allowed;
+.checkout-option.disabled *,
+.checkout-option-disabled * {
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
+.checkout-option.disabled input[type="radio"],
+.checkout-option-disabled input[type="radio"] {
+  cursor: not-allowed !important;
   opacity: 0.35;
+  pointer-events: none;
 }
 
 .payment-coming-soon-badge,
@@ -440,6 +450,10 @@ select.leafly-auth-select[aria-invalid="true"] {
 }
 
 .checkout-option-title-muted {
+  color: #8a9990;
+}
+
+.checkout-option-desc-muted {
   color: #8a9990;
 }
 

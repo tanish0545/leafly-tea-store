@@ -100,7 +100,7 @@ export default function Hero() {
               className="hero-primary-button"
             >
               <span className="button-label">
-                SHOP COLLECTION
+                SHOP NOW
               </span>
 
               <span className="button-arrow">

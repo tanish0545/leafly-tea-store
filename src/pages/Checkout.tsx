@@ -148,7 +148,11 @@ export default function Checkout() {
   // ────────────────────────────────────────────────────────
   const ONLINE_PAYMENT_ENABLED = true;
 
-  const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
+  const [paymentMethod, setPaymentMethodState] = useState<"razorpay" | "cod">("razorpay");
+  const setPaymentMethod = (method: "razorpay" | "cod") => {
+    if (method === "cod") return;
+    setPaymentMethodState(method);
+  };
   const stockDecrementedForOrderRef = useRef<string | null>(null);
   const [paymentLoadingText, setPaymentLoadingText] = useState("");
   const [saveAddress, setSaveAddress] = useState(true);
@@ -753,6 +757,15 @@ export default function Checkout() {
     orderSubtotal: number,
     orderDeliveryFee: number
   ) => {
+    if ((paymentMethod as string) === "cod") {
+      setErrors((prev) => ({
+        ...prev,
+        payment: "Cash on Delivery is currently unavailable. Please choose online payment.",
+      }));
+      setIsProcessing(false);
+      void finishOrder;
+      return;
+    }
     const effectiveUserId = isRealRegisteredUser ? (auth.currentUser?.uid || currentUser?.uid || "guest") : "guest";
     const cleanCustomerEmail = (resolvedAuthEmail || email.trim()).toLowerCase();
 
@@ -1100,16 +1113,14 @@ export default function Checkout() {
     pendingOrderIdRef.current = orderId;
 
     // ==========================================
-    // 1. CASH ON DELIVERY (COD) FLOW
+    // 1. CASH ON DELIVERY (COD) FLOW (DISABLED)
     // ==========================================
-    if (paymentMethod === "cod") {
-      setErrors((prev) => {
-        const next = { ...prev };
-        delete next.payment;
-        return next;
-      });
-      setIsBursting(true);
-      await finishOrder(orderId, total, subtotal, deliveryFee);
+    if ((paymentMethod as string) === "cod") {
+      setErrors((prev) => ({
+        ...prev,
+        payment: "Cash on Delivery is currently unavailable. Please choose online payment.",
+      }));
+      setIsProcessing(false);
       return;
     }
 
@@ -1683,38 +1694,53 @@ export default function Checkout() {
                 </div>
               )}
 
-              {/* 2. Pay on Delivery (Cash / UPI) - Active & Selectable */}
-              <label className={`checkout-option ${paymentMethod === "cod" ? "selected" : ""}`}>
+              {/* 2. Cash on Delivery (COD) — Disabled / Coming Soon */}
+              <div
+                className="checkout-option checkout-option-disabled disabled"
+                aria-disabled="true"
+                role="presentation"
+                tabIndex={-1}
+                title="Cash on Delivery is coming soon"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onKeyDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+              >
                 <input
                   type="radio"
                   name="paymentMethod"
                   value="cod"
-                  checked={paymentMethod === "cod"}
-                  onChange={() => {
-                    setPaymentMethod("cod");
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.payment;
-                      return next;
-                    });
+                  checked={false}
+                  disabled
+                  tabIndex={-1}
+                  aria-disabled="true"
+                  readOnly
+                  aria-label="Cash on Delivery — Coming Soon"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                   }}
-                  aria-label="Pay on Delivery (Cash / UPI) - Pay when your order is delivered. Cash or UPI accepted at delivery."
+                  onChange={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                 />
                 <div className="checkout-option-content">
                   <div className="checkout-option-header-row">
-                    <strong className="checkout-option-title">PAY ON DELIVERY (Cash / UPI)</strong>
+                    <strong className="checkout-option-title checkout-option-title-muted">
+                      Cash on Delivery — Coming Soon
+                    </strong>
+                    <span className="checkout-coming-soon-badge">COMING SOON</span>
                   </div>
-                  <p className="checkout-option-desc">
+                  <p className="checkout-option-desc checkout-option-desc-muted">
                     Pay when your order is delivered. Cash or UPI accepted at delivery.
                   </p>
                 </div>
-              </label>
-
-              {paymentMethod === "cod" && (
-                <div className="checkout-cod-message">
-                  💵 <strong>Cash or UPI accepted at delivery:</strong> When your order arrives, you can pay the delivery partner via Cash or by scanning the UPI QR code on delivery.
-                </div>
-              )}
+              </div>
             </div>
 
           </div>
