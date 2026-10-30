@@ -22,6 +22,7 @@ const SUPPRESSED_PAGE_PREFIXES = [
   "/signup",
   "/reset-password",
   "/admin",
+  "/authorizeddeveloper",
 ];
 
 // Deterministic leaf parameters to avoid continuous re-rendering

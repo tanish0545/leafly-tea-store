@@ -49,7 +49,7 @@ export default function Navbar() {
     openWishlist();
   };
 
-  if (location.pathname.startsWith("/admin")) {
+  if (location.pathname.startsWith("/admin") || location.pathname === "/authorizeddeveloper") {
     return null;
   }
 

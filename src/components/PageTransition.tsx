@@ -43,7 +43,7 @@ export default function PageTransition({ children }: PageTransitionProps) {
     }
   }, [location, displayLocation]);
 
-  if (location.pathname.startsWith("/admin")) {
+  if (location.pathname.startsWith("/admin") || location.pathname === "/authorizeddeveloper") {
     return <div className="admin-page-transition-root">{children}</div>;
   }
 

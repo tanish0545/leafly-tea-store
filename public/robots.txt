@@ -25,6 +25,8 @@ Disallow: /checkout
 Disallow: /checkout/
 Disallow: /order-success
 Disallow: /reset-password
+Disallow: /authorizeddeveloper
+Disallow: /authorizeddeveloper/
 
 # Canonical XML Sitemap
 Sitemap: https://leaflytea.in/sitemap.xml

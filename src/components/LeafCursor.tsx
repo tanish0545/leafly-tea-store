@@ -4,7 +4,7 @@ import "./LeafCursor.css";
 
 export default function LeafCursor() {
   const location = useLocation();
-  const isAdmin = location.pathname.startsWith("/admin");
+  const isAdmin = location.pathname.startsWith("/admin") || location.pathname === "/authorizeddeveloper";
 
   const [visible, setVisible] = useState(false);
   const [cursorState, setCursorState] = useState<"normal" | "hover" | "cart" | "clicking">("normal");

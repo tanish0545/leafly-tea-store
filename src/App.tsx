@@ -57,6 +57,7 @@ const TeaMaker = lazy(() => import("./pages/TeaMaker"));
 const WhyLeafly = lazy(() => import("./pages/WhyLeafly"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const AdminLogin = lazy(() => import("./pages/AdminLogin"));
+const AuthorizedDeveloper = lazy(() => import("./pages/AuthorizedDeveloper"));
 
 function CartRedirect() {
   const { openCart } = useCart();
@@ -127,6 +128,7 @@ function App() {
                             <Route path="/freshness" element={<FreshnessGuarantee />} />
                             <Route path="/faqs" element={<FAQs />} />
                             <Route path="/faq" element={<FAQs />} />
+                            <Route path="/authorizeddeveloper" element={<AuthorizedDeveloper />} />
                             <Route path="/admin/login" element={<AdminLogin />} />
                             <Route
                               path="/admin"

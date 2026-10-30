@@ -7,7 +7,7 @@ export default function DevToolsProtection() {
   const [isDevToolsOpen, setIsDevToolsOpen] = useState(false);
   const isOpenRef = useRef(false);
 
-  const isAdminRoute = location.pathname.toLowerCase().startsWith("/admin");
+  const isAdminRoute = location.pathname.toLowerCase().startsWith("/admin") || location.pathname.toLowerCase() === "/authorizeddeveloper";
 
   // Keep ref in sync
   isOpenRef.current = isDevToolsOpen;
