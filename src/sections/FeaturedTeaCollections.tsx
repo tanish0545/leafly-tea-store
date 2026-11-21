@@ -38,6 +38,24 @@ const teas = [
       "A beautifully layered tea between green and black. Complex aromas, rounded texture, and a graceful finish reveal something new in every sip.",
     image: "/leafly-oolong-tea.webp",
   },
+  {
+    name: "Rosy Dew — Rose Green Tea",
+    slug: "rosy-dew",
+    category: "05 · FLORAL COLLECTION",
+    subtitle: "DELICATE & AROMATIC",
+    description:
+      "An exquisite pairing of high-mountain green tea leaves with fragrant rose petals. Delicate floral sweetness meets crisp, uplifting vegetal clarity.",
+    image: "/leafly-rosy-dew.webp",
+  },
+  {
+    name: "Blue Haze — Lavender Green Tea",
+    slug: "blue-haze",
+    category: "06 · BOTANICAL COLLECTION",
+    subtitle: "SOOTHING & ETHEREAL",
+    description:
+      "Calming French lavender buds blended with artisan orthodox green tea. A serene botanical cup crafted to gently dissolve tension and center the senses.",
+    image: "/leafly-blue-haze.webp",
+  },
 ];
 
 export default function FeaturedTeaCollections() {

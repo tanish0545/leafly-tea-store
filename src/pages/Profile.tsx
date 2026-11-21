@@ -7,7 +7,7 @@ import {
   reauthenticateWithCredential,
   EmailAuthProvider,
 } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, collection, onSnapshot } from "firebase/firestore";
 import { auth, googleProvider, db } from "../lib/firebase";
 import { useProducts } from "../context/ProductContext";
 import { useOrderContext } from "../context/OrderContext";
@@ -45,6 +45,7 @@ type SidebarItemId =
   | "details"
   | "orders"
   | "coupons"
+  | "reviews"
   | "notifications"
   | "security";
 
@@ -102,6 +103,15 @@ const sidebarItems: SidebarItem[] = [
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M3 8a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v2a2 2 0 0 0 0 4v2a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2a2 2 0 0 0 0-4V8Zm6 4h6" />
+      </svg>
+    ),
+  },
+  {
+    id: "reviews",
+    label: "My Reviews",
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
       </svg>
     ),
   },
@@ -712,6 +722,11 @@ export default function Profile() {
       return;
     }
 
+    if (item.id === "reviews") {
+      setNotice("Inspect and manage your tea harvest tasting notes.");
+      return;
+    }
+
     if (item.id === "notifications") {
       setNotice("Manage your email & SMS ritual notifications.");
       return;
@@ -720,6 +735,55 @@ export default function Profile() {
     if (item.id === "security") {
       setNotice("Manage your account security, authentication & settings.");
       return;
+    }
+  };
+
+  const [myReviews, setMyReviews] = useState<any[]>([]);
+  const [myReviewsLoading, setMyReviewsLoading] = useState(false);
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.uid && !user?.email) {
+      setMyReviews([]);
+      return;
+    }
+    setMyReviewsLoading(true);
+    const reviewsCol = collection(db, "reviews");
+    const unsubscribe = onSnapshot(
+      reviewsCol,
+      (snapshot) => {
+        const fetched: any[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          const matchesUid = user?.uid && d.userId && String(d.userId) === String(user.uid);
+          const matchesEmail = user?.email && d.customerEmail && d.customerEmail.toLowerCase() === user.email.toLowerCase();
+          if (matchesUid || matchesEmail) {
+            fetched.push({ id: docSnap.id, ...d });
+          }
+        });
+        fetched.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setMyReviews(fetched);
+        setMyReviewsLoading(false);
+      },
+      (err) => {
+        console.warn("Could not load user reviews:", err);
+        setMyReviewsLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [user?.uid, user?.email]);
+
+  const handleDeleteMyReview = async (reviewId: string) => {
+    if (!window.confirm("Are you sure you want to delete this tasting review?")) return;
+    setDeletingReviewId(reviewId);
+    try {
+      await deleteDoc(doc(db, "reviews", reviewId));
+      setNotice("Your review has been successfully removed.");
+    } catch (err) {
+      console.error("Failed to delete review:", err);
+      alert("Unable to delete review. Please check your permissions.");
+    } finally {
+      setDeletingReviewId(null);
     }
   };
 
@@ -1807,6 +1871,112 @@ export default function Profile() {
                 ))}
               </div>
               {notifSaved && <p className="profile-success-text">Notification settings updated.</p>}
+            </section>
+          )}
+
+          {/* VIEW: MY REVIEWS */}
+          {selectedSidebar === "reviews" && (
+            <section className="profile-card profile-reviews-view">
+              <div className="profile-card-header">
+                <div>
+                  <p className="profile-card-kicker">CONNOISSEUR IMPRESSIONS</p>
+                  <h2>MY TASTING REVIEWS</h2>
+                </div>
+              </div>
+              <p className="profile-subtitle">
+                Inspect and manage your verified tasting impressions and reviews across Leafly harvests.
+              </p>
+
+              {myReviewsLoading ? (
+                <div style={{ textAlign: "center", padding: "40px 20px", color: "rgba(11, 43, 30, 0.6)" }}>
+                  Loading your tasting reviews...
+                </div>
+              ) : myReviews.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "48px 24px", background: "#faf7f0", borderRadius: "12px", border: "1px solid #ebd9b8", margin: "16px 0" }}>
+                  <span style={{ fontSize: "2rem", display: "block", marginBottom: "8px" }}>☕</span>
+                  <h3 style={{ fontFamily: "Playfair Display, Georgia, serif", color: "#0b2b1e", marginBottom: "8px" }}>No reviews shared yet</h3>
+                  <p style={{ color: "rgba(11, 43, 30, 0.7)", maxWidth: "440px", margin: "0 auto 20px", fontSize: "14px", lineHeight: "1.6" }}>
+                    You haven&apos;t shared your tasting notes for any harvest yet. Experience our single-estate leaves and share your thoughts!
+                  </p>
+                  <button
+                    type="button"
+                    className="profile-primary-button"
+                    style={{ margin: "0 auto", display: "inline-block" }}
+                    onClick={() => navigate("/shop")}
+                  >
+                    EXPLORE TEA HARVESTS →
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
+                  {myReviews.map((rev) => (
+                    <article
+                      key={rev.id}
+                      style={{
+                        padding: "20px",
+                        background: "#fcfbfa",
+                        borderRadius: "10px",
+                        border: "1px solid #f0eae1",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
+                        <div>
+                          <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#0b2b1e", margin: "0 0 4px" }}>
+                            {rev.productName || "Leafly Tea Harvest"}
+                          </h3>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px", color: "#c9a24b" }}>
+                            <span>{"★".repeat(Math.max(1, Math.min(5, Math.round(Number(rev.rating) || 5))))}{"☆".repeat(5 - Math.max(1, Math.min(5, Math.round(Number(rev.rating) || 5))))}</span>
+                            <span style={{ color: "#6a7b72", fontSize: "12px" }}>
+                              · {safeFormatDate(rev.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+                        <span
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: "12px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            letterSpacing: "0.5px",
+                            textTransform: "uppercase",
+                            background: rev.status === "Hidden" ? "rgba(239, 68, 68, 0.12)" : "rgba(34, 197, 94, 0.12)",
+                            color: rev.status === "Hidden" ? "#991b1b" : "#166534",
+                          }}
+                        >
+                          {rev.status === "Hidden" ? "Under Moderation" : "Approved"}
+                        </span>
+                      </div>
+
+                      <p style={{ margin: "4px 0", color: "#2d3748", fontSize: "14px", lineHeight: "1.6", fontStyle: "italic" }}>
+                        &ldquo;{rev.feedback}&rdquo;
+                      </p>
+
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #f0eae1" }}>
+                        {rev.productId && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/shop/${rev.productSlug || rev.productId}`)}
+                            style={{ background: "transparent", border: "none", color: "#0b2b1e", fontSize: "13px", fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}
+                          >
+                            View Product Page →
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={deletingReviewId === rev.id}
+                          onClick={() => handleDeleteMyReview(rev.id)}
+                          style={{ background: "transparent", border: "none", color: "#dc2626", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                        >
+                          {deletingReviewId === rev.id ? "Deleting..." : "Delete Review"}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 

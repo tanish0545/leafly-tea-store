@@ -55,13 +55,21 @@ export default function Shop() {
           const status = typeof d.status === "string" ? d.status.trim().toLowerCase() : "";
           if (status && status !== "approved") return;
           const pId = String(d.productId ?? d.product_id ?? "").trim();
-          if (!pId) return;
-          const rating = Number(d.rating) || 5;
-          if (!stats[pId]) {
-            stats[pId] = { sum: 0, count: 0 };
+          const pSlug = String(d.slug ?? d.productSlug ?? d.product_slug ?? "").trim().toLowerCase();
+          const rating = Number(d.rating);
+          const safeRating = !isNaN(rating) && rating >= 1 && rating <= 5 ? rating : 5;
+
+          const keys = new Set<string>();
+          if (pId) keys.add(pId);
+          if (pSlug) keys.add(pSlug);
+
+          for (const key of keys) {
+            if (!stats[key]) {
+              stats[key] = { sum: 0, count: 0 };
+            }
+            stats[key].sum += safeRating;
+            stats[key].count += 1;
           }
-          stats[pId].sum += rating;
-          stats[pId].count += 1;
         });
 
         const formatted: Record<string, { count: number; avgRating: string; numericAvg: number }> = {};
@@ -322,14 +330,14 @@ export default function Shop() {
       result.sort((a, b) => a.name.localeCompare(b.name));
     } else if (sortBy === "popular") {
       result.sort((a, b) => {
-        const countA = productReviewStats[String(a.id)]?.count ?? a.reviewCount ?? 0;
-        const countB = productReviewStats[String(b.id)]?.count ?? b.reviewCount ?? 0;
+        const countA = productReviewStats[String(a.id)]?.count ?? (a.slug ? productReviewStats[a.slug]?.count : 0) ?? 0;
+        const countB = productReviewStats[String(b.id)]?.count ?? (b.slug ? productReviewStats[b.slug]?.count : 0) ?? 0;
         return countB - countA;
       });
     } else if (sortBy === "rating") {
       result.sort((a, b) => {
-        const ratingA = productReviewStats[String(a.id)]?.numericAvg ?? a.rating ?? 0;
-        const ratingB = productReviewStats[String(b.id)]?.numericAvg ?? b.rating ?? 0;
+        const ratingA = productReviewStats[String(a.id)]?.numericAvg ?? (a.slug ? productReviewStats[a.slug]?.numericAvg : 0) ?? 0;
+        const ratingB = productReviewStats[String(b.id)]?.numericAvg ?? (b.slug ? productReviewStats[b.slug]?.numericAvg : 0) ?? 0;
         return ratingB - ratingA;
       });
     }
@@ -406,8 +414,8 @@ export default function Shop() {
   // Quick Filter Pill definitions
   const quickPills = [
     { label: "All Teas", type: "all" },
-    { label: "Green Tea", type: "teaType", value: "Green" },
-    { label: "Black Tea", type: "teaType", value: "Black" },
+    { label: "Green Tea", type: "teaType", value: "Green Tea" },
+    { label: "Black Tea", type: "teaType", value: "Black Tea" },
     { label: "Oolong Tea", type: "teaType", value: "Oolong Tea" },
     { label: "Darjeeling", type: "origin", value: "Darjeeling" }
   ];
@@ -1054,9 +1062,9 @@ export default function Shop() {
 
                       {/* RATING ROW */}
                       {(() => {
-                        const stats = productReviewStats[String(product.id)];
-                        const count = stats?.count ?? (typeof product.reviewCount === "number" ? product.reviewCount : 0);
-                        const avg = stats?.avgRating ?? (count > 0 && product.rating ? product.rating.toFixed(1) : null);
+                        const stats = productReviewStats[String(product.id)] ?? (product.slug ? productReviewStats[product.slug] : undefined);
+                        const count = stats?.count ?? 0;
+                        const avg = count > 0 && stats?.avgRating ? stats.avgRating : null;
                         if (count > 0 && avg) {
                           return (
                             <div

@@ -34,6 +34,8 @@ const KNOWN_ASSET_MAP: Record<string, string> = {
   "image3": giftImage3,
   "image2": giftImage2,
   "image5": giftImage5,
+  "rosy-dew": "/leafly-rosy-dew.webp",
+  "blue-haze": "/leafly-blue-haze.webp",
 };
 
 type ProductContextType = {
@@ -369,6 +371,10 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
               productName = "Premium Oolong Black Tea";
             } else if (idStr === "4" && !data.name) {
               productName = "Red Oolong Tea";
+            } else if (idStr === "5" && !data.name) {
+              productName = "Rosy Dew — Rose Green Tea";
+            } else if (idStr === "6" && !data.name) {
+              productName = "Blue Haze — Lavender Green Tea";
             }
 
             if (idStr === "2" && (!data.category || data.category.toLowerCase().includes("white") || data.category.toLowerCase().includes("dusk"))) {

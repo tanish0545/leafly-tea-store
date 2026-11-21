@@ -1049,7 +1049,7 @@ export default function AdminDashboard({ activeSection: propActiveSection, activ
       image: "",
       description: "",
       features: [""],
-      rating: 5.0,
+      rating: undefined,
       reviewCount: 0,
       inStock: true,
       stock: 10,

@@ -2,6 +2,67 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ===============================================================
+    // Assumed Data Model & Schemas
+    // ===============================================================
+    //
+    // Collection: reviews
+    // Document ID: {reviewId}
+    // Fields:
+    //   - id: string (optional) - Unique identifier for review
+    //   - productId: string (required, 1-100 chars, immutable on customer update) - Catalog product ID
+    //   - productName: string (optional) - Product name
+    //   - productSlug: string (optional) - Product URL slug
+    //   - rating: number or int (required, 1 <= rating <= 5) - Star rating score
+    //   - feedback: string (required, 5-2000 chars) - Customer tasting review notes
+    //   - customerName: string (required, 2-80 chars) - Customer display name
+    //   - customerEmail: string (optional) - Customer email
+    //   - userId: string or null (optional, immutable on customer update) - Creator UID
+    //   - isVerified: bool (optional, immutable on customer update) - Verified buyer badge (orderId required if guest)
+    //   - orderId: string (optional) - Associated purchase order reference
+    //   - status: string (optional, e.g. "Approved" | "Hidden") - Moderation status (admin managed)
+    //   - createdAt: string or timestamp (optional) - Review creation time
+    //   - updatedAt: string or timestamp (optional) - Review update time
+    //   - timestamp: timestamp (optional) - Server timestamp
+    //
+    // Collection: users
+    // Document ID: {userId} (matches Firebase Auth UID)
+    //
+    // Collection: orders
+    // Document ID: {orderId}
+    //
+    // Collection: products
+    // Document ID: {productId}
+    //
+    // Collection: coupons
+    // Document ID: {couponId}
+    //
+    // Collection: teaware
+    // Document ID: {itemId}
+    //
+    // Collection: hampers
+    // Document ID: {hamperId}
+    //
+    // Collection: subscribers
+    // Document ID: {subscriberId}
+    //
+    // Collection: gifting_requests
+    // Document ID: {requestId}
+    //
+    // Collection: contact_messages
+    // Document ID: {messageId}
+    //
+    // Collection: requests
+    // Document ID: {requestId}
+    //
+    // Collection: mail
+    // Document ID: {mailId}
+    //
+    // Collection: system
+    // Document ID: {docId}
+    //
+    // ===============================================================
+
     // Helper functions
     function isAuthenticated() {
       return request.auth != null;
@@ -28,6 +89,22 @@ service cloud.firestore {
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin'
         ))
       );
+    }
+
+    // Domain Validator for reviews
+    function isValidReview(data) {
+      return (data.rating is int || data.rating is number) &&
+        data.rating >= 1 &&
+        data.rating <= 5 &&
+        data.productId is string &&
+        data.productId.size() > 0 &&
+        data.productId.size() <= 100 &&
+        data.feedback is string &&
+        data.feedback.size() >= 5 &&
+        data.feedback.size() <= 2000 &&
+        data.customerName is string &&
+        data.customerName.size() >= 2 &&
+        data.customerName.size() <= 80;
     }
 
     // 1. Users collection:
@@ -153,33 +230,46 @@ service cloud.firestore {
     }
 
     // 7. Reviews collection:
-    // Publicly readable so customers and guests can browse genuine tasting notes across all devices.
-    // Customers (both logged-in and guests) can submit genuine reviews with strict field validation; Admins have full moderation/deletion rights.
+    // Globally readable so all visitors, customers, and guests across all devices and sessions can read public reviews and rating stats without permission-denied errors.
+    // Customers (both authenticated and guests) can submit genuine reviews with strict field validation.
+    // Authors can update their own feedback/rating or delete their own review (userId and productId remain immutable; verified status and moderation status protected).
+    // Authorized Admins have full moderation rights (e.g. toggling status between Approved and Hidden) and delete permissions.
     match /reviews/{reviewId} {
+      // 1. Public Global Reads
       allow read: if true;
-      allow create: if (
-        (request.resource.data.rating is int || request.resource.data.rating is number) &&
-        request.resource.data.rating >= 1 &&
-        request.resource.data.rating <= 5 &&
-        request.resource.data.productId is string &&
-        request.resource.data.productId.size() > 0 &&
-        request.resource.data.productId.size() <= 100 &&
-        request.resource.data.feedback is string &&
-        request.resource.data.feedback.size() >= 5 &&
-        request.resource.data.feedback.size() <= 2000 &&
-        request.resource.data.customerName is string &&
-        request.resource.data.customerName.size() >= 2 &&
-        request.resource.data.customerName.size() <= 80 &&
-        // Server-side user identity protection: guests cannot forge a userId; authenticated users can only use their own uid
+
+      // 2. Review Creation & Validation
+      allow create: if isValidReview(request.resource.data) &&
+        // Prevent user impersonation:
+        // If unauthenticated: userId must be null or empty string.
+        // If authenticated: if userId is present, it must equal request.auth.uid.
         (request.auth == null
           ? (request.resource.data.get('userId', null) == null || request.resource.data.get('userId', '') == '')
-          : (request.resource.data.get('userId', null) == request.auth.uid || request.resource.data.get('userId', null) == null || request.resource.data.get('userId', '') == '')) &&
-        // Do not mark guest reviews as verified purchases without proof (orderId)
+          : (request.resource.data.get('userId', null) == null || request.resource.data.get('userId', '') == '' || request.resource.data.get('userId', '') == request.auth.uid)) &&
+        // Prevent verified purchase spoofing: guests cannot mark isVerified == true without an order reference
         (request.auth == null
-          ? (request.resource.data.get('isVerified', false) == false || request.resource.data.get('orderId', '') != '')
-          : true)
+          ? (request.resource.data.get('isVerified', false) == false || (request.resource.data.get('orderId', '') != '' && request.resource.data.orderId is string))
+          : true);
+
+      // 3. Review Ownership & Updates
+      allow update: if isAdmin() || (
+        // The author of a review can update their own review feedback/rating
+        resource.data.get('userId', null) != null &&
+        isOwner(resource.data.userId) &&
+        // Validate updated review feedback & rating
+        isValidReview(request.resource.data) &&
+        // In customer updates, the author cannot change userId or productId
+        request.resource.data.get('userId', null) == resource.data.get('userId', null) &&
+        request.resource.data.productId == resource.data.productId &&
+        // Prevent customer privilege escalation or moderation bypass (cannot modify userId, productId, isVerified, or status)
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['userId', 'productId', 'isVerified', 'status'])
       );
-      allow update, delete: if isAdmin();
+
+      // 4. Review Deletes
+      allow delete: if isAdmin() || (
+        resource.data.get('userId', null) != null &&
+        isOwner(resource.data.userId)
+      );
     }
 
     // 8. Newsletter Subscribers:

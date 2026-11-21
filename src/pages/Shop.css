@@ -279,18 +279,18 @@
 
 .shop-main-layout {
   width: 100%;
-  padding: 28px 0 32px;
+  padding: 20px 0 32px;
 }
 
 .shop-main-container {
-  width: 94%;
-  max-width: 1280px;
+  width: 95%;
+  max-width: 1320px;
   margin: 0 auto;
-  padding: 0 clamp(16px, 2.5vw, 32px);
+  padding: 0 clamp(16px, 2vw, 32px);
   display: flex;
   align-items: flex-start;
-  justify-content: center;
-  gap: clamp(24px, 2.5vw, 36px);
+  justify-content: flex-start;
+  gap: clamp(20px, 2vw, 30px);
   box-sizing: border-box;
 }
 
@@ -299,10 +299,10 @@
    ========================================================= */
 
 .shop-filter-sidebar {
-  width: 260px;
+  width: 240px;
   flex-shrink: 0;
   position: sticky;
-  top: 140px;
+  top: 130px;
   align-self: flex-start;
   background: transparent;
 }
@@ -349,7 +349,7 @@
 
 .filter-group {
   border-bottom: 1px solid #e7ded0;
-  padding: 12px 0 14px;
+  padding: 10px 0 12px;
 }
 
 .filter-group-header {
@@ -491,9 +491,9 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 14px;
-  padding-bottom: 16px;
-  margin-bottom: 22px;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
   border-bottom: 1px solid #e6ded1;
 }
 
@@ -652,36 +652,36 @@
 }
 
 /* =========================================================
-   6. RESPONSIVE PRODUCT GRID (EXACTLY 2 COLUMNS PER ROW)
+   6. RESPONSIVE PRODUCT GRID (3 COLUMNS DESKTOP - EFFICIENT BALANCED LAYOUT)
    ========================================================= */
 
 .shop-product-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
 }
 
 /* =========================================================
-   7. PRODUCT CARD (EXACT REFERENCE DESIGN - EQUAL DIMENSIONS)
+   7. PRODUCT CARD (COMPACT PREMIUM PROPORTIONS)
    ========================================================= */
 
 .ref-product-card {
   background: #ffffff;
   border: 1px solid #e7dfd2;
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   height: 100%;
   box-sizing: border-box;
   transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
-  box-shadow: 0 2px 8px rgba(11, 43, 30, 0.03);
+  box-shadow: 0 2px 6px rgba(11, 43, 30, 0.03);
   position: relative;
 }
 
 .ref-product-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 10px 24px rgba(11, 43, 30, 0.09);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(11, 43, 30, 0.08);
   border-color: #cfc4b2;
 }
 
@@ -689,11 +689,12 @@
   opacity: 0.9;
 }
 
-/* Image Container - Strictly Equal Dimensions & Prominent Fitting */
+/* Image Container - Square Aspect Ratio (No Blank Gaps / Zero Awkward Letterboxing) */
 .card-image-box {
   position: relative;
   width: 100%;
-  height: 280px;
+  aspect-ratio: 1 / 1;
+  max-height: 250px;
   background: #f8f6f0;
   overflow: hidden;
   display: flex;
@@ -706,7 +707,7 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 8px 12px;
+  padding: 10px;
   cursor: pointer;
   transition: transform 0.35s ease;
 }
@@ -796,9 +797,9 @@
   background: #ffffff;
 }
 
-/* Card Body - Strict Equal Dimensions & Balanced Rhythm */
+/* Card Body - Tight Balanced Rhythm & Compact Hierarchy */
 .card-body {
-  padding: 14px 16px 16px;
+  padding: 12px 14px 14px;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -806,27 +807,27 @@
 }
 
 .card-origin-category {
-  margin: 0 0 4px;
-  font-size: 11px;
+  margin: 0 0 3px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.7px;
   color: #798c81;
   text-transform: uppercase;
-  height: 15px;
-  line-height: 15px;
+  height: 14px;
+  line-height: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .card-product-title {
-  margin: 0 0 8px;
+  margin: 0 0 5px;
   font-family: var(--font-display, Georgia, serif);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 650;
   color: #0b2b1e;
   line-height: 1.25;
-  height: 42px;
+  height: 38px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -845,17 +846,17 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 5px;
-  min-height: 26px;
-  margin-bottom: 6px;
+  gap: 4px;
+  min-height: 22px;
+  margin-bottom: 4px;
 }
 
 .card-weight-pill {
-  padding: 3px 9px;
+  padding: 2.5px 7px;
   background: #f4eee3;
   border: 1px solid #dcd4c5;
-  border-radius: 5px;
-  font-size: 11.5px;
+  border-radius: 4px;
+  font-size: 11px;
   font-weight: 600;
   color: #384e42;
   cursor: pointer;
@@ -875,36 +876,36 @@
 
 /* Specs Line */
 .card-specs-line {
-  margin: 0 0 6px;
-  font-size: 12px;
-  color: #5d6f65;
-  height: 16px;
-  line-height: 16px;
+  margin: 0 0 3px;
+  font-size: 11px;
+  color: #6a7b72;
+  height: 14px;
+  line-height: 14px;
 }
 
 /* Rating Row */
 .card-rating-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  height: 18px;
-  margin-bottom: 10px;
+  gap: 4px;
+  height: 16px;
+  margin-bottom: 6px;
 }
 
 .card-stars {
   color: #e5a932;
-  font-size: 13px;
-  letter-spacing: 1px;
+  font-size: 12px;
+  letter-spacing: 0.5px;
 }
 
 .card-rating-val {
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 700;
   color: #173b2b;
 }
 
 .card-review-count {
-  font-size: 11.5px;
+  font-size: 11px;
   color: #88968f;
 }
 
@@ -912,33 +913,33 @@
 .card-price-row {
   display: flex;
   align-items: baseline;
-  gap: 7px;
-  height: 26px;
-  margin-top: auto;
-  margin-bottom: 10px;
+  gap: 6px;
+  height: 24px;
+  margin-top: 2px;
+  margin-bottom: 8px;
 }
 
 .card-price-current {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 800;
   color: #0b2b1e;
   letter-spacing: -0.3px;
 }
 
 .card-price-old {
-  font-size: 13.5px;
+  font-size: 12.5px;
   color: #8e9e95;
   text-decoration: line-through;
 }
 
 .card-discount-tag {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 750;
   background: #fef3c7;
   color: #854d0e;
   border: 1px solid #fde68a;
   border-radius: 4px;
-  padding: 1.5px 6px;
+  padding: 1px 5px;
   letter-spacing: 0.2px;
 }
 
@@ -946,18 +947,19 @@
 .card-actions-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 38px;
+  gap: 7px;
+  height: 36px;
+  margin-top: auto;
 }
 
 .card-btn-details {
   flex: 1;
-  height: 38px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 8px;
   background: transparent;
   border: 1.5px solid #0b2b1e;
-  border-radius: 8px;
-  font-size: 12.5px;
+  border-radius: 7px;
+  font-size: 12px;
   font-weight: 700;
   color: #0b2b1e;
   cursor: pointer;
@@ -973,19 +975,19 @@
 
 .card-btn-cart {
   flex: 1.35;
-  height: 38px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 8px;
   background: #0b2b1e;
   border: none;
-  border-radius: 8px;
-  font-size: 12.5px;
+  border-radius: 7px;
+  font-size: 12px;
   font-weight: 700;
   color: #ffffff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   transition: background-color 0.2s ease, transform 0.12s ease;
   white-space: nowrap;
 }
@@ -1710,11 +1712,11 @@
    14. RESPONSIVE BREAKPOINTS (TABLET & MOBILE)
    ========================================================= */
 
-/* Desktop (1024px and up): Responsive & content-driven 2 products per row (2x2 grid for 4 teas) */
+/* Desktop (1024px and up): Balanced 3-column product grid (3x2 for 6 teas) */
 @media (min-width: 1024px) {
   .shop-product-grid:not(.is-list-view) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 24px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
   }
 }
 
@@ -1729,18 +1731,19 @@
   }
 
   .shop-content-area {
-    max-width: 740px;
+    max-width: 760px;
     margin: 0 auto;
     width: 100%;
   }
 
-  .shop-product-grid {
+  .shop-product-grid:not(.is-list-view) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    gap: 14px;
   }
 
   .card-image-box {
-    height: 260px;
+    aspect-ratio: 1 / 1;
+    max-height: 260px;
   }
 
   .shop-trust-container {
@@ -1769,7 +1772,7 @@
 /* Mobile & Small Tablet (320px - 767px) */
 @media (max-width: 767px) {
   .shop-ref-hero-content {
-    padding: 32px 20px;
+    padding: 24px 16px;
     flex-direction: column;
     align-items: flex-start;
   }
@@ -1792,13 +1795,14 @@
   }
 
   .shop-main-container {
-    padding: 0 16px;
+    padding: 0 14px;
   }
 
   .shop-toolbar-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 12px;
+    gap: 10px;
+    margin-bottom: 12px;
   }
 
   .toolbar-left {
@@ -1811,55 +1815,63 @@
   }
 
   .shop-content-area {
-    max-width: 640px;
+    max-width: 100%;
     margin: 0 auto;
     width: 100%;
   }
 
-  .shop-product-grid {
+  .shop-product-grid:not(.is-list-view) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
   }
 
   .card-image-box {
-    height: 220px;
+    aspect-ratio: 1 / 1;
+    max-height: 190px;
   }
 
   .card-body {
-    padding: 12px 12px 14px;
+    padding: 10px;
   }
 
   .card-product-title {
-    font-size: 15px;
-    height: 38px;
-    margin-bottom: 6px;
+    font-size: 13.5px;
+    height: 34px;
+    margin-bottom: 4px;
+  }
+
+  .card-weight-selector {
+    gap: 3px;
+    min-height: 20px;
+    margin-bottom: 4px;
   }
 
   .card-weight-pill {
-    padding: 2px 7px;
-    font-size: 10.5px;
+    padding: 2px 6px;
+    font-size: 10px;
   }
 
   .card-price-current {
-    font-size: 17px;
+    font-size: 16px;
   }
 
   .card-price-old {
-    font-size: 12px;
+    font-size: 11.5px;
   }
 
   .card-actions-row {
     display: flex;
     flex-direction: row;
-    gap: 6px;
-    height: 36px;
+    gap: 5px;
+    height: 32px;
   }
 
   .card-btn-details,
   .card-btn-cart,
   .card-qty-stepper {
-    height: 36px;
-    font-size: 11.5px;
+    height: 32px;
+    font-size: 11px;
+    border-radius: 6px;
   }
 
   .shop-trust-bar {
@@ -2120,7 +2132,7 @@
   }
 }
 
-/* Mobile (below 580px) - Single column balanced cards */
+/* Mobile (below 580px) - Retain compact 2-column grid or single column on ultra-compact */
 @media (max-width: 580px) {
   .shop-content-area {
     max-width: 100%;
@@ -2129,51 +2141,69 @@
   }
 
   .shop-product-grid:not(.is-list-view) {
-    grid-template-columns: 1fr;
-    gap: 16px;
-    max-width: 400px;
-    margin: 0 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0;
   }
 
   .shop-product-grid:not(.is-list-view) .card-image-box {
-    height: 270px;
+    aspect-ratio: 1 / 1;
+    max-height: 180px;
   }
 
   .shop-product-grid:not(.is-list-view) .card-body {
-    padding: 14px 16px 16px;
+    padding: 10px 10px 12px;
   }
 
   .shop-product-grid:not(.is-list-view) .card-product-title {
-    font-size: 17px;
-    height: 42px;
-    margin-bottom: 8px;
+    font-size: 13.5px;
+    height: 34px;
+    margin-bottom: 4px;
+  }
+
+  .shop-product-grid:not(.is-list-view) .card-weight-selector {
+    gap: 3px;
+    min-height: 20px;
+    margin-bottom: 4px;
   }
 
   .shop-product-grid:not(.is-list-view) .card-weight-pill {
-    padding: 3px 9px;
-    font-size: 11.5px;
+    padding: 2px 6px;
+    font-size: 10px;
   }
 
   .shop-product-grid:not(.is-list-view) .card-price-current {
-    font-size: 20px;
+    font-size: 16px;
   }
 
   .shop-product-grid:not(.is-list-view) .card-price-old {
-    font-size: 13.5px;
+    font-size: 11.5px;
   }
 
   .shop-product-grid:not(.is-list-view) .card-actions-row {
     display: flex;
     flex-direction: row;
-    gap: 8px;
-    height: 38px;
+    gap: 5px;
+    height: 32px;
   }
 
   .shop-product-grid:not(.is-list-view) .card-btn-details,
   .shop-product-grid:not(.is-list-view) .card-btn-cart,
   .shop-product-grid:not(.is-list-view) .card-qty-stepper {
-    height: 38px;
-    font-size: 12.5px;
+    height: 32px;
+    font-size: 11px;
+    border-radius: 6px;
+  }
+}
+
+@media (max-width: 350px) {
+  .shop-product-grid:not(.is-list-view) {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .shop-product-grid:not(.is-list-view) .card-image-box {
+    max-height: 220px;
   }
 }
 

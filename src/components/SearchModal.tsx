@@ -16,6 +16,10 @@ const POPULAR_SEARCHES = [
   "Premium Oolong Black Tea",
   "Red Oolong",
   "Darjeeling",
+  "Rosy Dew",
+  "Blue Haze",
+  "Rose Green Tea",
+  "Lavender Green Tea",
   "Infuser",
 ];
 

@@ -12,6 +12,8 @@ const shopLinks = [
   { label: "Golden Dusk Black Tea + Chamomile", href: "/shop/golden-dusk-black-tea-chamomile" },
   { label: "Premium Oolong Black Tea", href: "/shop/premium-oolong-black-tea" },
   { label: "Red Oolong Tea", href: "/shop/red-oolong-tea" },
+  { label: "Rosy Dew Rose Green Tea", href: "/shop/rosy-dew" },
+  { label: "Blue Haze Lavender Green Tea", href: "/shop/blue-haze" },
 ];
 
 const exploreLinks = [

@@ -88,7 +88,7 @@ export function TeawareProvider({ children }: { children: React.ReactNode }) {
       capacity: updatedItem.capacity,
       price: Number(updatedItem.price) || 0,
       oldPrice: updatedItem.oldPrice ? Number(updatedItem.oldPrice) : undefined,
-      rating: updatedItem.rating || 5.0,
+      rating: updatedItem.rating,
       reviewCount: updatedItem.reviewCount || 0,
       badge: updatedItem.badge,
       image: updatedItem.image,

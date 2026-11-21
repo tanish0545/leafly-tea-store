@@ -134,7 +134,15 @@ export default function ProductDetail() {
                 (identifier === "white-tea" ||
                   identifier === "silver-tips-white-tea" ||
                   identifier === "golden-dusk-black-tea" ||
-                  identifier === "golden-dusk-black-tea-chamomile")))
+                  identifier === "golden-dusk-black-tea-chamomile")) ||
+                (String(p.id) === "5" &&
+                  (identifier === "rosy-dew" ||
+                    identifier === "rosy-dew-rose-green-tea" ||
+                    identifier === "rose-green-tea")) ||
+                (String(p.id) === "6" &&
+                  (identifier === "blue-haze" ||
+                    identifier === "blue-haze-lavender-green-tea" ||
+                    identifier === "lavender-green-tea")))
         ) ||
         (teawareItem
           ? {
@@ -219,6 +227,8 @@ export default function ProductDetail() {
 
   /* --- customer reviews & tasting notes -------------------- */
   const [reviews, setReviews] = useState<CustomerReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
   const [isWritingReview, setIsWritingReview] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewHoverRating, setReviewHoverRating] = useState<number | null>(null);
@@ -295,9 +305,13 @@ export default function ProductDetail() {
 
         fetched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setReviews(fetched);
+        setReviewsLoading(false);
+        setReviewsError(null);
       },
       (err) => {
         console.error("Could not load real-time reviews from Firestore:", err);
+        setReviewsError("Unable to load reviews at this time. Please check your connection.");
+        setReviewsLoading(false);
       }
     );
     return () => unsubscribe();
@@ -960,8 +974,8 @@ export default function ProductDetail() {
                 </span>
                 <span className="pdp-reviews-count-badge">
                   {totalReviewCount === 0
-                    ? "0 tasting notes"
-                    : `Based on ${totalReviewCount} tasting note${totalReviewCount > 1 ? "s" : ""}`}
+                    ? "0 reviews"
+                    : `Based on ${totalReviewCount} review${totalReviewCount > 1 ? "s" : ""}`}
                 </span>
               </div>
             </div>
@@ -1084,13 +1098,18 @@ export default function ProductDetail() {
 
           {/* REVIEWS LIST */}
           <div className="pdp-reviews-list">
-            {reviews.length === 0 ? (
+            {reviewsLoading ? (
+              <div className="pdp-reviews-loading" style={{ textAlign: "center", padding: "40px 20px", color: "rgba(11, 43, 30, 0.6)" }}>
+                Loading reviews...
+              </div>
+            ) : reviewsError ? (
+              <div className="pdp-reviews-error" style={{ textAlign: "center", padding: "40px 20px", color: "#991b1b" }}>
+                {reviewsError}
+              </div>
+            ) : reviews.length === 0 ? (
               <div className="pdp-reviews-empty">
                 <span className="pdp-empty-icon">☕</span>
-                <h4>First Harvest Edition</h4>
-                <p>
-                  No patron reviews submitted yet for this harvest. Be the first to share your mindful brewing notes!
-                </p>
+                <h4>No reviews yet. Be the first to share your experience.</h4>
                 {!isWritingReview && (
                   <button
                     type="button"

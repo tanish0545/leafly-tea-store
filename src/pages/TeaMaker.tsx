@@ -1267,7 +1267,9 @@ export default function TeaMaker() {
 
                           <div className="tm-tea-footer">
                             <span className="tm-tea-price">₹{Number(p.price).toLocaleString("en-IN")}</span>
-                            <span className="tm-tea-rating">★ {p.rating ?? 4.9}</span>
+                            {typeof p.rating === "number" && typeof p.reviewCount === "number" && p.reviewCount > 0 ? (
+                              <span className="tm-tea-rating">★ {p.rating.toFixed(1)}</span>
+                            ) : null}
                           </div>
                         </div>
                       </article>

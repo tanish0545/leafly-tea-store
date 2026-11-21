@@ -531,7 +531,7 @@ export default function TeaCollections() {
 
         <div className="collections-product-grid">
 
-          {products.slice(0, 4).map(
+          {products.filter((p) => p.category !== "teaware" && p.category !== "gifting").slice(0, 6).map(
             (product) => {
               const isAdded = addedId === product.id;
               const inStock = isProductInStock(product);
